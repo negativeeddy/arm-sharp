@@ -1,19 +1,37 @@
+using ArmRipper.Core.Configuration;
+using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
+using ArmRipper.Core.Metadata;
+using ArmRipper.Core.Notifications;
+using ArmRipper.Core.Rip;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var connectionString = builder.Configuration.GetConnectionString("ArmDb") ?? "Data Source=/etc/arm/config/arm.db";
 builder.Services.AddDbContext<ArmDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("ArmDb") ?? "Data Source=/etc/arm/config/arm.db"));
+    options.UseSqlite(connectionString));
+
+builder.Services.Configure<ArmSettings>(builder.Configuration.GetSection(ArmSettings.SectionName));
 
 builder.Services.AddRazorPages();
 builder.Services.AddControllers();
 
+builder.Services.AddSingleton<CliProcessRunner>();
+builder.Services.AddScoped<IIdentifyService, IdentifyService>();
+builder.Services.AddScoped<IHandBrakeService, HandBrakeService>();
+builder.Services.AddScoped<IFfmpegService, FfmpegService>();
+builder.Services.AddScoped<IArmRipperService, ArmRipperService>();
+builder.Services.AddScoped<MakeMkvService>();
+builder.Services.AddScoped<IMusicBrainzService, MusicBrainzService>();
+builder.Services.AddScoped<NotificationService>();
+builder.Services.AddScoped<Conductor>();
+builder.Services.AddHttpClient<OmdbService>();
+builder.Services.AddHttpClient<TmdbService>();
+
 var app = builder.Build();
 
-var dbPath = builder.Configuration.GetConnectionString("ArmDb") ?? "Data Source=/etc/arm/config/arm.db";
-var dbFile = dbPath.Replace("Data Source=", "").Split(';')[0];
+var dbFile = connectionString.Replace("Data Source=", "").Split(';')[0];
 var dbDir = Path.GetDirectoryName(dbFile);
 if (!string.IsNullOrEmpty(dbDir) && !Directory.Exists(dbDir))
     Directory.CreateDirectory(dbDir);
