@@ -28,7 +28,7 @@ WORKDIR /app
 COPY --from=build /app/cli /app/cli
 COPY --from=build /app/webui /app/webui
 
-RUN mkdir -p /opt/arm/{raw,transcode,completed,logs} /etc/arm/config
+RUN mkdir -p /home/arm/media/{raw,transcode} /home/arm/logs /etc/arm/config
 
 ENV ASPNETCORE_URLS=http://+:8080
 

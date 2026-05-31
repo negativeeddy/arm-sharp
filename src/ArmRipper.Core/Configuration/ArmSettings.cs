@@ -4,10 +4,10 @@ public class ArmSettings
 {
     public const string SectionName = "Arm";
 
-    public string? RawPath { get; set; } = "/opt/arm/raw";
-    public string? TranscodePath { get; set; } = "/opt/arm/transcode";
-    public string? CompletedPath { get; set; } = "/opt/arm/completed";
-    public string? LogPath { get; set; } = "/opt/arm/logs";
+    public string? RawPath { get; set; } = "/home/arm/media/raw";
+    public string? TranscodePath { get; set; } = "/home/arm/media/transcode";
+    public string? CompletedPath { get; set; } = "/home/arm/media";
+    public string? LogPath { get; set; } = "/home/arm/logs";
     public string? DbFile { get; set; } = "/etc/arm/config/arm.db";
     public string? InstallPath { get; set; } = "/opt/arm";
 
