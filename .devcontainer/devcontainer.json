@@ -5,7 +5,7 @@
         "ghcr.io/devcontainers/features/docker-in-docker:2": {}
     },
     "forwardPorts": [8080],
-    "postCreateCommand": "sh .devcontainer/post-create.sh",
+    "postCreateCommand": "sudo chown vscode:vscode /workspaces && curl -fsSL https://opencode.ai/install | sh && git clone https://github.com/automatic-ripping-machine/automatic-ripping-machine.git /workspaces/automatic-ripping-machine 2>/dev/null; dotnet build",
     "customizations": {
         "vscode": {
             "extensions": [
