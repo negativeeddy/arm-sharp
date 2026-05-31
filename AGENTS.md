@@ -1,7 +1,7 @@
 # ARM .NET Port — Project Status
 
 ## Goal
-Port the Python [automatic-ripping-machine](https://github.com/automatic-ripping-machine/automatic-ripping-machine) to C# .NET 10. The original ARM code is cloned into `/workspaces/automatic-ripping-machine` as a reference.
+Port the Python [automatic-ripping-machine](https://github.com/automatic-ripping-machine/automatic-ripping-machine) to C# .NET 10. The original ARM code is at `/workspaces/automatic-ripping-machine` as a reference.
 
 ## Completed
 - **All core services ported:**
