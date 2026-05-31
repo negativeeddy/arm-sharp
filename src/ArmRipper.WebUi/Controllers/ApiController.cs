@@ -1,3 +1,4 @@
+using System.Reflection;
 using ArmRipper.Core.Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -7,6 +8,20 @@ namespace ArmRipper.WebUi.Controllers;
 [Route("api")]
 public class ApiController(ArmDbContext db) : Controller
 {
+    [HttpGet("health")]
+    public IActionResult Health()
+    {
+        var version = Assembly.GetEntryAssembly()?.GetName()?.Version?.ToString()
+            ?? typeof(ApiController).Assembly.GetName().Version?.ToString()
+            ?? "0.0.0";
+
+        return Json(new
+        {
+            status = "healthy",
+            timestamp = DateTime.UtcNow.ToString("o"),
+            version
+        });
+    }
     [HttpGet("jobs")]
     public async Task<IActionResult> GetJobs()
     {
