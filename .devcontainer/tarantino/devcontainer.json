@@ -1,0 +1,40 @@
+{
+    "name": "ARM .NET — Tarantino",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": "."
+    },
+    "runArgs": [
+        "--privileged",
+        "--gpus", "all",
+        "--cpuset-cpus", "1-5",
+        "--cpu-shares", "128",
+        "-v", "/mnt/data/docker/arm/home:/home/arm",
+        "-v", "/mnt/data/docker/arm/scripts:/home/arm/scripts",
+        "-v", "/mnt/data/docker/arm/music:/home/arm/music",
+        "-v", "/mnt/data/docker/arm/logs:/home/arm/logs",
+        "-v", "/mnt/data/docker/arm/media:/home/arm/media",
+        "-v", "/mnt/data/docker/arm/config:/etc/arm/config",
+        "-v", "/mnt/data/media:/home/arm/publish"
+    ],
+    "forwardPorts": [8080],
+    "containerEnv": {
+        "TZ": "America/Chicago",
+        "ARM_UID": "1001",
+        "ARM_GID": "1001",
+        "NVIDIA_VISIBLE_DEVICES": "all",
+        "NVIDIA_DRIVER_CAPABILITIES": "all",
+        "ConnectionStrings:ArmDb": "Data Source=/etc/arm/config/arm.db"
+    },
+    "remoteUser": "root",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-dotnettools.csdevkit",
+                "ms-vscode.PowerShell",
+                "EditorConfig.EditorConfig"
+            ]
+        }
+    },
+    "postCreateCommand": "dotnet restore && dotnet build"
+}
