@@ -1,11 +1,8 @@
 #!/bin/sh
 set -e
 
-echo "=== Installing bash ==="
-apt-get update -qq && apt-get install -y -qq bash
-
 echo "=== Installing opencode ==="
-curl -fsSL https://opencode.ai/install | bash
+curl -fsSL https://opencode.ai/install | sh
 
 echo "=== Cloning original ARM Python reference ==="
 if [ ! -d "/workspaces/automatic-ripping-machine" ]; then
