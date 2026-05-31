@@ -1,0 +1,35 @@
+@{
+    ViewData["Title"] = $"Log: {ViewBag.FileName} - ARM";
+    var file = ViewBag.FileName as string;
+    var mode = ViewBag.Mode as string ?? "full";
+}
+
+<h4>Loading log: @file ...</h4>
+
+<div id="log">
+    <pre id="log-content"></pre>
+</div>
+
+@section Scripts {
+<script>
+    const output = document.getElementById('log-content');
+    const readerMode = '@(mode == "tail" ? "full" : mode)';
+
+    async function fetchLog() {
+        try {
+            const response = await fetch('/logs/reader?file=@file&mode=' + readerMode);
+            const text = await response.text();
+            output.textContent = text;
+            @if (mode == "tail")
+            {
+                <text>window.scrollTo(0, document.body.scrollHeight);</text>
+            }
+        } catch (err) {
+            output.textContent = 'Error loading log: ' + err.message;
+        }
+    }
+
+    fetchLog();
+    setInterval(fetchLog, 2000);
+</script>
+}

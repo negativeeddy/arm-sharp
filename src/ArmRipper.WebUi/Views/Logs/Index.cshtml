@@ -1,0 +1,48 @@
+@model IEnumerable<ArmRipper.WebUi.Controllers.LogFileEntry>
+@{
+    ViewData["Title"] = "Logs - ARM";
+}
+
+<h1>Log Files</h1>
+
+@if (!Model.Any())
+{
+    <p>No log files found in the log directory.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>File</th>
+                <th>Last Modified</th>
+                <th>Size</th>
+                <th colspan="4" class="text-center">View</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var file in Model)
+            {
+                <tr>
+                    <td>@file.Name</td>
+                    <td>@file.LastWriteTime</td>
+                    <td>@file.SizeKb KB</td>
+                    <td><a href="/logs/view?file=@file.Name&mode=tail">tail</a></td>
+                    <td><a href="/logs/view?file=@file.Name&mode=arm">arm</a></td>
+                    <td><a href="/logs/view?file=@file.Name&mode=full">full</a></td>
+                    <td><a href="/logs/download?file=@file.Name">download</a></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<div class="card">
+    <div class="card-header"><strong>View Modes</strong></div>
+    <div class="card-body">
+        <p><strong>tail:</strong> Output to browser in real time. Similar to 'tail -f'</p>
+        <p><strong>arm:</strong> Static output of just the ARM log entries</p>
+        <p><strong>full:</strong> Static output of all of the log including MakeMKV and HandBrake</p>
+        <p><strong>download:</strong> Download the full log file</p>
+    </div>
+</div>
