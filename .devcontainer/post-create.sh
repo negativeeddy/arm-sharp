@@ -1,5 +1,8 @@
-#!/bin/bash
+#!/bin/sh
 set -e
+
+echo "=== Installing bash ==="
+apt-get update -qq && apt-get install -y -qq bash
 
 echo "=== Installing opencode ==="
 curl -fsSL https://opencode.ai/install | bash
