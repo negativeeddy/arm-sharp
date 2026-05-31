@@ -7,11 +7,11 @@
 
 @if (!Model.Any())
 {
-    <p>No log files found in the log directory.</p>
+    <div class="alert alert-info">No log files found in the log directory.</div>
 }
 else
 {
-    <table class="table">
+    <table class="table table-striped table-hover table-sm tablesorter">
         <thead>
             <tr>
                 <th>File</th>
@@ -27,10 +27,10 @@ else
                     <td>@file.Name</td>
                     <td>@file.LastWriteTime</td>
                     <td>@file.SizeKb KB</td>
-                    <td><a href="/logs/view?file=@file.Name&mode=tail">tail</a></td>
-                    <td><a href="/logs/view?file=@file.Name&mode=arm">arm</a></td>
-                    <td><a href="/logs/view?file=@file.Name&mode=full">full</a></td>
-                    <td><a href="/logs/download?file=@file.Name">download</a></td>
+                    <td><a href="/logs/view?file=@file.Name&mode=tail" class="btn btn-sm btn-outline-primary">tail</a></td>
+                    <td><a href="/logs/view?file=@file.Name&mode=arm" class="btn btn-sm btn-outline-info">arm</a></td>
+                    <td><a href="/logs/view?file=@file.Name&mode=full" class="btn btn-sm btn-outline-secondary">full</a></td>
+                    <td><a href="/logs/download?file=@file.Name" class="btn btn-sm btn-outline-success">download</a></td>
                 </tr>
             }
         </tbody>
@@ -46,3 +46,11 @@ else
         <p><strong>download:</strong> Download the full log file</p>
     </div>
 </div>
+
+@section Scripts {
+<script>
+    $(function () {
+        $('.tablesorter').tablesorter();
+    });
+</script>
+}

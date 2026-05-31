@@ -5,7 +5,7 @@
 
 <h1>Job History</h1>
 
-<table class="table">
+<table class="table table-striped table-hover table-sm tablesorter">
     <thead>
         <tr>
             <th>ID</th>
@@ -27,8 +27,16 @@
                 <td>@job.Status</td>
                 <td>@job.StartTime.ToString("g")</td>
                 <td>@job.JobLength</td>
-                <td><a href="/jobs/jobdetail?jobId=@job.Id">View</a></td>
+                <td><a href="/jobs/jobdetail?jobId=@job.Id" class="btn btn-sm btn-outline-primary">View</a></td>
             </tr>
         }
     </tbody>
 </table>
+
+@section Scripts {
+<script>
+    $(function () {
+        $('.tablesorter').tablesorter();
+    });
+</script>
+}

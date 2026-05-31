@@ -4,36 +4,39 @@
 
 <h1>Setup</h1>
 
-<h2>System Configuration</h2>
-<p>Configure your ARM installation below. Default settings are loaded from <code>appsettings.json</code>.</p>
+<div class="card mb-3">
+    <div class="card-header"><h5 class="mb-0">System Configuration</h5></div>
+    <div class="card-body">
+        <p>Configure your ARM installation below. Default settings are loaded from <code>appsettings.json</code>.</p>
 
-<form method="post" action="/settings/save">
-    <fieldset>
-        <legend>ARM Directories</legend>
-        <div>
-            <label>Raw Path</label>
-            <input type="text" name="RawPath" value="/home/arm/media/raw" />
-        </div>
-        <div>
-            <label>Transcode Path</label>
-            <input type="text" name="TranscodePath" value="/home/arm/media/transcode" />
-        </div>
-        <div>
-            <label>Completed Path</label>
-            <input type="text" name="CompletedPath" value="/home/arm/media" />
-        </div>
-        <div>
-            <label>Log Path</label>
-            <input type="text" name="LogPath" value="/home/arm/logs" />
-        </div>
-    </fieldset>
+        <form method="post" action="/settings/save">
+            <fieldset>
+                <legend>ARM Directories</legend>
+                <div class="form-group">
+                    <label>Raw Path</label>
+                    <input type="text" name="RawPath" value="/home/arm/media/raw" class="form-control" />
+                </div>
+                <div class="form-group">
+                    <label>Transcode Path</label>
+                    <input type="text" name="TranscodePath" value="/home/arm/media/transcode" class="form-control" />
+                </div>
+                <div class="form-group">
+                    <label>Completed Path</label>
+                    <input type="text" name="CompletedPath" value="/home/arm/media" class="form-control" />
+                </div>
+                <div class="form-group">
+                    <label>Log Path</label>
+                    <input type="text" name="LogPath" value="/home/arm/logs" class="form-control" />
+                </div>
+            </fieldset>
 
-    <fieldset>
-        <legend>Database</legend>
-        <p>Your ARM database is stored at <code>/etc/arm/config/arm.db</code> (SQLite).</p>
-    </fieldset>
+            <fieldset class="mt-3">
+                <legend>Database</legend>
+                <p>Your ARM database is stored at <code>/etc/arm/config/arm.db</code> (SQLite).</p>
+            </fieldset>
 
-    <button type="submit">Save Settings</button>
-</form>
-
-<p><a href="/">Back to Home</a></p>
+            <button type="submit" class="btn btn-primary">Save Settings</button>
+            <a href="/" class="btn btn-outline-secondary">Cancel</a>
+        </form>
+    </div>
+</div>

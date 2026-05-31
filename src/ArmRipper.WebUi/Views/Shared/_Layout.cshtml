@@ -3,31 +3,66 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"]</title>
-    <link rel="stylesheet" href="https://cdn.simplecss.org/simple.min.css" />
+    <title>@ViewData["Title"] — ARM</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css"
+          integrity="sha384-xOolHFLEh07PJGoPkLv1IbcEPTNtaed2xpHsD9ESMhqIYd0nLMwNLD69Npy4HI+N"
+          crossorigin="anonymous" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery.tablesorter@2.31.3/dist/css/theme.default.min.css"
+          crossorigin="anonymous" />
+    <link rel="stylesheet" href="/css/site.css" />
 </head>
 <body>
-    <header>
-        <nav>
-            <a href="/">Home</a>
-            <a href="/jobs/activerips">Active Rips</a>
-            <a href="/jobs/titlesearch">Search</a>
-            <a href="/history">History</a>
-            <a href="/database">Database</a>
-            <a href="/logs">Logs</a>
-            <a href="/setup">Setup</a>
-            <a href="/settings">Settings</a>
-            <a href="/notifications">Notifications</a>
-            <a href="/auth/login">Login</a>
-        </nav>
-        <h1>Automatic Ripping Machine</h1>
-    </header>
-    <main>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-3">
+        <a class="navbar-brand" href="/">ARM</a>
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navMain">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navMain">
+            <ul class="navbar-nav mr-auto">
+                <li class="nav-item"><a class="nav-link" href="/">Home</a></li>
+                <li class="nav-item"><a class="nav-link" href="/jobs/activerips">Active Rips</a></li>
+                <li class="nav-item"><a class="nav-link" href="/jobs/titlesearch">Search</a></li>
+                <li class="nav-item"><a class="nav-link" href="/history">History</a></li>
+                <li class="nav-item"><a class="nav-link" href="/database">Database</a></li>
+                <li class="nav-item"><a class="nav-link" href="/logs">Logs</a></li>
+                <li class="nav-item"><a class="nav-link" href="/settings">Settings</a></li>
+                <li class="nav-item">
+                    <a class="nav-link" href="/notifications">
+                        Notifications
+                        <span id="notifBadge" class="badge badge-pill badge-danger badge-notif" style="display:none;">0</span>
+                    </a>
+                </li>
+                <li class="nav-item"><a class="nav-link" href="/auth/login">Login</a></li>
+            </ul>
+            <ul class="navbar-nav">
+                <li class="nav-item">
+                    <span id="darkModeToggle" class="nav-link" onclick="arm.toggleDarkMode()" title="Toggle dark mode">🌙</span>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <main class="container">
         @RenderBody()
     </main>
-    <footer>
-        <p>ARM .NET Port</p>
+
+    <footer class="container text-center text-muted mt-4 mb-3">
+        <small>ARM .NET Port</small>
     </footer>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"
+            integrity="sha384-/NhHe2IvMvP1XpjnEtKxZLkFUBuSVX0GcYfKYNsn1sYEFR+kF2sVvXjNuI+iqWc6"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"
+            integrity="sha384-Fy6S3B9q64WdZWQUiU+q4/2Lc9npb8tCaSX9FK7E8HnRr0Jz8D6OP9dO5Vg3Q9ct"
+            crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery.tablesorter@2.31.3/dist/js/jquery.tablesorter.min.js"
+            crossorigin="anonymous"></script>
+    <script src="/js/common.js"></script>
+    <script src="/js/jobRefresh.js"></script>
+    <script>
+        arm.initDarkMode();
+    </script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

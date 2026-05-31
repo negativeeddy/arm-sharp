@@ -7,11 +7,11 @@
 
 @if (!Model.Any())
 {
-    <p>No notifications.</p>
+    <div class="alert alert-info">No notifications.</div>
 }
 else
 {
-    <table class="table">
+    <table class="table table-striped table-hover table-sm">
         <thead>
             <tr>
                 <th>Time</th>
@@ -24,16 +24,16 @@ else
         <tbody>
             @foreach (var notification in Model)
             {
-                <tr>
+                <tr class="@(notification.Read ? "" : "table-active")">
                     <td>@notification.Timestamp.ToString("g")</td>
-                    <td>@notification.EventType</td>
+                    <td><span class="badge badge-secondary">@notification.EventType</span></td>
                     <td>@notification.Message</td>
-                    <td>@notification.Read</td>
+                    <td>@(notification.Read ? "Yes" : "No")</td>
                     <td>
                         @if (!notification.Read)
                         {
                             <form method="post" action="/notifications/markread/@notification.Id">
-                                <button type="submit">Mark Read</button>
+                                <button type="submit" class="btn btn-sm btn-outline-success">Mark Read</button>
                             </form>
                         }
                     </td>

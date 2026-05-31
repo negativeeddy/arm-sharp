@@ -2,6 +2,8 @@
     ViewData["Title"] = "Error - ARM";
 }
 
-<h1>Error</h1>
-<p>@ViewBag.Error</p>
-<a href="/">Back to Home</a>
+<div class="alert alert-danger" role="alert">
+    <h4 class="alert-heading">Error</h4>
+    <p class="mb-0">@ViewBag.Error</p>
+</div>
+<a href="/" class="btn btn-outline-primary">&larr; Back to Home</a>

@@ -1,31 +1,208 @@
-@model IEnumerable<ArmRipper.Core.Models.SystemDrive>
 @{
     ViewData["Title"] = "Settings - ARM";
+    var drives = ViewBag.Drives as IEnumerable<ArmRipper.Core.Models.SystemDrive> ?? [];
+    var sysInfo = ViewBag.SystemInfo as ArmRipper.Core.Models.SystemInfo;
+    var stats = ViewBag.Stats as Dictionary<string, object>;
+    var armSettings = ViewBag.ArmSettings as ArmRipper.Core.Configuration.ArmSettings;
 }
 
 <h1>Settings</h1>
 
-<h2>Drives</h2>
-<table class="table">
-    <thead>
-        <tr>
-            <th>Device</th>
-            <th>Model</th>
-            <th>Firmware</th>
-            <th>Mode</th>
-        </tr>
-    </thead>
-    <tbody>
-        @foreach (var drive in Model)
-        {
-            <tr>
-                <td>@drive.Mount</td>
-                <td>@drive.Model</td>
-                <td>@drive.Firmware</td>
-                <td>@drive.DriveMode</td>
-            </tr>
-        }
-    </tbody>
-</table>
+@if (TempData["Message"] is string msg)
+{
+    <div class="alert alert-info alert-dismissible fade show" role="alert">
+        @msg
+        <button type="button" class="close" data-dismiss="alert">&times;</button>
+    </div>
+}
 
-<a href="/">Back to Home</a>
+<ul class="nav nav-tabs mb-3" id="settingsTabs" role="tablist">
+    <li class="nav-item"><a class="nav-link active" id="tab1-tab" data-toggle="tab" href="#tab1" role="tab">General Info</a></li>
+    <li class="nav-item"><a class="nav-link" id="tab2-tab" data-toggle="tab" href="#tab2" role="tab">System Info</a></li>
+    <li class="nav-item"><a class="nav-link" id="tab3-tab" data-toggle="tab" href="#tab3" role="tab">Ripper</a></li>
+    <li class="nav-item"><a class="nav-link" id="tab4-tab" data-toggle="tab" href="#tab4" role="tab">UI</a></li>
+    <li class="nav-item"><a class="nav-link" id="tab5-tab" data-toggle="tab" href="#tab5" role="tab">abcde</a></li>
+    <li class="nav-item"><a class="nav-link" id="tab6-tab" data-toggle="tab" href="#tab6" role="tab">Apprise</a></li>
+    <li class="nav-item"><a class="nav-link" id="tab7-tab" data-toggle="tab" href="#tab7" role="tab">Help</a></li>
+</ul>
+
+<div class="tab-content" id="settingsTabsContent">
+
+    <!-- General Info -->
+    <div class="tab-pane fade show active" id="tab1" role="tabpanel">
+        <h2>General Info</h2>
+        <table class="table table-sm">
+            <tr><td><strong>ARM Version:</strong></td><td>1.0.0</td></tr>
+            <tr><td><strong>Hostname:</strong></td><td>@ViewBag.Hostname</td></tr>
+            <tr><td><strong>OS:</strong></td><td>@ViewBag.OsDesc</td></tr>
+            <tr><td><strong>CPU Cores:</strong></td><td>@ViewBag.ProcCount</td></tr>
+            <tr><td><strong>Log Path:</strong></td><td>@armSettings?.LogPath</td></tr>
+            <tr><td><strong>Raw Path:</strong></td><td>@armSettings?.RawPath</td></tr>
+            <tr><td><strong>Transcode Path:</strong></td><td>@armSettings?.TranscodePath</td></tr>
+            <tr><td><strong>Completed Path:</strong></td><td>@armSettings?.CompletedPath</td></tr>
+            <tr><td><strong>Database File:</strong></td><td>@armSettings?.DbFile</td></tr>
+            <tr><td><strong>Install Path:</strong></td><td>@armSettings?.InstallPath</td></tr>
+        </table>
+    </div>
+
+    <!-- System Info -->
+    <div class="tab-pane fade" id="tab2" role="tabpanel">
+        <h2>System Info &amp; Health</h2>
+        <a href="/settings/sysinfo" class="btn btn-sm btn-outline-secondary mb-2">Update system information</a>
+        @if (sysInfo is not null)
+        {
+            <table class="table table-sm">
+                <tr><td><strong>Hostname:</strong></td><td>@sysInfo.Hostname</td></tr>
+                <tr><td><strong>CPU:</strong></td><td>@sysInfo.CpuInfo</td></tr>
+                <tr><td><strong>RAM:</strong></td><td>@sysInfo.RamInfo</td></tr>
+                <tr><td><strong>OS:</strong></td><td>@sysInfo.OsInfo</td></tr>
+            </table>
+        }
+        else
+        {
+            <p>No system info yet. <a href="/settings/sysinfo">Run system info update</a></p>
+        }
+        <h3 class="mt-3">Drives</h3>
+        <a href="/settings/scan" class="btn btn-sm btn-outline-primary mb-2">Scan for drives</a>
+        @if (drives.Any())
+        {
+            <table class="table table-sm table-striped">
+                <thead>
+                    <tr>
+                        <th>Device</th>
+                        <th>Model</th>
+                        <th>Serial</th>
+                        <th>Firmware</th>
+                        <th>Capabilities</th>
+                        <th>Mode</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in drives)
+                    {
+                        <tr class="@(d.DriveMode == "disabled" ? "table-secondary text-muted" : "")">
+                            <td><code>@d.Mount</code></td>
+                            <td>@d.Model</td>
+                            <td>@(d.Serial ?? "—")</td>
+                            <td>@(d.Firmware ?? "—")</td>
+                            <td>
+                                @if (d.ReadCd) { <span class="badge badge-secondary">CD</span> }
+                                @if (d.ReadDvd) { <span class="badge badge-info">DVD</span> }
+                                @if (d.ReadBd) { <span class="badge badge-primary">BD</span> }
+                                @if (!d.ReadCd && !d.ReadDvd && !d.ReadBd) { <span class="badge badge-light">?</span> }
+                            </td>
+                            <td>
+                                <form method="post" action="/settings/drive-toggle-mode/@d.Id" style="display:inline;">
+                                    <button type="submit" class="btn btn-sm @(d.DriveMode switch
+                                    {
+                                        "autodetect" => "btn-success",
+                                        "manual" => "btn-warning",
+                                        _ => "btn-secondary"
+                                    })">@d.DriveMode</button>
+                                </form>
+                            </td>
+                            <td class="text-nowrap">
+                                <form method="post" action="/settings/eject" style="display:inline;">
+                                    <input type="hidden" name="devPath" value="@d.Mount" />
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Eject disc">Eject</button>
+                                </form>
+                                <form method="post" action="/settings/drive-remove/@d.Id" style="display:inline;"
+                                      onsubmit="return confirm('Remove drive @d.Mount from the database?')">
+                                    <button type="submit" class="btn btn-sm btn-outline-dark" title="Remove drive">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p>No drives found. <a href="/settings/scan">Scan for drives</a></p>
+        }
+        <h3 class="mt-3">Statistics</h3>
+        <table class="table table-sm">
+            <tr><td>Total Rips:</td><td>@(stats?["total_rips"] ?? 0)</td></tr>
+            <tr><td>Failed:</td><td>@(stats?["failed_rips"] ?? 0)</td></tr>
+            <tr><td>Movies:</td><td>@(stats?["movies"] ?? 0)</td></tr>
+            <tr><td>Series:</td><td>@(stats?["series"] ?? 0)</td></tr>
+        </table>
+    </div>
+
+    <!-- Ripper Settings -->
+    <div class="tab-pane fade" id="tab3" role="tabpanel">
+        <h2>Ripper Settings</h2>
+        <form method="post" action="/settings/save-ripper">
+            <table class="table table-sm">
+                <tr><td><label>Rip Method:</label></td><td><input type="text" name="RipMethod" value="@armSettings?.RipMethod" class="form-control" /></td></tr>
+                <tr><td><label>MKV Args:</label></td><td><input type="text" name="MkvArgs" value="@armSettings?.MkvArgs" class="form-control" /></td></tr>
+                <tr><td><label>Min Length:</label></td><td><input type="number" name="MinLength" value="@armSettings?.MinLength" class="form-control" /></td></tr>
+                <tr><td><label>Max Length:</label></td><td><input type="number" name="MaxLength" value="@armSettings?.MaxLength" class="form-control" /></td></tr>
+                <tr><td><label>Main Feature:</label></td><td><input type="checkbox" name="MainFeature" value="true" checked="@armSettings?.MainFeature" /></td></tr>
+                <tr><td><label>Skip Transcode:</label></td><td><input type="checkbox" name="SkipTranscode" value="true" checked="@armSettings?.SkipTranscode" /></td></tr>
+                <tr><td><label>Use FFmpeg:</label></td><td><input type="checkbox" name="UseFfmpeg" value="true" checked="@armSettings?.UseFfmpeg" /></td></tr>
+                <tr><td><label>Auto Eject:</label></td><td><input type="checkbox" name="AutoEject" value="true" checked="@armSettings?.AutoEject" /></td></tr>
+                <tr><td><label>HB Preset DVD:</label></td><td><input type="text" name="HbPresetDvd" value="@armSettings?.HbPresetDvd" class="form-control" /></td></tr>
+                <tr><td><label>HB Preset BD:</label></td><td><input type="text" name="HbPresetBd" value="@armSettings?.HbPresetBd" class="form-control" /></td></tr>
+                <tr><td><label>Dest Ext:</label></td><td><input type="text" name="DestExt" value="@armSettings?.DestExt" class="form-control" /></td></tr>
+            </table>
+            <button type="submit" class="btn btn-primary">Save Ripper Settings</button>
+        </form>
+    </div>
+
+    <!-- UI Settings -->
+    <div class="tab-pane fade" id="tab4" role="tabpanel">
+        <h2>UI Settings</h2>
+        <div class="card">
+            <div class="card-body">
+                <p class="card-text text-muted">UI customization options (theme, refresh rate, etc.) coming in a future update.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- abcde Config -->
+    <div class="tab-pane fade" id="tab5" role="tabpanel">
+        <h2>abcde Config</h2>
+        <div class="card">
+            <div class="card-body">
+                <p class="card-text text-muted">abcde configuration for audio CD ripping. Coming in a future update.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Apprise Config -->
+    <div class="tab-pane fade" id="tab6" role="tabpanel">
+        <h2>Apprise Notification Config</h2>
+        <p>Notification channels configured via ArmSettings:</p>
+        <table class="table table-sm">
+            <tr><td>Pushbullet Key:</td><td>@(armSettings?.PbKey is not null ? "****" : "Not set")</td></tr>
+            <tr><td>IFTTT Key:</td><td>@(armSettings?.IftttKey is not null ? "****" : "Not set")</td></tr>
+            <tr><td>Bash Script:</td><td>@(armSettings?.BashScript ?? "Not set")</td></tr>
+            <tr><td>JSON URL:</td><td>@(armSettings?.JsonUrl ?? "Not set")</td></tr>
+        </table>
+    </div>
+
+    <!-- Help -->
+    <div class="tab-pane fade" id="tab7" role="tabpanel">
+        <h2>Help</h2>
+        <p>ARM .NET Port — <a href="https://github.com/automatic-ripping-machine/automatic-ripping-machine">Automatic Ripping Machine</a></p>
+        <p>View modes:</p>
+        <ul>
+            <li><strong>tail:</strong> Real-time log output, auto-scrolls</li>
+            <li><strong>arm:</strong> Only ARM-prefixed log entries</li>
+            <li><strong>full:</strong> Complete log including tool output</li>
+            <li><strong>download:</strong> Download raw log file</li>
+        </ul>
+        <p>API endpoints:</p>
+        <ul>
+            <li><code>GET /api/health</code> — Health check</li>
+            <li><code>GET /api/jobs</code> — Recent jobs</li>
+            <li><code>GET /api/stats</code> — Job statistics</li>
+            <li><code>POST /api/abandon/{id}</code> — Abandon a job</li>
+            <li><code>POST /api/change-params</code> — Change job params</li>
+            <li><code>GET /api/log?jobId={id}</code> — Get job log</li>
+        </ul>
+    </div>
+
+</div>

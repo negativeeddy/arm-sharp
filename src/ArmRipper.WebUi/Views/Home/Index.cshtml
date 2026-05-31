@@ -1,17 +1,17 @@
 @model IEnumerable<ArmRipper.Core.Models.Job>
 @{
-    ViewData["Title"] = "Active Rips - ARM";
+    ViewData["Title"] = "Home - ARM";
 }
 
 <h1>Active Rips</h1>
 
 @if (!Model.Any())
 {
-    <p>No active rips.</p>
+    <div class="alert alert-info">No active rips.</div>
 }
 else
 {
-    <table class="table">
+    <table class="table table-striped table-hover table-sm">
         <thead>
             <tr>
                 <th>ID</th>
@@ -31,7 +31,7 @@ else
                     <td>@job.DiscType</td>
                     <td>@job.Status</td>
                     <td>@job.StartTime.ToString("g")</td>
-                    <td><a href="/jobs/jobdetail?jobId=@job.Id">View</a></td>
+                    <td><a href="/jobs/jobdetail?jobId=@job.Id" class="btn btn-sm btn-outline-primary">View</a></td>
                 </tr>
             }
         </tbody>

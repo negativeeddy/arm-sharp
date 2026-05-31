@@ -1,0 +1,65 @@
+body.dark-mode {
+    background-color: #1a1a2e;
+    color: #e0e0e0;
+}
+
+body.dark-mode .navbar {
+    background-color: #16213e !important;
+}
+
+body.dark-mode .card {
+    background-color: #16213e;
+    border-color: #0f3460;
+}
+
+body.dark-mode .table {
+    color: #e0e0e0;
+}
+
+body.dark-mode .table td,
+body.dark-mode .table th {
+    border-color: #0f3460;
+}
+
+body.dark-mode .modal-content {
+    background-color: #16213e;
+    color: #e0e0e0;
+}
+
+body.dark-mode .form-control {
+    background-color: #0f3460;
+    border-color: #1a1a5e;
+    color: #e0e0e0;
+}
+
+body.dark-mode a {
+    color: #7ec8e3;
+}
+
+body.dark-mode .btn-outline-light {
+    color: #e0e0e0;
+    border-color: #e0e0e0;
+}
+
+.badge-notif {
+    position: relative;
+    top: -8px;
+    font-size: 0.65rem;
+}
+
+.table-sortable th {
+    cursor: pointer;
+}
+
+.table-sortable th:hover {
+    background-color: rgba(0,0,0,0.05);
+}
+
+body.dark-mode .table-sortable th:hover {
+    background-color: rgba(255,255,255,0.1);
+}
+
+#darkModeToggle {
+    cursor: pointer;
+    user-select: none;
+}
