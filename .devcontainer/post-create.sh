@@ -1,8 +1,8 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
 echo "=== Installing opencode ==="
-curl -fsSL https://opencode.ai/install | sh
+curl -fsSL https://opencode.ai/install | bash
 
 echo "=== Fixing workspace permissions ==="
 sudo chown vscode:vscode /workspaces
