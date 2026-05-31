@@ -53,6 +53,18 @@ public partial class ApiController(
         return Json(jobs);
     }
 
+    [HttpGet("jobs/active")]
+    public async Task<IActionResult> ActiveJobs()
+    {
+        var jobs = await db.Jobs
+            .Include(j => j.Config)
+            .Where(j => j.Status != JobState.Success && j.Status != JobState.Failure)
+            .OrderByDescending(j => j.StartTime)
+            .ToListAsync();
+
+        return PartialView("~/Views/Jobs/_ActiveJobRows.cshtml", jobs);
+    }
+
     [HttpGet("jobs/{id}")]
     public async Task<IActionResult> GetJob(int id)
     {

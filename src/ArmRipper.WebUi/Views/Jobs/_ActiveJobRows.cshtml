@@ -1,0 +1,19 @@
+@model IEnumerable<ArmRipper.Core.Models.Job>
+@if (!Model.Any())
+{
+    <tr><td colspan="6" class="text-center text-muted">No active rips.</td></tr>
+}
+else
+{
+    @foreach (var job in Model)
+    {
+        <tr>
+            <td>@job.Id</td>
+            <td>@job.Title</td>
+            <td>@job.DiscType</td>
+            <td>@job.Status</td>
+            <td>@job.StartTime.ToString("g")</td>
+            <td><a href="/jobs/jobdetail?jobId=@job.Id" class="btn btn-sm btn-outline-primary">View</a></td>
+        </tr>
+    }
+}

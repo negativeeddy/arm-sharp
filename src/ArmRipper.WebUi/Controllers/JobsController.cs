@@ -1,4 +1,5 @@
 using ArmRipper.Core.Infrastructure.Data;
+using ArmRipper.Core.Metadata;
 using ArmRipper.Core.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -6,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 namespace ArmRipper.WebUi.Controllers;
 
 [Route("jobs")]
-public class JobsController(ArmDbContext db) : Controller
+public class JobsController(ArmDbContext db, OmdbService omdb) : Controller
 {
     [HttpGet("jobdetail")]
     public async Task<IActionResult> JobDetail(int jobId)
@@ -18,6 +19,16 @@ public class JobsController(ArmDbContext db) : Controller
 
         if (job is null)
             return NotFound();
+
+        if (!string.IsNullOrEmpty(job.ImdbId) && job.Config?.OmdbApiKey is { Length: > 0 } apiKey)
+        {
+            try
+            {
+                var metadata = await omdb.LookupByImdbAsync(job.ImdbId, apiKey, plot: "full");
+                ViewBag.Metadata = metadata;
+            }
+            catch { /* non-critical */ }
+        }
 
         return View(job);
     }
@@ -32,6 +43,20 @@ public class JobsController(ArmDbContext db) : Controller
             .ToListAsync();
 
         return View(jobs);
+    }
+
+    [HttpPost("set-title")]
+    public async Task<IActionResult> SetTitle(int jobId, string title, string? returnUrl = null)
+    {
+        var job = await db.Jobs.FindAsync(jobId);
+        if (job is null)
+            return NotFound();
+
+        job.TitleManual = title;
+        job.Title = title;
+        await db.SaveChangesAsync();
+
+        return Redirect(returnUrl ?? Url.Action("TitleSearch")!);
     }
 
     [HttpGet("titlesearch")]
