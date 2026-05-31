@@ -29,17 +29,38 @@ public class ArmSettings
 
     public string? HbPresetDvd { get; set; } = "Very Fast 1080p30";
     public string? HbPresetBd { get; set; } = "Very Fast 1080p30";
+    public string? HbArgsDvd { get; set; }
+    public string? HbArgsBd { get; set; }
     public string? DestExt { get; set; } = "mp4";
+
+    public string? FfmpegCli { get; set; } = "ffmpeg";
+    public string? FfmpegPreFileArgs { get; set; }
+    public string? FfmpegPostFileArgs { get; set; }
+
+    public string? ExtrasSub { get; set; }
 
     public bool NotifyRip { get; set; } = true;
     public bool NotifyTranscode { get; set; } = true;
+    public string? PbKey { get; set; }
+    public string? IftttKey { get; set; }
+    public string? PoUserKey { get; set; }
+    public string? BashScript { get; set; }
+    public string? JsonUrl { get; set; }
+    public string? Apprise { get; set; }
 
+    public string? ArmApiKey { get; set; }
     public string? MetadataProvider { get; set; } = "omdb";
     public string? OmdbApiKey { get; set; }
     public string? TmdbApiKey { get; set; }
 
     public string? WebServerIp { get; set; } = "0.0.0.0";
     public int WebServerPort { get; set; } = 8080;
+    public string? UiBaseUrl { get; set; }
+
+    public bool EmbyRefresh { get; set; }
+    public string? EmbyServer { get; set; }
+    public int? EmbyPort { get; set; }
+    public string? EmbyApiKey { get; set; }
 
     public int MaxConcurrentTranscodes { get; set; } = 2;
     public int MaxConcurrentMakemkvInfo { get; set; } = 1;
