@@ -1,0 +1,44 @@
+@model IEnumerable<ArmRipper.Core.Models.Notification>
+@{
+    ViewData["Title"] = "Notifications - ARM";
+}
+
+<h1>Notifications</h1>
+
+@if (!Model.Any())
+{
+    <p>No notifications.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Type</th>
+                <th>Message</th>
+                <th>Read</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var notification in Model)
+            {
+                <tr>
+                    <td>@notification.Timestamp.ToString("g")</td>
+                    <td>@notification.EventType</td>
+                    <td>@notification.Message</td>
+                    <td>@notification.Read</td>
+                    <td>
+                        @if (!notification.Read)
+                        {
+                            <form method="post" action="/notifications/markread/@notification.Id">
+                                <button type="submit">Mark Read</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

@@ -1,0 +1,46 @@
+@model IEnumerable<ArmRipper.Core.Models.Job>
+@{
+    ViewData["Title"] = "Title Search - ARM";
+}
+
+<h1>Title Search</h1>
+
+<form method="get" action="/jobs/titlesearch" class="mb-3">
+    <div class="input-group">
+        <input type="text" name="query" class="form-control" placeholder="Search by title..." value="@Context.Request.Query["query"]" />
+        <button type="submit" class="btn btn-primary">Search</button>
+    </div>
+</form>
+
+@if (!Model.Any())
+{
+    <p>No results.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Title</th>
+                <th>Disc Type</th>
+                <th>Status</th>
+                <th>Started</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var job in Model)
+            {
+                <tr>
+                    <td>@job.Id</td>
+                    <td>@job.Title</td>
+                    <td>@job.DiscType</td>
+                    <td>@job.Status</td>
+                    <td>@job.StartTime.ToString("g")</td>
+                    <td><a href="/jobs/jobdetail?jobId=@job.Id">View</a></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

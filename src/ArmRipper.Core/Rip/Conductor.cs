@@ -1,0 +1,319 @@
+using ArmRipper.Core.Configuration;
+using ArmRipper.Core.Infrastructure;
+using ArmRipper.Core.Infrastructure.Data;
+using ArmRipper.Core.Models;
+using ArmRipper.Core.Notifications;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+
+namespace ArmRipper.Core.Rip;
+
+public sealed class Conductor(
+    ILogger<Conductor> logger,
+    ArmDbContext db,
+    CliProcessRunner runner,
+    IOptions<ArmSettings> settings,
+    IIdentifyService identifyService,
+    IArmRipperService armRipperService,
+    IMusicBrainzService musicBrainzService,
+    NotificationService notificationService)
+{
+    public async Task<int> RunAsync(string devicePath, CancellationToken ct = default)
+    {
+        try
+        {
+            Setup();
+            var job = await SetupJobAsync(devicePath, ct);
+            return await ProcessJobAsync(job, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogCritical(ex, "A fatal error has occurred and ARM is exiting");
+            return 1;
+        }
+    }
+
+    private void Setup()
+    {
+        var armSettings = settings.Value;
+
+        var directories = new[]
+        {
+            armSettings.RawPath,
+            armSettings.TranscodePath,
+            armSettings.CompletedPath,
+            armSettings.LogPath,
+            Path.Combine(armSettings.LogPath ?? "", "progress")
+        };
+
+        foreach (var dir in directories)
+        {
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+        }
+    }
+
+    private async Task<Job> SetupJobAsync(string devicePath, CancellationToken ct)
+    {
+        // Create new job
+        var job = new Job
+        {
+            DevPath = devicePath,
+            Status = JobState.Active,
+            StartTime = DateTime.UtcNow,
+            DiscType = DiscType.Unknown
+        };
+
+        // Add job to DB
+        db.Jobs.Add(job);
+        await db.SaveChangesAsync(ct);
+
+        // Create config snapshot
+        var armSettings = settings.Value;
+        var config = new ConfigSnapshot
+        {
+            JobId = job.Id,
+            SkipTranscode = armSettings.SkipTranscode,
+            MainFeature = armSettings.MainFeature,
+            UseFfmpeg = armSettings.UseFfmpeg,
+            ManualWait = armSettings.ManualWait,
+            AllowDuplicates = armSettings.AllowDuplicates,
+            Prevent99 = armSettings.Prevent99,
+            GetVideoTitle = armSettings.GetVideoTitle,
+            GetAudioTitle = armSettings.GetAudioTitle,
+            AutoEject = armSettings.AutoEject,
+            DelRawFiles = armSettings.DelRawFiles,
+            RawPath = armSettings.RawPath,
+            TranscodePath = armSettings.TranscodePath,
+            CompletedPath = armSettings.CompletedPath,
+            LogPath = armSettings.LogPath,
+            RipMethod = armSettings.RipMethod,
+            MinLength = armSettings.MinLength,
+            MaxLength = armSettings.MaxLength,
+            HbPresetDvd = armSettings.HbPresetDvd,
+            HbPresetBd = armSettings.HbPresetBd,
+            DestExt = armSettings.DestExt,
+            NotifyRip = armSettings.NotifyRip,
+            NotifyTranscode = armSettings.NotifyTranscode,
+            WebServerPort = armSettings.WebServerPort,
+            MaxConcurrentTranscodes = armSettings.MaxConcurrentTranscodes,
+            MaxConcurrentMakemkvInfo = armSettings.MaxConcurrentMakemkvInfo
+        };
+
+        db.ConfigSnapshots.Add(config);
+        await db.SaveChangesAsync(ct);
+
+        // Log ARM parameters
+        LogArmParams(job);
+
+        logger.LogInformation("Job: {Label} created successfully", job.Label ?? devicePath);
+
+        return job;
+    }
+
+    private async Task<int> ProcessJobAsync(Job job, CancellationToken ct)
+    {
+        logger.LogInformation("Starting Disc identification");
+
+        // Identify the disc
+        await identifyService.IdentifyAsync(job, ct);
+
+        // Check for duplicates
+        var haveDupes = await JobDupeCheckAsync(job, ct);
+        logger.LogDebug("Value of have_dupes: {HaveDupes}", haveDupes);
+
+        // Notify entry
+        await notificationService.NotifyEntryAsync(job, ct);
+
+        // Dispatch based on disc type
+        switch (job.DiscType)
+        {
+            case DiscType.Dvd:
+            case DiscType.Bluray:
+                logger.LogInformation("Disc identified as video. Starting rip.");
+                var directory = await armRipperService.RipVisualMediaAsync(job, job.LogFile ?? "", haveDupes, job.HasTrack99, ct);
+                job.Path = directory;
+                break;
+
+            case DiscType.Music:
+                logger.LogInformation("Disc identified as music");
+                var musicTitle = await musicBrainzService.IdentifyAsync(job, ct);
+                if (!string.IsNullOrEmpty(musicTitle))
+                    logger.LogInformation("Music CD identified: {Title}", musicTitle);
+
+                await RipMusicAsync(job, ct);
+                break;
+
+            case DiscType.Data:
+                logger.LogInformation("Disc identified as data");
+                await RipDataAsync(job, ct);
+                break;
+
+            default:
+                logger.LogCritical("Couldn't identify the disc type. Exiting without any action.");
+                job.Status = JobState.Failure;
+                await db.SaveChangesAsync(ct);
+                return 1;
+        }
+
+        // Success
+        job.Status = JobState.Success;
+        job.StopTime = DateTime.UtcNow;
+        if (job.StartTime != default)
+        {
+            var jobLength = job.StopTime.Value - job.StartTime;
+            job.JobLength = $"{(int)jobLength.TotalHours}:{jobLength.Minutes:D2}:{jobLength.Seconds:D2}";
+        }
+
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation("************* ARM processing complete *************");
+        return 0;
+    }
+
+    private async Task RipMusicAsync(Job job, CancellationToken ct)
+    {
+        var abcFile = job.Config?.InstallPath is not null
+            ? Path.Combine(job.Config.InstallPath, "abcde.conf")
+            : "/etc/arm/config/abcde.conf";
+
+        var cmd = File.Exists(abcFile)
+            ? $"abcde -d \"{job.DevPath}\" -c {abcFile} >> \"{Path.Combine(job.Config?.LogPath ?? "", job.LogFile ?? "")}\" 2>&1"
+            : $"abcde -d \"{job.DevPath}\" >> \"{Path.Combine(job.Config?.LogPath ?? "", job.LogFile ?? "")}\" 2>&1";
+
+        logger.LogDebug("Sending command: {Command}", cmd);
+        job.Status = JobState.AudioRipping;
+        await db.SaveChangesAsync(ct);
+
+        try
+        {
+            await runner.RunAsync("bash", $"-c \"{cmd.Replace("\"", "\\\"")}\"", timeoutMs: 7200_000, ct: ct);
+            logger.LogInformation("abcde call successful");
+            job.Status = JobState.Active;
+        }
+        catch (Exception ex)
+        {
+            var err = $"Call to abcde failed: {ex.Message}";
+            logger.LogError(err);
+            job.Status = JobState.Failure;
+            job.Errors = err;
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    private async Task RipDataAsync(Job job, CancellationToken ct)
+    {
+        var label = !string.IsNullOrEmpty(job.Label) ? job.Label : "data-disc";
+        var rawPath = job.Config?.RawPath is not null
+            ? Path.Combine(job.Config.RawPath, label)
+            : Path.Combine("/opt/arm/raw", label);
+        var finalDir = job.Config?.CompletedPath is not null
+            ? Path.Combine(job.Config.CompletedPath, "data")
+            : Path.Combine("/opt/arm/completed", "data");
+        var finalFileName = label;
+
+        if (Directory.Exists(rawPath))
+        {
+            var timeSuffix = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
+            rawPath = $"{rawPath}_{timeSuffix}";
+            finalFileName = $"{label}_{timeSuffix}";
+        }
+
+        if (!Directory.Exists(rawPath))
+            Directory.CreateDirectory(rawPath);
+
+        var finalPath = Path.Combine(finalDir, finalFileName);
+        var incompleteFilename = Path.Combine(rawPath, $"{label}.part");
+
+        if (!Directory.Exists(finalPath))
+            Directory.CreateDirectory(finalPath);
+
+        logger.LogInformation("Ripping data disc to: {IncompleteFilename}", incompleteFilename);
+
+        var cmd = $"dd if=\"{job.DevPath}\" of=\"{incompleteFilename}\" bs=2048 conv=noerror,sync status=progress 2>> \"{Path.Combine(job.Config?.LogPath ?? "", job.LogFile ?? "")}\"";
+
+        try
+        {
+            await runner.RunAsync("bash", $"-c \"{cmd.Replace("\"", "\\\"")}\"", timeoutMs: 7200_000, ct: ct);
+            var fullFinalFile = Path.Combine(finalPath, $"{label}.iso");
+            logger.LogInformation("Moving data-disc from '{Src}' to '{Dst}'", incompleteFilename, fullFinalFile);
+            if (File.Exists(incompleteFilename))
+                File.Move(incompleteFilename, fullFinalFile);
+            logger.LogInformation("Data rip call successful");
+        }
+        catch (Exception ex)
+        {
+            var err = $"Data rip failed: {ex.Message}";
+            logger.LogError(err);
+            job.Status = JobState.Failure;
+            job.Errors = err;
+            try { File.Delete(incompleteFilename); } catch { }
+        }
+
+        try
+        {
+            if (Directory.Exists(rawPath))
+                Directory.Delete(rawPath, recursive: true);
+        }
+        catch { }
+    }
+
+    private async Task<bool> JobDupeCheckAsync(Job job, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(job.Label))
+        {
+            logger.LogInformation("Disc title 'None' not searched in database");
+            return false;
+        }
+
+        var previousRips = await db.Jobs
+            .Where(j => j.Label == job.Label && j.Status == JobState.Success)
+            .ToListAsync(ct);
+
+        if (previousRips.Count == 1)
+        {
+            var prev = previousRips[0];
+            job.Title = job.TitleAuto = prev.Title ?? job.Label;
+            job.Year = job.YearAuto = prev.Year;
+            job.HasNiceTitle = prev.HasNiceTitle;
+            job.VideoType = job.VideoTypeAuto = prev.VideoType;
+            job.PosterUrl = job.PosterUrlAuto = prev.PosterUrl;
+            await db.SaveChangesAsync(ct);
+            return true;
+        }
+
+        if (previousRips.Count > 1)
+        {
+            logger.LogDebug("Skipping - There are too many results [{Count}]", previousRips.Count);
+            return false;
+        }
+
+        logger.LogInformation("We have no previous rips/jobs matching this label");
+        return false;
+    }
+
+    private void LogArmParams(Job job)
+    {
+        logger.LogInformation("******************* Logging ARM variables *******************");
+        foreach (var key in new[] { "devpath", "mountpoint", "title", "year", "video_type",
+            "hasnicetitle", "label", "disctype", "manual_start" })
+        {
+            var value = key switch
+            {
+                "devpath" => job.DevPath,
+                "mountpoint" => job.MountPoint,
+                "title" => job.Title,
+                "year" => job.Year,
+                "video_type" => job.VideoType,
+                "hasnicetitle" => job.HasNiceTitle.ToString(),
+                "label" => job.Label,
+                "disctype" => job.DiscType.ToString(),
+                "manual_start" => job.ManualStart.ToString(),
+                _ => ""
+            };
+            logger.LogInformation("{Key}: {Value}", key, value);
+        }
+        logger.LogInformation("******************* End of ARM variables *******************");
+    }
+}

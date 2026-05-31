@@ -1,0 +1,116 @@
+using ArmRipper.Core.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace ArmRipper.Core.Infrastructure.Data;
+
+public class ArmDbContext : DbContext
+{
+    public ArmDbContext(DbContextOptions<ArmDbContext> options) : base(options) { }
+
+    public DbSet<Job> Jobs => Set<Job>();
+    public DbSet<Track> Tracks => Set<Track>();
+    public DbSet<ConfigSnapshot> ConfigSnapshots => Set<ConfigSnapshot>();
+    public DbSet<SystemDrive> SystemDrives => Set<SystemDrive>();
+    public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<User> Users => Set<User>();
+    public DbSet<SystemInfo> SystemInfos => Set<SystemInfo>();
+    public DbSet<UiSettings> UiSettings => Set<UiSettings>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Job>(entity =>
+        {
+            entity.ToTable("jobs");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ArmVersion).HasMaxLength(20);
+            entity.Property(e => e.CrcId).HasMaxLength(63);
+            entity.Property(e => e.LogFile).HasMaxLength(256);
+            entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
+            entity.Property(e => e.Stage).HasMaxLength(63);
+            entity.Property(e => e.Title).HasMaxLength(256);
+            entity.Property(e => e.TitleAuto).HasMaxLength(256);
+            entity.Property(e => e.TitleManual).HasMaxLength(256);
+            entity.Property(e => e.Year).HasMaxLength(4);
+            entity.Property(e => e.YearAuto).HasMaxLength(4);
+            entity.Property(e => e.YearManual).HasMaxLength(4);
+            entity.Property(e => e.VideoType).HasMaxLength(20);
+            entity.Property(e => e.VideoTypeAuto).HasMaxLength(20);
+            entity.Property(e => e.VideoTypeManual).HasMaxLength(20);
+            entity.Property(e => e.ImdbId).HasMaxLength(15);
+            entity.Property(e => e.ImdbIdAuto).HasMaxLength(15);
+            entity.Property(e => e.ImdbIdManual).HasMaxLength(15);
+            entity.Property(e => e.PosterUrl).HasMaxLength(256);
+            entity.Property(e => e.PosterUrlAuto).HasMaxLength(256);
+            entity.Property(e => e.PosterUrlManual).HasMaxLength(256);
+            entity.Property(e => e.DevPath).HasMaxLength(15);
+            entity.Property(e => e.MountPoint).HasMaxLength(20);
+            entity.Property(e => e.Label).HasMaxLength(256);
+            entity.Property(e => e.Path).HasMaxLength(256);
+            entity.Property(e => e.JobLength).HasMaxLength(12);
+            entity.Property(e => e.DiscType).HasConversion<string>().HasMaxLength(20);
+            entity.HasMany(e => e.Tracks).WithOne(t => t.Job).HasForeignKey(t => t.JobId);
+            entity.HasOne(e => e.Config).WithOne(c => c.Job).HasForeignKey<ConfigSnapshot>(c => c.JobId);
+        });
+
+        modelBuilder.Entity<Track>(entity =>
+        {
+            entity.ToTable("tracks");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TrackNumber).HasMaxLength(4);
+            entity.Property(e => e.AspectRatio).HasMaxLength(20);
+            entity.Property(e => e.BaseName).HasMaxLength(256);
+            entity.Property(e => e.FileName).HasMaxLength(256);
+            entity.Property(e => e.OrigFileName).HasMaxLength(256);
+            entity.Property(e => e.NewFileName).HasMaxLength(256);
+            entity.Property(e => e.Status).HasMaxLength(32);
+            entity.Property(e => e.Source).HasMaxLength(32);
+        });
+
+        modelBuilder.Entity<ConfigSnapshot>(entity =>
+        {
+            entity.ToTable("config");
+            entity.HasKey(e => e.Id);
+        });
+
+        modelBuilder.Entity<SystemDrive>(entity =>
+        {
+            entity.ToTable("system_drives");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.SerialId).HasMaxLength(100);
+            entity.Property(e => e.Maker).HasMaxLength(100);
+            entity.Property(e => e.Model).HasMaxLength(100);
+            entity.Property(e => e.Serial).HasMaxLength(100);
+            entity.Property(e => e.Mount).HasMaxLength(100);
+            entity.Property(e => e.Firmware).HasMaxLength(10);
+            entity.Property(e => e.DriveMode).HasMaxLength(100);
+            entity.Property(e => e.Name).HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(256);
+        });
+
+        modelBuilder.Entity<Notification>(entity =>
+        {
+            entity.ToTable("notifications");
+            entity.HasKey(e => e.Id);
+        });
+
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.ToTable("users");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Username).HasMaxLength(100);
+            entity.HasIndex(e => e.Username).IsUnique();
+        });
+
+        modelBuilder.Entity<SystemInfo>(entity =>
+        {
+            entity.ToTable("system_info");
+            entity.HasKey(e => e.Id);
+        });
+
+        modelBuilder.Entity<UiSettings>(entity =>
+        {
+            entity.ToTable("ui_settings");
+            entity.HasKey(e => e.Id);
+        });
+    }
+}

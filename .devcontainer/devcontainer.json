@@ -1,0 +1,18 @@
+{
+    "name": "ARM .NET 10 Development",
+    "image": "mcr.microsoft.com/devcontainers/dotnet:10.0",
+    "features": {
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+    },
+    "forwardPorts": [8080],
+    "postCreateCommand": ".devcontainer/post-create.sh",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-dotnettools.csdevkit",
+                "ms-vscode.PowerShell",
+                "EditorConfig.EditorConfig"
+            ]
+        }
+    }
+}

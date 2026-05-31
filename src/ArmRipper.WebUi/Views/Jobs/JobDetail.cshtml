@@ -1,0 +1,53 @@
+@model ArmRipper.Core.Models.Job
+@{
+    ViewData["Title"] = $"Job {Model.Id} - ARM";
+}
+
+<h1>Job @Model.Id: @Model.Title</h1>
+
+<dl>
+    <dt>Disc Type</dt>
+    <dd>@Model.DiscType</dd>
+    <dt>Status</dt>
+    <dd>@Model.Status</dd>
+    <dt>Started</dt>
+    <dd>@Model.StartTime.ToString("g")</dd>
+    <dt>Stopped</dt>
+    <dd>@Model.StopTime?.ToString("g")</dd>
+    <dt>Duration</dt>
+    <dd>@Model.JobLength</dd>
+    <dt>Path</dt>
+    <dd>@Model.Path</dd>
+</dl>
+
+<h2>Tracks</h2>
+@if (!Model.Tracks.Any())
+{
+    <p>No tracks.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Title</th>
+                <th>Length</th>
+                <th>Ripped</th>
+                <th>Main Feature</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var track in Model.Tracks)
+            {
+                <tr>
+                    <td>@track.TrackNumber</td>
+                    <td>@track.FileName</td>
+                    <td>@track.Length?s</td>
+                    <td>@track.Ripped</td>
+                    <td>@track.MainFeature</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

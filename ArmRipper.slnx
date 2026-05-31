@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ArmRipper.Cli/ArmRipper.Cli.csproj" />
+    <Project Path="src/ArmRipper.Core/ArmRipper.Core.csproj" />
+    <Project Path="src/ArmRipper.WebUi/ArmRipper.WebUi.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ArmRipper.Core.Tests/ArmRipper.Core.Tests.csproj" />
+  </Folder>
+</Solution>

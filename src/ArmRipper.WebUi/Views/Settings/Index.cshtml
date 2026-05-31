@@ -1,0 +1,31 @@
+@model IEnumerable<ArmRipper.Core.Models.SystemDrive>
+@{
+    ViewData["Title"] = "Settings - ARM";
+}
+
+<h1>Settings</h1>
+
+<h2>Drives</h2>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Device</th>
+            <th>Model</th>
+            <th>Firmware</th>
+            <th>Mode</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var drive in Model)
+        {
+            <tr>
+                <td>@drive.Mount</td>
+                <td>@drive.Model</td>
+                <td>@drive.Firmware</td>
+                <td>@drive.DriveMode</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<a href="/">Back to Home</a>
