@@ -30,6 +30,12 @@ builder.Services.AddLogging(logging => logging.AddConsole());
 
 var host = builder.Build();
 
+var dbPath = connectionString;
+var dbFile = dbPath.Replace("Data Source=", "").Split(';')[0];
+var dbDir = Path.GetDirectoryName(dbFile);
+if (!string.IsNullOrEmpty(dbDir) && !Directory.Exists(dbDir))
+    Directory.CreateDirectory(dbDir);
+
 using (var initScope = host.Services.CreateScope())
 {
     var db = initScope.ServiceProvider.GetRequiredService<ArmDbContext>();

@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# ARM Web data/config
+src/ArmRipper.WebUi/data/

@@ -1,0 +1,39 @@
+@{
+    ViewData["Title"] = "Setup - ARM";
+}
+
+<h1>Setup</h1>
+
+<h2>System Configuration</h2>
+<p>Configure your ARM installation below. Default settings are loaded from <code>appsettings.json</code>.</p>
+
+<form method="post" action="/settings/save">
+    <fieldset>
+        <legend>ARM Directories</legend>
+        <div>
+            <label>Raw Path</label>
+            <input type="text" name="RawPath" value="/opt/arm/raw" />
+        </div>
+        <div>
+            <label>Transcode Path</label>
+            <input type="text" name="TranscodePath" value="/opt/arm/transcode" />
+        </div>
+        <div>
+            <label>Completed Path</label>
+            <input type="text" name="CompletedPath" value="/opt/arm/completed" />
+        </div>
+        <div>
+            <label>Log Path</label>
+            <input type="text" name="LogPath" value="/opt/arm/logs" />
+        </div>
+    </fieldset>
+
+    <fieldset>
+        <legend>Database</legend>
+        <p>Your ARM database is stored at <code>/etc/arm/config/arm.db</code> (SQLite).</p>
+    </fieldset>
+
+    <button type="submit">Save Settings</button>
+</form>
+
+<p><a href="/">Back to Home</a></p>

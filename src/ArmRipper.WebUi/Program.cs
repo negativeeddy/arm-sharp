@@ -12,6 +12,12 @@ builder.Services.AddControllers();
 
 var app = builder.Build();
 
+var dbPath = builder.Configuration.GetConnectionString("ArmDb") ?? "Data Source=/etc/arm/config/arm.db";
+var dbFile = dbPath.Replace("Data Source=", "").Split(';')[0];
+var dbDir = Path.GetDirectoryName(dbFile);
+if (!string.IsNullOrEmpty(dbDir) && !Directory.Exists(dbDir))
+    Directory.CreateDirectory(dbDir);
+
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();

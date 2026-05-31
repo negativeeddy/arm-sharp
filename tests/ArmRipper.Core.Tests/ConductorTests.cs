@@ -34,11 +34,17 @@ public sealed class ConductorTests : IDisposable
         var notificationService = new NotificationService(
             NullLogger<NotificationService>.Instance, _db, runner);
 
+        var tmpDir = Path.Combine(Path.GetTempPath(), "arm-test", Guid.NewGuid().ToString());
         var conductor = new Conductor(
             NullLogger<Conductor>.Instance,
             _db,
             runner,
-            TestHelpers.CreateOptions(),
+            TestHelpers.CreateOptions(a => {
+                a.RawPath = Path.Combine(tmpDir, "raw");
+                a.TranscodePath = Path.Combine(tmpDir, "transcode");
+                a.CompletedPath = Path.Combine(tmpDir, "completed");
+                a.LogPath = Path.Combine(tmpDir, "logs");
+            }),
             identifyMock,
             armRipperMock,
             musicBrainzMock.Object,
@@ -63,11 +69,17 @@ public sealed class ConductorTests : IDisposable
         var armRipperMock = new MockArmRipperService();
         var musicBrainzMock = new Mock<IMusicBrainzService>();
 
+        var tmpDir = Path.Combine(Path.GetTempPath(), "arm-test", Guid.NewGuid().ToString());
         var conductor = new Conductor(
             NullLogger<Conductor>.Instance,
             _db,
             runner,
-            TestHelpers.CreateOptions(),
+            TestHelpers.CreateOptions(a => {
+                a.RawPath = Path.Combine(tmpDir, "raw");
+                a.TranscodePath = Path.Combine(tmpDir, "transcode");
+                a.CompletedPath = Path.Combine(tmpDir, "completed");
+                a.LogPath = Path.Combine(tmpDir, "logs");
+            }),
             identifyMock,
             armRipperMock,
             musicBrainzMock.Object,
