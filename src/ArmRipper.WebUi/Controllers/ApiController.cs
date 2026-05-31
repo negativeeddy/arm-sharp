@@ -1,12 +1,20 @@
 using System.Reflection;
+using System.Text.RegularExpressions;
+using ArmRipper.Core.Configuration;
+using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
+using ArmRipper.Core.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace ArmRipper.WebUi.Controllers;
 
 [Route("api")]
-public class ApiController(ArmDbContext db) : Controller
+public partial class ApiController(
+    ArmDbContext db,
+    CliProcessRunner runner,
+    IOptions<ArmSettings> settings) : Controller
 {
     [HttpGet("health")]
     public IActionResult Health()
@@ -70,7 +78,7 @@ public class ApiController(ArmDbContext db) : Controller
     public async Task<IActionResult> GetStats()
     {
         var totalJobs = await db.Jobs.CountAsync();
-        var successJobs = await db.Jobs.CountAsync(j => j.Status == ArmRipper.Core.Models.JobState.Success);
+        var successJobs = await db.Jobs.CountAsync(j => j.Status == JobState.Success);
 
         return Json(new
         {
@@ -78,5 +86,93 @@ public class ApiController(ArmDbContext db) : Controller
             successJobs,
             successRate = totalJobs > 0 ? (double)successJobs / totalJobs * 100 : 0
         });
+    }
+
+    [HttpPost("abandon/{id}")]
+    public async Task<IActionResult> Abandon(int id)
+    {
+        var job = await db.Jobs.Include(j => j.Config).FirstOrDefaultAsync(j => j.Id == id);
+        if (job is null)
+            return NotFound(new { success = false, error = "Job not found" });
+
+        if (job.Pid is int pid)
+        {
+            try
+            {
+                var process = System.Diagnostics.Process.GetProcessById(pid);
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync();
+            }
+            catch (Exception)
+            {
+                // Process already gone — fine
+            }
+        }
+
+        job.Status = JobState.Failure;
+        job.Errors = "Abandoned by user";
+
+        if (job.DevPath is not null)
+        {
+            try
+            {
+                await runner.RunAsync("umount", job.DevPath, timeoutMs: 10_000);
+                await runner.RunAsync("eject", job.DevPath, timeoutMs: 10_000);
+            }
+            catch { }
+        }
+
+        await db.SaveChangesAsync();
+        return Json(new { success = true, job = id, mode = "abandon" });
+    }
+
+    [HttpPost("change-params")]
+    public async Task<IActionResult> ChangeParams(
+        int jobId, string? disctype = null, int? minLength = null,
+        int? maxLength = null, string? ripMethod = null, bool? mainFeature = null)
+    {
+        var job = await db.Jobs.Include(j => j.Config).FirstOrDefaultAsync(j => j.Id == jobId);
+        if (job?.Config is null)
+            return NotFound(new { success = false, error = "Job or config not found" });
+
+        var config = job.Config;
+
+        if (disctype is not null && Enum.TryParse<DiscType>(disctype, true, out var dt))
+            job.DiscType = dt;
+        if (minLength.HasValue)
+            config.MinLength = minLength;
+        if (maxLength.HasValue)
+            config.MaxLength = maxLength;
+        if (ripMethod is not null)
+            config.RipMethod = ripMethod;
+        if (mainFeature.HasValue)
+            config.MainFeature = mainFeature.Value;
+
+        await db.SaveChangesAsync();
+        return Json(new
+        {
+            success = true,
+            message = $"Parameters changed. Rip Method={config.RipMethod}, " +
+                      $"Main Feature={config.MainFeature}, " +
+                      $"Min Length={config.MinLength}, Max Length={config.MaxLength}, " +
+                      $"Disctype={job.DiscType}"
+        });
+    }
+
+    [HttpGet("log")]
+    public async Task<IActionResult> GetLog(int jobId)
+    {
+        var job = await db.Jobs.FindAsync(jobId);
+        if (job?.LogFile is null)
+            return Json(new { success = false, error = "Job or log file not found" });
+
+        var logPath = settings.Value.LogPath ?? "/home/arm/logs";
+        var fullPath = Path.Combine(logPath, job.LogFile);
+
+        if (!System.IO.File.Exists(fullPath))
+            return Json(new { success = false, error = "Log file not found" });
+
+        var logContent = await System.IO.File.ReadAllTextAsync(fullPath);
+        return Json(new { success = true, job = jobId, log = logContent });
     }
 }
