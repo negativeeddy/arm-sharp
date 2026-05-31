@@ -1,0 +1,117 @@
+@model IEnumerable<ArmRipper.Core.Models.Job>
+@{
+    ViewData["Title"] = "Database - ARM";
+    var curPage = ViewBag.CurrentPage as int? ?? 1;
+    var totalPages = ViewBag.TotalPages as int? ?? 1;
+    var totalJobs = ViewBag.TotalJobs as int? ?? 0;
+    var filter = ViewBag.Filter as string;
+    var search = ViewBag.Search as string;
+}
+
+<h1>Database</h1>
+
+@if (TempData["Message"] is string msg)
+{
+    <p><strong>@msg</strong></p>
+}
+
+<div>
+    <form method="get" action="/database" style="display:inline;">
+        <input type="text" name="search" placeholder="Search title..." value="@search" />
+        <button type="submit">Search</button>
+        @if (!string.IsNullOrEmpty(search))
+        {
+            <a href="/database">Clear</a>
+        }
+    </form>
+
+    <div style="float:right;">
+        <a href="/database?filter=success">Success</a>
+        <a href="/database?filter=failed">Failed</a>
+        <a href="/database?filter=active">Active</a>
+        <a href="/database">All</a>
+    </div>
+</div>
+
+<p>Showing page @curPage of @totalPages (@totalJobs total jobs)</p>
+
+@if (!Model.Any())
+{
+    <p>No jobs found.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Year</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Started</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var job in Model)
+            {
+                <tr>
+                    <td>
+                        @(job.TitleManual ?? job.Title ?? "Untitled")
+                        @if (job.TitleManual != null)
+                        {
+                            <small>(manual)</small>
+                        }
+                    </td>
+                    <td>@job.Year</td>
+                    <td>@(job.VideoType ?? job.DiscType.ToString())</td>
+                    <td>@job.Status</td>
+                    <td>@job.StartTime.ToString("g")</td>
+                    <td>
+                        <a href="/jobs/jobdetail?jobId=@job.Id">View</a>
+                        <a href="/logs?file=@job.LogFile&mode=full">Log</a>
+                        <form method="post" action="/database/delete/@job.Id" style="display:inline;"
+                              onsubmit="return confirm('Delete job @job.Id? This cannot be undone.')">
+                            <button type="submit">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<div>
+    @if (curPage > 1)
+    {
+        <a href="/database?page=@(curPage - 1)&filter=@filter&search=@search">&laquo; Prev</a>
+    }
+    @for (var p = 1; p <= totalPages; p++)
+    {
+        if (p == curPage)
+        {
+            <strong>@p</strong>
+        }
+        else
+        {
+            <a href="/database?page=@p&filter=@filter&search=@search">@p</a>
+        }
+    }
+    @if (curPage < totalPages)
+    {
+        <a href="/database?page=@(curPage + 1)&filter=@filter&search=@search">Next &raquo;</a>
+    }
+</div>
+
+<hr />
+
+<h2>Database Actions</h2>
+<form method="post" action="/database/update" style="display:inline;">
+    <input type="hidden" name="action" value="migrate" />
+    <button type="submit">Migrate Database</button>
+</form>
+<form method="post" action="/database/update" style="display:inline;">
+    <input type="hidden" name="action" value="create" />
+    <button type="submit">Create Database</button>
+</form>
+<a href="/database/import"><button>Scan Completed Path</button></a>

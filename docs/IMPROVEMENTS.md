@@ -49,6 +49,11 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 - No auth (intentional per PLAN, Phase 5). API endpoints like `/api/jobs`, `/logs/download` are unauthenticated.
 - `LogsController.Reader` reads arbitrary files within the log directory — no path traversal protection besides `..` and `/` checks. Could use `Path.GetFullPath` + prefix validation as defense-in-depth.
 
+## MCP (Model Context Protocol)
+
+- Add MCP integration so the project can be queried/supervised by AI agents during development and debugging. MCP tools could expose log streaming, config editing, job management, and disc identification — making the system observable and controllable through AI assistants.
+- MCP server could expose: `get_jobs`, `get_logs`, `update_config`, `eject_drive`, `trigger_identify` as tools.
+
 ## Container / Deployment
 
 - `WebServer:Port` appsetting controls port but defaults to 8080 in `Program.cs`. Dockerfile should expose this and document env var override.
