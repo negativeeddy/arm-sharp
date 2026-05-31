@@ -168,15 +168,9 @@ public sealed partial class IdentifyService(
         return true;
     }
 
-    private async Task<string> ComputeDvdCrc64Async(string mountPoint, CancellationToken ct)
+    private Task<string> ComputeDvdCrc64Async(string mountPoint, CancellationToken ct)
     {
-        // TODO: Port pydvdid CRC64 computation
-        // For now, return a placeholder. The real implementation would:
-        // 1. Open the device/mount point
-        // 2. Read DVD sector data
-        // 3. Compute CRC64 using the pydvdid algorithm
-        await Task.CompletedTask;
-        return "0000000000000000";
+        return Task.Run(() => DvdCrc64.Compute(mountPoint), ct);
     }
 
     private async Task<bool> IdentifyBlurayAsync(Job job, CancellationToken ct)
