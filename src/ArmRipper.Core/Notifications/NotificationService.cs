@@ -11,7 +11,8 @@ namespace ArmRipper.Core.Notifications;
 public sealed class NotificationService(
     ILogger<NotificationService> logger,
     ArmDbContext db,
-    CliProcessRunner runner)
+    CliProcessRunner runner,
+    IEnumerable<INotificationBroadcaster> broadcasters)
 {
     public const string NotifyTitle = "ARM notification";
 
@@ -38,6 +39,9 @@ public sealed class NotificationService(
         };
         db.Notifications.Add(notification);
         await db.SaveChangesAsync(ct);
+
+        foreach (var broadcaster in broadcasters)
+            await broadcaster.BroadcastAsync(notification, ct);
 
         // Bash notification
         await BashNotifyAsync(cfg, title, body, ct);

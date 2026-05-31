@@ -32,7 +32,7 @@ public sealed class ConductorTests : IDisposable
         musicBrainzMock.Setup(m => m.IdentifyAsync(It.IsAny<Job>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("");
         var notificationService = new NotificationService(
-            NullLogger<NotificationService>.Instance, _db, runner);
+            NullLogger<NotificationService>.Instance, _db, runner, []);
 
         var tmpDir = Path.Combine(Path.GetTempPath(), "arm-test", Guid.NewGuid().ToString());
         var conductor = new Conductor(
@@ -83,7 +83,7 @@ public sealed class ConductorTests : IDisposable
             identifyMock,
             armRipperMock,
             musicBrainzMock.Object,
-            new NotificationService(NullLogger<NotificationService>.Instance, _db, runner));
+            new NotificationService(NullLogger<NotificationService>.Instance, _db, runner, []));
 
         var exitCode = await conductor.RunAsync("/dev/sr0");
 

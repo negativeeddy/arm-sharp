@@ -4,6 +4,7 @@ using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Metadata;
 using ArmRipper.Core.Notifications;
 using ArmRipper.Core.Rip;
+using ArmRipper.WebUi.Hubs;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,6 +17,7 @@ builder.Services.Configure<ArmSettings>(builder.Configuration.GetSection(ArmSett
 
 builder.Services.AddRazorPages();
 builder.Services.AddControllers();
+builder.Services.AddSignalR();
 
 builder.Services.AddSingleton<CliProcessRunner>();
 builder.Services.AddScoped<IIdentifyService, IdentifyService>();
@@ -28,6 +30,7 @@ builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<Conductor>();
 builder.Services.AddHttpClient<OmdbService>();
 builder.Services.AddHttpClient<TmdbService>();
+builder.Services.AddSingleton<INotificationBroadcaster, SignalRNotificationBroadcaster>();
 
 var app = builder.Build();
 
@@ -46,6 +49,7 @@ app.UseStaticFiles();
 app.UseRouting();
 app.MapRazorPages();
 app.MapControllers();
+app.MapHub<NotificationHub>("/hubs/notifications");
 
 var port = builder.Configuration.GetValue<int?>("WebServer:Port") ?? 8080;
 app.Run($"http://0.0.0.0:{port}");

@@ -25,6 +25,7 @@ builder.Services.AddScoped<MakeMkvService>();
 builder.Services.AddScoped<IMusicBrainzService, MusicBrainzService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<Conductor>();
+builder.Services.AddSingleton<INotificationBroadcaster, NullNotificationBroadcaster>();
 
 builder.Services.AddLogging(logging => logging.AddConsole());
 
