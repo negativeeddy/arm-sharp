@@ -9,13 +9,12 @@
         "--gpus", "all",
         "--cpuset-cpus", "1-5",
         "--cpu-shares", "128",
-        "-v", "/mnt/data/docker/arm/home:/home/arm",
-        "-v", "/mnt/data/docker/arm/scripts:/home/arm/scripts",
-        "-v", "/mnt/data/docker/arm/music:/home/arm/music",
-        "-v", "/mnt/data/docker/arm/logs:/home/arm/logs",
-        "-v", "/mnt/data/docker/arm/media:/home/arm/media",
-        "-v", "/mnt/data/docker/arm/config:/etc/arm/config",
-        "-v", "/mnt/data/media:/home/arm/publish"
+        "-v", "/mnt/docker/arm-sharp/home:/home/arm",
+        "-v", "/mnt/docker/arm-sharp/scripts:/home/arm/scripts",
+        "-v", "/mnt/docker/arm-sharp/music:/home/arm/music",
+        "-v", "/mnt/docker/arm-sharp/logs:/home/arm/logs",
+        "-v", "/mnt/docker/arm-sharp/media:/home/arm/media",
+        "-v", "/mnt/docker/arm-sharp/config:/etc/arm/config"
     ],
     "forwardPorts": [8080],
     "containerEnv": {

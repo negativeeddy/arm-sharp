@@ -165,7 +165,39 @@ public sealed partial class IdentifyService(
             logger.LogError(ex, "DVD identification failed");
         }
 
+        // Extract poster from disc while it's still mounted
+        await SaveDiscPosterAsync(job, ct);
+
         return true;
+    }
+
+    private async Task SaveDiscPosterAsync(Job job, CancellationToken ct)
+    {
+        if (job.DiscType != DiscType.Dvd || string.IsNullOrEmpty(job.MountPoint))
+            return;
+
+        try
+        {
+            var typeSubFolder = ArmRipperService.ConvertJobType(job.VideoType);
+            var jobTitle = ArmRipperService.FixJobTitle(job);
+            var completedPath = settings.Value.CompletedPath ?? "/home/arm/media";
+            var finalDir = Path.Combine(completedPath, typeSubFolder, jobTitle);
+            Directory.CreateDirectory(finalDir);
+
+            var posterFiles = new[] { "JACKET_P/J00___5L.MP2", "JACKET_P/J00___6L.MP2" };
+            foreach (var posterFile in posterFiles)
+            {
+                var posterSrc = Path.Combine(job.MountPoint, posterFile);
+                if (File.Exists(posterSrc))
+                {
+                    var posterDst = Path.Combine(finalDir, "poster.png");
+                    logger.LogInformation("Converting {PosterSrc} to poster", posterSrc);
+                    await runner.RunAsync("ffmpeg", $"-i \"{posterSrc}\" \"{posterDst}\"", timeoutMs: 30_000, ct: ct);
+                    break;
+                }
+            }
+        }
+        catch { }
     }
 
     private Task<string> ComputeDvdCrc64Async(string mountPoint, CancellationToken ct)

@@ -95,12 +95,16 @@ public sealed class NotificationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task NotifyEntryAsync_ForUnknownDiscType_Throws()
+    public async Task NotifyEntryAsync_ForUnknownDiscType_CreatesNotification()
     {
         var job = TestHelpers.CreateTestJob(j => j.DiscType = DiscType.Unknown);
         _db.Jobs.Add(job);
         _db.SaveChanges();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.NotifyEntryAsync(job));
+        await _service.NotifyEntryAsync(job);
+
+        var notifications = _db.Notifications.ToList();
+        Assert.NotEmpty(notifications);
+        Assert.Contains(notifications, n => n.Message!.Contains("could not identify type", StringComparison.OrdinalIgnoreCase));
     }
 }

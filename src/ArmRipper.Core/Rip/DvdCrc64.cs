@@ -57,7 +57,7 @@ internal static class DvdCrc64
         {
             var fileInfo = new FileInfo(file);
 
-            var fileTimeTicks = fileInfo.LastWriteTimeUtc.Ticks - FileTimeEpochTicks;
+            var fileTimeTicks = fileInfo.CreationTimeUtc.Ticks - FileTimeEpochTicks;
             var fileTimeBytes = new byte[8];
             System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(fileTimeBytes, (ulong)fileTimeTicks);
             crc = Update(crc, fileTimeBytes);

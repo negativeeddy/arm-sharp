@@ -153,7 +153,8 @@ public sealed class NotificationService(
                 $"Found music CD: {job.Label}. Ripping all tracks.",
             DiscType.Data =>
                 "Found data disc. Copying data.",
-            _ => throw new InvalidOperationException("Could not determine disc type")
+            DiscType.Unknown or _ =>
+                $"Found disc at {job.DevPath} but could not identify type."
         };
 
         var notification = new Notification

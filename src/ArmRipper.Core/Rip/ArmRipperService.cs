@@ -1,5 +1,4 @@
 using ArmRipper.Core.Configuration;
-using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
 using ArmRipper.Core.Notifications;
@@ -11,7 +10,6 @@ namespace ArmRipper.Core.Rip;
 public sealed class ArmRipperService(
     ILogger<ArmRipperService> logger,
     ArmDbContext db,
-    CliProcessRunner runner,
     MakeMkvService makeMkv,
     IHandBrakeService handBrake,
     IFfmpegService ffmpeg,
@@ -31,8 +29,6 @@ public sealed class ArmRipperService(
 
         job.Path = finalDirectory;
         await db.SaveChangesAsync(ct);
-
-        await SaveDiscPosterAsync(finalDirectory, job, ct);
 
         logger.LogInformation("Processing files to: {TranscodeOutPath}", transcodeOutPath);
 
@@ -344,7 +340,7 @@ public sealed class ArmRipperService(
         catch { }
     }
 
-    private static string FixJobTitle(Job job)
+    internal static string FixJobTitle(Job job)
     {
         if (!string.IsNullOrEmpty(job.Year) && job.Year != "0000")
         {
@@ -356,7 +352,7 @@ public sealed class ArmRipperService(
         return job.TitleManual ?? job.Title ?? "unknown";
     }
 
-    private static string ConvertJobType(string? videoType)
+    internal static string ConvertJobType(string? videoType)
     {
         return videoType?.ToLowerInvariant() switch
         {
@@ -409,31 +405,6 @@ public sealed class ArmRipperService(
         }
 
         return largestFileName;
-    }
-
-    private async Task SaveDiscPosterAsync(string finalDirectory, Job job, CancellationToken ct)
-    {
-        if (job.DiscType != DiscType.Dvd)
-            return;
-
-        try
-        {
-            await runner.RunAsync("mount", job.DevPath!, timeoutMs: 10_000, ct: ct);
-
-            var posterFiles = new[] { "JACKET_P/J00___5L.MP2", "JACKET_P/J00___6L.MP2" };
-            foreach (var posterFile in posterFiles)
-            {
-                var posterSrc = Path.Combine(job.MountPoint ?? "", posterFile);
-                if (File.Exists(posterSrc))
-                {
-                    var posterDst = Path.Combine(finalDirectory, "poster.png");
-                    logger.LogInformation("Converting {PosterSrc} to poster", posterSrc);
-                    await runner.RunAsync("ffmpeg", $"-i \"{posterSrc}\" \"{posterDst}\"", timeoutMs: 30_000, ct: ct);
-                    break;
-                }
-            }
-        }
-        catch { }
     }
 
     private async Task ScanEmbyAsync(Job job, CancellationToken ct)

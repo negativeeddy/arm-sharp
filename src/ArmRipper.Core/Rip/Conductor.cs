@@ -21,15 +21,22 @@ public sealed class Conductor(
 {
     public async Task<int> RunAsync(string devicePath, CancellationToken ct = default)
     {
+        Job? job = null;
         try
         {
             Setup();
-            var job = await SetupJobAsync(devicePath, ct);
+            job = await SetupJobAsync(devicePath, ct);
             return await ProcessJobAsync(job, ct);
         }
         catch (Exception ex)
         {
             logger.LogCritical(ex, "A fatal error has occurred and ARM is exiting");
+            if (job is not null)
+            {
+                job.Status = JobState.Failure;
+                job.Errors = ex.Message;
+                try { await db.SaveChangesAsync(ct); } catch { /* best effort */ }
+            }
             return 1;
         }
     }
@@ -182,8 +189,9 @@ public sealed class Conductor(
                 return 1;
         }
 
-        // Success
-        job.Status = JobState.Success;
+        // Success (don't overwrite if internal handler already marked as Failure)
+        if (job.Status is not JobState.Failure)
+            job.Status = JobState.Success;
         job.StopTime = DateTime.UtcNow;
         if (job.StartTime != default)
         {
