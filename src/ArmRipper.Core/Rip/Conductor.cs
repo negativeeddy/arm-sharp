@@ -76,6 +76,8 @@ public sealed class Conductor(
         db.Jobs.Add(job);
         await db.SaveChangesAsync(ct);
 
+        job.LogFile = $"{job.Id}.log";
+
         // Create config snapshot
         var armSettings = settings.Value;
         var config = new ConfigSnapshot
