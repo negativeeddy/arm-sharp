@@ -114,48 +114,59 @@
         <div class="card h-100">
             <div class="card-header">Identification</div>
             <div class="card-body">
-                <table class="table table-sm table-borderless mb-0">
-                    <thead>
-                        <tr>
-                            <th>Field</th>
-                            <th>Auto</th>
-                            <th>Manual</th>
-                            <th>Final</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>Title</td>
-                            <td>@(Model.TitleAuto ?? "—")</td>
-                            <td>@(Model.TitleManual ?? "—")</td>
-                            <td><strong>@Model.Title</strong></td>
-                        </tr>
-                        <tr>
-                            <td>Year</td>
-                            <td>@(Model.YearAuto ?? "—")</td>
-                            <td>@(Model.YearManual ?? "—")</td>
-                            <td><strong>@Model.Year</strong></td>
-                        </tr>
-                        <tr>
-                            <td>Video Type</td>
-                            <td>@(Model.VideoTypeAuto ?? "—")</td>
-                            <td>@(Model.VideoTypeManual ?? "—")</td>
-                            <td><strong>@Model.VideoType</strong></td>
-                        </tr>
-                        <tr>
-                            <td>IMDb ID</td>
-                            <td>@(Model.ImdbIdAuto ?? "—")</td>
-                            <td>@(Model.ImdbIdManual ?? "—")</td>
-                            <td><strong>@Model.ImdbId</strong></td>
-                        </tr>
-                        <tr>
-                            <td>Poster URL</td>
-                            <td class="text-truncate" style="max-width:200px" title="@Model.PosterUrlAuto">@(Model.PosterUrlAuto ?? "—")</td>
-                            <td class="text-truncate" style="max-width:200px" title="@Model.PosterUrlManual">@(Model.PosterUrlManual ?? "—")</td>
-                            <td class="text-truncate" style="max-width:200px" title="@Model.PosterUrl">@(Model.PosterUrl ?? "—")</td>
-                        </tr>
-                    </tbody>
-                </table>
+                <form method="post" action="/jobs/update-identification" class="mb-2">
+                    <input type="hidden" name="jobId" value="@Model.Id" />
+                    <table class="table table-sm table-borderless mb-0">
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                <th>Auto</th>
+                                <th>Manual</th>
+                                <th>Final</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Title</td>
+                                <td>@(Model.TitleAuto ?? "—")</td>
+                                <td><input type="text" name="title" class="form-control form-control-sm" value="@(Model.TitleManual ?? "")" /></td>
+                                <td><strong>@Model.Title</strong></td>
+                            </tr>
+                            <tr>
+                                <td>Year</td>
+                                <td>@(Model.YearAuto ?? "—")</td>
+                                <td><input type="text" name="year" class="form-control form-control-sm" value="@(Model.YearManual ?? "")" /></td>
+                                <td><strong>@Model.Year</strong></td>
+                            </tr>
+                            <tr>
+                                <td>Video Type</td>
+                                <td>@(Model.VideoTypeAuto ?? "—")</td>
+                                <td>
+                                    <select name="videoType" class="form-select form-select-sm">
+                                        <option value="">—</option>
+                                        <option value="movie" selected="@(Model.VideoTypeManual == "movie")">movie</option>
+                                        <option value="series" selected="@(Model.VideoTypeManual == "series")">series</option>
+                                        <option value="episode" selected="@(Model.VideoTypeManual == "episode")">episode</option>
+                                    </select>
+                                </td>
+                                <td><strong>@Model.VideoType</strong></td>
+                            </tr>
+                            <tr>
+                                <td>IMDb ID</td>
+                                <td>@(Model.ImdbIdAuto ?? "—")</td>
+                                <td><input type="text" name="imdbId" class="form-control form-control-sm" value="@(Model.ImdbIdManual ?? "")" /></td>
+                                <td><strong>@Model.ImdbId</strong></td>
+                            </tr>
+                            <tr>
+                                <td>Poster URL</td>
+                                <td class="text-truncate" style="max-width:200px" title="@Model.PosterUrlAuto">@(Model.PosterUrlAuto ?? "—")</td>
+                                <td><input type="text" name="posterUrl" class="form-control form-control-sm" value="@(Model.PosterUrlManual ?? "")" /></td>
+                                <td class="text-truncate" style="max-width:200px" title="@Model.PosterUrl">@(Model.PosterUrl ?? "—")</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                </form>
             </div>
         </div>
     </div>

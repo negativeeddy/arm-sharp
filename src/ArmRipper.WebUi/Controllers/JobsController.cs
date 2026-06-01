@@ -45,6 +45,23 @@ public class JobsController(ArmDbContext db, OmdbService omdb) : Controller
         return View(jobs);
     }
 
+    [HttpPost("update-identification")]
+    public async Task<IActionResult> UpdateIdentification(int jobId, string? title, string? year, string? videoType, string? imdbId, string? posterUrl)
+    {
+        var job = await db.Jobs.FindAsync(jobId);
+        if (job is null)
+            return NotFound();
+
+        if (title is not null) { job.TitleManual = title; job.Title = title; }
+        if (year is not null) { job.YearManual = year; job.Year = year; }
+        if (videoType is not null) { job.VideoTypeManual = videoType; job.VideoType = videoType; }
+        if (imdbId is not null) { job.ImdbIdManual = imdbId; job.ImdbId = imdbId; }
+        if (posterUrl is not null) { job.PosterUrlManual = posterUrl; job.PosterUrl = posterUrl; }
+
+        await db.SaveChangesAsync();
+        return RedirectToAction("JobDetail", new { jobId });
+    }
+
     [HttpPost("set-title")]
     public async Task<IActionResult> SetTitle(int jobId, string title, string? returnUrl = null)
     {

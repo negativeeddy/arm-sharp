@@ -1,5 +1,43 @@
 var arm = arm || {};
 
+arm.signalrConnection = null;
+
+arm.refreshNotifBadge = function () {
+    var badge = document.getElementById('notifBadge');
+    if (!badge) return;
+    fetch('/api/notifications/unread')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.count > 0) {
+                badge.textContent = data.count;
+                badge.style.display = 'inline';
+            } else {
+                badge.style.display = 'none';
+            }
+        })
+        .catch(function () {});
+};
+
+arm.startSignalR = function () {
+    if (!window.signalR) return;
+    arm.signalrConnection = new signalR.HubConnectionBuilder()
+        .withUrl('/hubs/notifications')
+        .withAutomaticReconnect()
+        .build();
+
+    arm.signalrConnection.on('Notification', function () {
+        arm.refreshNotifBadge();
+    });
+
+    arm.signalrConnection.onreconnected(function () {
+        arm.refreshNotifBadge();
+    });
+
+    arm.signalrConnection.start()
+        .then(function () { arm.refreshNotifBadge(); })
+        .catch(function () {});
+};
+
 arm.notificationPollInterval = null;
 
 arm.startNotificationPolling = function (intervalMs) {

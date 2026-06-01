@@ -58,10 +58,13 @@
             crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/jquery.tablesorter@2.31.3/dist/js/jquery.tablesorter.min.js"
             crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@8/dist/browser/signalr.min.js"
+            crossorigin="anonymous"></script>
     <script src="/js/common.js"></script>
     <script src="/js/jobRefresh.js"></script>
     <script>
         arm.initDarkMode();
+        arm.startSignalR();
     </script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>

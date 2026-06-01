@@ -18,6 +18,13 @@ public class NotificationsController(ArmDbContext db) : Controller
         return View(notifications);
     }
 
+    [HttpGet("~/api/notifications/unread")]
+    public async Task<IActionResult> UnreadCount()
+    {
+        var count = await db.Notifications.CountAsync(n => !n.Read);
+        return Json(new { count });
+    }
+
     [HttpPost("markread/{id}")]
     public async Task<IActionResult> MarkRead(int id)
     {
