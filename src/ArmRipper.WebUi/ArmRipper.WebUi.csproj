@@ -8,6 +8,14 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <DefaultItemExcludes>$(DefaultItemExcludes);data\*.db;data\*.db-wal;data\*.db-shm;data\*.db-journal</DefaultItemExcludes>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Watch Remove="data\*.db" />
+    <Watch Remove="data\*.db-wal" />
+    <Watch Remove="data\*.db-shm" />
+    <Watch Remove="data\*.db-journal" />
+  </ItemGroup>
 
 </Project>
