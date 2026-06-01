@@ -24,6 +24,8 @@ public sealed class ArmRipperService(
         var transcodeOutPath = Path.Combine(job.Config?.TranscodePath ?? settings.Value.TranscodePath!, typeSubFolder, jobTitle);
         var finalDirectory = Path.Combine(job.Config?.CompletedPath ?? settings.Value.CompletedPath!, typeSubFolder, jobTitle);
 
+        job.Stage ??= DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+
         transcodeOutPath = CheckForDupeFolder(hasDupes, transcodeOutPath, job);
         finalDirectory = CheckForDupeFolder(hasDupes, finalDirectory, job);
 
@@ -102,7 +104,7 @@ public sealed class ArmRipperService(
 
         SetPermissions(finalDirectory, job);
 
-        DeleteRawFiles(new[] { transcodeInPath!, transcodeOutPath, makeMkvOutPath! });
+        DeleteRawFiles(new[] { transcodeInPath, transcodeOutPath, makeMkvOutPath }.OfType<string>().ToArray());
 
         await NotifyExitAsync(job, ct);
 
@@ -206,7 +208,7 @@ public sealed class ArmRipperService(
                 }
                 else
                 {
-                    if (track.Source == "MakeMKV")
+                    if (track.Source == "MakeMKV" && job.VideoType == "movie")
                     {
                         SkipTranscodeMovie(Directory.GetFiles(transcodeOutPath).Select(Path.GetFileName).Cast<string>().ToList(), job, transcodeOutPath);
                         break;
@@ -329,15 +331,11 @@ public sealed class ArmRipperService(
         if (!File.Exists(oldFile))
             return;
 
-        try
-        {
-            var dir = Path.GetDirectoryName(newFile);
-            if (dir is not null && !Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
+        var dir = Path.GetDirectoryName(newFile);
+        if (dir is not null && !Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
 
-            File.Move(oldFile, newFile);
-        }
-        catch { }
+        File.Move(oldFile, newFile);
     }
 
     internal static string FixJobTitle(Job job)
