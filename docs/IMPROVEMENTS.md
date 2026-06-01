@@ -50,6 +50,13 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 - **Database view** — search/filter/pagination works but could use column sorting by year/status/title. Tablesorter is applied but needs click-to-sort on headers.
 - **Home dashboard** — core metrics displayed. Could add charts (job success rate over time, rips per day) or sparkline trends.
 
+## MusicBrainz
+
+- `MusicBrainzService` creates `new HttpClient()` directly (lines 73, 277) instead of using `IHttpClientFactory` or accepting `HttpClient` via DI. Refactor to match OmdbService/TmdbService pattern.
+- `GetCdArtAsync` is fire-and-forget (`_ = GetCdArtAsync(...)`) — cover art failures are silently swallowed. Should be awaited or explicitly backgrounded with error logging.
+- No unit tests for XML parsing logic (`CheckMusicBrainzData`, `ProcessDiscRelease`, `ProcessCdStub`, `ProcessTracks`). Private methods — would need refactoring to expose or test via reflection.
+- **Investigate moving off XML where possible** — MusicBrainz XML parsing is fragile (manual XElement traversal, namespace handling). If MusicBrainz offers a JSON endpoint, prefer it. Also reduces boilerplate versus the heavy `XDocument` API.
+
 ## CRC64 / DVD Identification
 
 - `DvdCrc64.Compute()` uses synchronous file I/O wrapped in `Task.Run`. Fine for 64KB reads, but could be async for streaming reads on slow DVD media.

@@ -99,10 +99,12 @@ public sealed partial class IdentifyService(
 
     private static DiscType GetDiscType(string mountPoint)
     {
-        if (FindOnDisc("VIDEO_TS", mountPoint) || FindOnDisc("video_ts", mountPoint))
+        var videoTs = Path.Combine(mountPoint, "VIDEO_TS");
+        if (Directory.Exists(videoTs) || FindOnDisc("VIDEO_TS", mountPoint))
             return DiscType.Dvd;
 
-        if (FindOnDisc("BDMV", mountPoint) || Directory.Exists(Path.Combine(mountPoint, "BDMV")))
+        var bdmv = Path.Combine(mountPoint, "BDMV");
+        if (Directory.Exists(bdmv) || FindOnDisc("BDMV", mountPoint))
             return DiscType.Bluray;
 
         if (FindOnDisc("CDA", mountPoint))
@@ -118,7 +120,7 @@ public sealed partial class IdentifyService(
 
         try
         {
-            foreach (var dir in Directory.EnumerateDirectories(searchPath, "*", SearchOption.AllDirectories))
+            foreach (var dir in Directory.EnumerateDirectories(searchPath, "*", SearchOption.TopDirectoryOnly))
             {
                 if (File.Exists(Path.Combine(dir, fileName)))
                     return true;
@@ -214,8 +216,11 @@ public sealed partial class IdentifyService(
             var xml = await File.ReadAllTextAsync(bdmtPath, ct);
             var doc = XDocument.Parse(xml);
             var ns = doc.Root?.GetDefaultNamespace() ?? XNamespace.None;
+            var diNs = doc.Root?.GetNamespaceOfPrefix("di") ?? XNamespace.None;
 
-            var title = doc.Descendants(ns + "di:title").FirstOrDefault()?.Element(ns + "di:name")?.Value;
+            var title = doc.Descendants(diNs + "title").FirstOrDefault()?.Value;
+            if (string.IsNullOrEmpty(title))
+                title = doc.Descendants(ns + "title").FirstOrDefault()?.Value;
             if (string.IsNullOrEmpty(title))
                 title = job.Label;
 
@@ -444,6 +449,16 @@ public sealed partial class IdentifyService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Failed to unmount disc");
+        }
+
+        try
+        {
+            await runner.RunAsync("eject", job.DevPath!, timeoutMs: 10_000, ct: ct);
+            logger.LogInformation("Disc ejected from {DevPath}", job.DevPath);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to eject disc from {DevPath}", job.DevPath);
         }
     }
 
