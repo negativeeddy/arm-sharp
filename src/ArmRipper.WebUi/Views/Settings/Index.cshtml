@@ -105,6 +105,10 @@
                                 </form>
                             </td>
                             <td class="text-nowrap">
+                                <form method="post" action="/settings/start-rip" style="display:inline;">
+                                    <input type="hidden" name="devPath" value="@d.Mount" />
+                                    <button type="submit" class="btn btn-sm btn-success" title="Start rip">Rip</button>
+                                </form>
                                 <form method="post" action="/settings/eject" style="display:inline;">
                                     <input type="hidden" name="devPath" value="@d.Mount" />
                                     <button type="submit" class="btn btn-sm btn-outline-danger" title="Eject disc">Eject</button>

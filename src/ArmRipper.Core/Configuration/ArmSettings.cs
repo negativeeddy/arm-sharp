@@ -64,4 +64,7 @@ public class ArmSettings
 
     public int MaxConcurrentTranscodes { get; set; } = 2;
     public int MaxConcurrentMakemkvInfo { get; set; } = 1;
+
+    public string? MakeMkvPermaKey { get; set; }
+    public bool TestMode { get; set; }
 }

@@ -3,6 +3,7 @@ using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
+using ArmRipper.Core.Rip;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -13,7 +14,8 @@ namespace ArmRipper.WebUi.Controllers;
 public class SettingsController(
     ArmDbContext db,
     ICliProcessRunner runner,
-    IOptions<ArmSettings> settings) : Controller
+    IOptions<ArmSettings> settings,
+    IServiceScopeFactory scopeFactory) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index()
@@ -285,6 +287,29 @@ public class SettingsController(
         db.SystemDrives.Remove(drive);
         await db.SaveChangesAsync();
         TempData["Message"] = $"Removed drive {drive.Mount}";
+        return RedirectToAction("Index");
+    }
+
+    [HttpPost("start-rip")]
+    public IActionResult StartRip(string devPath)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var conductor = scope.ServiceProvider.GetRequiredService<Conductor>();
+                await conductor.RunAsync(devPath);
+            }
+            catch (Exception ex)
+            {
+                var logger = scopeFactory.CreateScope().ServiceProvider
+                    .GetRequiredService<ILogger<SettingsController>>();
+                logger.LogError(ex, "Background rip failed for {DevPath}", devPath);
+            }
+        });
+
+        TempData["Message"] = $"Rip started for {devPath} in the background.";
         return RedirectToAction("Index");
     }
 

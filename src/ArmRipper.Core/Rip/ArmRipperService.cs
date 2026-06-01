@@ -1,4 +1,5 @@
 using ArmRipper.Core.Configuration;
+using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
 using ArmRipper.Core.Notifications;
@@ -13,6 +14,7 @@ public sealed class ArmRipperService(
     MakeMkvService makeMkv,
     IHandBrakeService handBrake,
     IFfmpegService ffmpeg,
+    ICliProcessRunner runner,
     NotificationService notifications,
     IOptions<ArmSettings> settings) : IArmRipperService
 {
@@ -34,7 +36,7 @@ public sealed class ArmRipperService(
 
         logger.LogInformation("Processing files to: {TranscodeOutPath}", transcodeOutPath);
 
-        string? makeMkvOutPath = null;
+        var makeMkvOutPath = Path.Combine(job.Config?.RawPath ?? settings.Value.RawPath!, jobTitle);
         var transcodeInPath = job.DevPath;
         var useMakeMkv = RipWithMkv(job, protection);
 
@@ -48,18 +50,30 @@ public sealed class ArmRipperService(
 
             try
             {
-                var titles = new List<TInfo>();
-                await foreach (var tInfo in makeMkv.RunAsync<TInfo>(
-                    ["mkv", "-r", $"--cache={job.DevPath}", "all", job.DevPath!],
-                    MakeMkvOutputType.TInfo, ct))
-                {
-                    titles.Add(tInfo);
-                }
-
-                makeMkvOutPath = Path.Combine(job.Config?.RawPath ?? settings.Value.RawPath!, job.Title ?? "unknown");
-
                 if (!Directory.Exists(makeMkvOutPath))
                     Directory.CreateDirectory(makeMkvOutPath);
+
+                var mkvTitles = settings.Value.TestMode ? "0" : "all";
+                await foreach (var _ in makeMkv.RunAsync<TInfo>(
+                    ["mkv", $"dev:{job.DevPath}", mkvTitles, makeMkvOutPath],
+                    MakeMkvOutputType.TInfo, ct)) { }
+
+                if (Directory.Exists(makeMkvOutPath))
+                {
+                    foreach (var file in Directory.EnumerateFiles(makeMkvOutPath, "*.mkv"))
+                    {
+                        var fileName = Path.GetFileName(file);
+                        var track = new Track
+                        {
+                            JobId = job.Id,
+                            FileName = fileName,
+                            Source = "MakeMKV",
+                            BaseName = jobTitle,
+                        };
+                        db.Tracks.Add(track);
+                    }
+                    await db.SaveChangesAsync(ct);
+                }
             }
             catch (Exception mkvError)
             {
@@ -75,6 +89,22 @@ public sealed class ArmRipperService(
 
             logger.LogInformation("************* Ripping with MakeMKV completed *************");
             transcodeInPath = makeMkvOutPath;
+        }
+
+        if (settings.Value.TestMode && transcodeInPath is not null && Directory.Exists(transcodeInPath))
+        {
+            logger.LogInformation("Test mode: trimming raw MKV files to 120 seconds");
+            foreach (var file in Directory.EnumerateFiles(transcodeInPath, "*.mkv"))
+            {
+                var tmp = file + ".trimmed";
+                var trimResult = await runner.RunAsync("ffmpeg",
+                    $"-t 120 -i \"{file}\" -c copy -y \"{tmp}\"", timeoutMs: 120_000, ct: ct);
+                if (trimResult.ExitCode == 0 && File.Exists(tmp))
+                {
+                    File.Delete(file);
+                    File.Move(tmp, file);
+                }
+            }
         }
 
         await StartTranscodeAsync(job, logFile, transcodeInPath!, transcodeOutPath, protection, ct);

@@ -51,7 +51,7 @@ public sealed partial class IdentifyService(
             }
         }
 
-        await EjectAsync(job, ct);
+        await UnmountAsync(job, ct);
     }
 
     private async Task<bool> CheckMountAsync(Job job, CancellationToken ct)
@@ -435,6 +435,19 @@ public sealed partial class IdentifyService(
 
         var json = JsonSerializer.Serialize(wrapper);
         return JsonDocument.Parse(json);
+    }
+
+    private async Task UnmountAsync(Job job, CancellationToken ct)
+    {
+        try
+        {
+            await runner.RunAsync("umount", job.DevPath!, timeoutMs: 10_000, ct: ct);
+            logger.LogInformation("Disc unmounted from {DevPath}", job.DevPath);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to unmount disc");
+        }
     }
 
     private async Task EjectAsync(Job job, CancellationToken ct)

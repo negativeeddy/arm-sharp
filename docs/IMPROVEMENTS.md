@@ -19,6 +19,8 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 ## UI / User Experience
 
 - Currently uses SimpleCSS from CDN with no JS framework. ARM uses Bootstrap 4 + jQuery + tablesorter. Should bundle or vendor these for offline/reduced-network operation.
+- **Pipeline visualization** — show the full rip pipeline in the WebUI (mount → identify → MakeMKV rip → HandBrake transcode → file move → cleanup) with per-stage status indicators (pending, active, success, failure). Each job's detail page should render a pipeline view so users can see at a glance which stage succeeded or failed.
+- **Restart from last successful stage** — add a "retry from failure" action that resumes the pipeline at the last failed stage instead of restarting from scratch. Requires each stage to checkpoint its completion state in the DB (e.g. a `Stages` table or bitfield on `Job`).
 - Log viewer polls every 2s with no backoff or error handling on disconnect. Use SignalR for live log streaming instead of polling.
 - Dark mode exists (`arm.toggleDarkMode` + CSS class) but visual polish incomplete — some elements (tables, cards, nav) don't fully invert or remain unreadable.
 - Nav has no active-tab highlighting.

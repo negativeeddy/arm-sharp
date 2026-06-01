@@ -43,13 +43,17 @@ using (var initScope = host.Services.CreateScope())
     db.Database.EnsureCreated();
 }
 
+var testMode = args.Any(a => a is "--test" or "-t");
+builder.Configuration["Arm:TestMode"] = testMode ? "true" : "false";
+
 var deviceArg = args.FirstOrDefault(a => a.StartsWith("--device="))?.Split('=')[1]
     ?? args.FirstOrDefault(a => a.StartsWith("-d="))?.Split('=')[1]
     ?? (args.Length > 0 && !args[0].StartsWith('-') ? args[0] : null);
 
 if (deviceArg is null)
 {
-    Console.Error.WriteLine("Usage: ArmRipper.Cli --device /dev/sr0");
+    Console.Error.WriteLine("Usage: ArmRipper.Cli --device /dev/sr0 [--test]");
+    Console.Error.WriteLine("  --test         Rip only first title and transcode 2 minutes per track");
     return 1;
 }
 
