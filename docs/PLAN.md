@@ -43,14 +43,12 @@
 
 ## Phase 1: Fix Critical Runtime Gaps
 
-### 1.1 — CRC64 computation (`src/ArmRipper.Core/Rip/IdentifyService.cs:171-180`)
-- **Current:** Returns `"0000000000000000"` — DVD identification via ARM API always fails
-- **Target:** Port `pydvdid` CRC64 algorithm from Python
-  - Need to read raw DVD sector data from device
-  - Compute CRC64 matching the original algorithm
-  - Reference: `/workspaces/automatic-ripping-machine` (look for pydvdid or CRC64 implementation)
-- **Alternative:** Call `makemkvcon` to get disc ID as fallback
-- **Test:** Unit test with known CRC64 values from test vectors
+### 1.1 — CRC64 computation ✅
+- **Done:** `DvdCrc64.Compute()` was already ported and matches Python `pydvdid` 1:1
+  - Same polynomial, lookup table, file ordering, and FILETIME conversion
+  - Cross-validated with identical test data: `571d8fb21eb8fe4b` from both Python and C#
+  - Test `Compute_MatchesPythonPydvdid` in `DvdCrc64Tests.cs` locks in the known value
+  - `IdentifyService.cs:205-208` calls `DvdCrc64.Compute(mountPoint)` via `Task.Run`
 
 ### 1.2 — Register all Core services in WebUi DI (`src/ArmRipper.WebUi/Program.cs`)
 - **Current:** WebUi only registers `ArmDbContext`. No ripping services available

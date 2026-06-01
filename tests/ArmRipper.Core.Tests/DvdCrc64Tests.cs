@@ -71,6 +71,7 @@ public sealed class DvdCrc64Tests
             {
                 var path = Path.Combine(videoTs, name);
                 File.WriteAllBytes(path, content);
+                File.SetCreationTimeUtc(path, now);
                 File.SetLastWriteTimeUtc(path, now);
             }
 
@@ -78,6 +79,47 @@ public sealed class DvdCrc64Tests
             var second = DvdCrc64.Compute(tmpDir);
             Assert.Equal(first, second);
             Assert.Matches("^[0-9a-f]{16}$", first);
+        }
+        finally
+        {
+            if (Directory.Exists(tmpDir))
+                Directory.Delete(tmpDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Compute_MatchesPythonPydvdid()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        var videoTs = Path.Combine(tmpDir, "VIDEO_TS");
+        Directory.CreateDirectory(videoTs);
+
+        try
+        {
+            var files = new Dictionary<string, byte[]>
+            {
+                ["VIDEO_TS.BUP"] = "BUP data here"u8.ToArray(),
+                ["VIDEO_TS.IFO"] = new byte[100_000],
+                ["VIDEO_TS.VOB"] = "VOB data"u8.ToArray(),
+                ["VTS_01_0.BUP"] = "VTS BUP"u8.ToArray(),
+                ["VTS_01_0.IFO"] = new byte[50_000],
+                ["VTS_01_0.VOB"] = "VTS VOB"u8.ToArray(),
+                ["VTS_01_1.VOB"] = "More VOB"u8.ToArray(),
+            };
+
+            // Fixed timestamp so CRC is reproducible
+            var fixedTime = new DateTime(2024, 6, 1, 12, 0, 0, DateTimeKind.Utc);
+            foreach (var (name, content) in files)
+            {
+                var path = Path.Combine(videoTs, name);
+                File.WriteAllBytes(path, content);
+                File.SetCreationTimeUtc(path, fixedTime);
+                File.SetLastWriteTimeUtc(path, fixedTime);
+            }
+
+            // Cross-validated against Python pydvdid with identical inputs
+            var result = DvdCrc64.Compute(tmpDir);
+            Assert.Equal("571d8fb21eb8fe4b", result);
         }
         finally
         {
