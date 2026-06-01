@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 namespace ArmRipper.WebUi.Controllers;
 
 [Route("")]
-public class HomeController(ArmDbContext db, CliProcessRunner runner) : Controller
+public class HomeController(ArmDbContext db, ICliProcessRunner runner) : Controller
 {
     [HttpGet("")]
     [HttpGet("index")]

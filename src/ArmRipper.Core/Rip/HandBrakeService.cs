@@ -11,7 +11,7 @@ using Microsoft.Extensions.Options;
 namespace ArmRipper.Core.Rip;
 
 public sealed partial class HandBrakeService(
-    CliProcessRunner runner,
+    ICliProcessRunner runner,
     ILogger<HandBrakeService> logger,
     ArmDbContext db,
     IOptions<ArmSettings> settings) : IHandBrakeService
@@ -38,6 +38,30 @@ public sealed partial class HandBrakeService(
             logger.LogInformation("Transcoding {File} to {Output}", file, outputFile);
             var cmd = BuildCommand(file, outputFile, job, trackNumber: null, mainFeature: false);
             lastResult = await RunHandBrakeCommandAsync(cmd, ct);
+
+            if (lastResult.ExitCode == 0)
+            {
+                var track = job.Tracks.FirstOrDefault(t => t.FileName == $"{destFile}.mkv");
+                if (track is null)
+                {
+                    track = new Track
+                    {
+                        JobId = job.Id,
+                        FileName = $"{destFile}.{ext}",
+                        OrigFileName = $"{destFile}.mkv",
+                        Source = "MakeMKV",
+                        BaseName = job.Title,
+                    };
+                    db.Tracks.Add(track);
+                }
+                else
+                {
+                    track.OrigFileName = track.FileName;
+                    track.FileName = $"{destFile}.{ext}";
+                }
+                track.Ripped = true;
+                await db.SaveChangesAsync(ct);
+            }
         }
 
         return lastResult ?? new CliResult(0, "", "", false);
@@ -220,6 +244,9 @@ public sealed partial class HandBrakeService(
             return;
         }
 
+        db.Tracks.RemoveRange(db.Tracks.Where(t => t.JobId == job.Id));
+        await db.SaveChangesAsync(ct);
+
         var lines = result.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries);
         var titlesPattern = TitleCountPattern();
         var durationPattern = DurationPattern();
@@ -303,7 +330,7 @@ public sealed partial class HandBrakeService(
     [GeneratedRegex(@".*\+ title *")]
     private static partial Regex TitleStartPattern();
 
-    [GeneratedRegex(@".*duration:.*")]
+    [GeneratedRegex(@".*duration:\s*(\d{2}:\d{2}:\d{2})")]
     private static partial Regex DurationPattern();
 
     [GeneratedRegex(@"Main Feature")]
@@ -312,7 +339,4 @@ public sealed partial class HandBrakeService(
     [GeneratedRegex(@"(\d+\.\d+)\s+fps")]
     private static partial Regex FpsAspectPattern();
 
-    private Regex _durationValuePattern = DurationValuePatternGen();
-    [GeneratedRegex(@"(\d{2}:\d{2}:\d{2})")]
-    private static partial Regex DurationValuePatternGen();
 }

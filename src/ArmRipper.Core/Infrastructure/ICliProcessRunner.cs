@@ -1,0 +1,19 @@
+using System.Runtime.CompilerServices;
+
+namespace ArmRipper.Core.Infrastructure;
+
+public interface ICliProcessRunner
+{
+    Task<CliResult> RunAsync(
+        string fileName,
+        string arguments,
+        string? workingDirectory = null,
+        int timeoutMs = 120_000,
+        CancellationToken ct = default);
+
+    IAsyncEnumerable<string> RunStreamingAsync(
+        string fileName,
+        string arguments,
+        string? workingDirectory = null,
+        CancellationToken ct = default);
+}

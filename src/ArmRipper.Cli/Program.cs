@@ -16,7 +16,7 @@ builder.Services.AddDbContext<ArmDbContext>(options =>
 
 builder.Services.Configure<ArmSettings>(builder.Configuration.GetSection(ArmSettings.SectionName));
 
-builder.Services.AddSingleton<CliProcessRunner>();
+builder.Services.AddSingleton<ICliProcessRunner, CliProcessRunner>();
 builder.Services.AddScoped<IIdentifyService, IdentifyService>();
 builder.Services.AddScoped<IHandBrakeService, HandBrakeService>();
 builder.Services.AddScoped<IFfmpegService, FfmpegService>();

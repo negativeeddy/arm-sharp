@@ -13,10 +13,10 @@ public partial class MakeMkvService
     private const int StreamCodeTypeVideo = 6201;
     private const string Source = "MakeMKV";
 
-    private readonly CliProcessRunner _runner;
+    private readonly ICliProcessRunner _runner;
     private readonly ILogger<MakeMkvService> _logger;
 
-    public MakeMkvService(CliProcessRunner runner, ILogger<MakeMkvService> logger)
+    public MakeMkvService(ICliProcessRunner runner, ILogger<MakeMkvService> logger)
     {
         _runner = runner;
         _logger = logger;

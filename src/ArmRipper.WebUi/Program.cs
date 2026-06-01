@@ -19,7 +19,7 @@ builder.Services.AddRazorPages();
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
 
-builder.Services.AddSingleton<CliProcessRunner>();
+builder.Services.AddSingleton<ICliProcessRunner, CliProcessRunner>();
 builder.Services.AddScoped<IIdentifyService, IdentifyService>();
 builder.Services.AddScoped<IHandBrakeService, HandBrakeService>();
 builder.Services.AddScoped<IFfmpegService, FfmpegService>();

@@ -12,7 +12,7 @@ namespace ArmRipper.Core.Rip;
 public sealed class Conductor(
     ILogger<Conductor> logger,
     ArmDbContext db,
-    CliProcessRunner runner,
+    ICliProcessRunner runner,
     IOptions<ArmSettings> settings,
     IIdentifyService identifyService,
     IArmRipperService armRipperService,

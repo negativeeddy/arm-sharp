@@ -11,7 +11,7 @@ using Microsoft.Extensions.Options;
 namespace ArmRipper.Core.Rip;
 
 public sealed partial class MusicBrainzService(
-    CliProcessRunner runner,
+    ICliProcessRunner runner,
     ILogger<MusicBrainzService> logger,
     ArmDbContext db,
     IOptions<ArmSettings> settings) : IMusicBrainzService

@@ -11,7 +11,7 @@ using Microsoft.Extensions.Options;
 namespace ArmRipper.Core.Rip;
 
 public sealed partial class FfmpegService(
-    CliProcessRunner runner,
+    ICliProcessRunner runner,
     ILogger<FfmpegService> logger,
     ArmDbContext db,
     IOptions<ArmSettings> settings) : IFfmpegService
@@ -33,7 +33,6 @@ public sealed partial class FfmpegService(
         {
             var destFile = Path.GetFileNameWithoutExtension(file);
             var ext = settings.Value.DestExt ?? "mp4";
-            var srcPath = Path.Combine(rawPath, file);
             var outFile = Path.Combine(outputPath, $"{destFile}.{ext}");
 
             logger.LogInformation("Transcoding {File} to {Output}", file, outFile);
@@ -48,13 +47,21 @@ public sealed partial class FfmpegService(
 
             try
             {
-                await RunTranscodeAsync(srcPath, outFile, job, ct);
+                await RunTranscodeAsync(file, outFile, job, ct);
                 logger.LogInformation("FFmpeg call successful");
-                if (track is not null)
+                track ??= new Track
                 {
-                    track.Status = "success";
-                    await db.SaveChangesAsync(ct);
-                }
+                    JobId = job.Id,
+                    FileName = $"{destFile}.{ext}",
+                    OrigFileName = $"{destFile}.mkv",
+                    Source = "MakeMKV",
+                    BaseName = job.Title,
+                };
+                track.Ripped = true;
+                track.Status = "success";
+                if (track.Id == 0)
+                    db.Tracks.Add(track);
+                await db.SaveChangesAsync(ct);
             }
             catch (Exception ex)
             {
@@ -63,6 +70,7 @@ public sealed partial class FfmpegService(
                 {
                     track.Status = "fail";
                     track.Error = ex.Message;
+                    await db.SaveChangesAsync(ct);
                 }
                 job.Errors = ex.Message;
                 job.Status = JobState.Failure;
@@ -103,6 +111,7 @@ public sealed partial class FfmpegService(
             EnsureDirectory(outputPath);
             await RunTranscodeAsync(rawPath, outputFile, job, ct);
             logger.LogInformation("FFmpeg call successful");
+            track.Ripped = true;
             track.Status = "success";
             await db.SaveChangesAsync(ct);
         }
@@ -116,9 +125,6 @@ public sealed partial class FfmpegService(
             await db.SaveChangesAsync(ct);
             throw;
         }
-
-        track.Ripped = true;
-        await db.SaveChangesAsync(ct);
     }
 
     public async Task TranscodeAllAsync(Job job, string rawPath, string outputPath, CancellationToken ct)
@@ -206,40 +212,13 @@ public sealed partial class FfmpegService(
     {
         var (ffPreArgs, ffPostArgs) = GetFfSettings(job);
 
-        var durationResult = await runner.RunAsync("ffprobe",
-            $"-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{inputFile}\"",
-            timeoutMs: 30_000, ct: ct);
-
-        var totalDurationUs = 0;
-        if (durationResult.ExitCode == 0 && double.TryParse(durationResult.StdOut.Trim(), out var durationSec))
-            totalDurationUs = (int)(durationSec * 1_000_000);
-
         var cmd = $"ffmpeg {ffPreArgs} -i \"{inputFile}\" {ffPostArgs} \"{outputFile}\"";
         logger.LogDebug("FFmpeg command: {Command}", cmd);
 
-        var process = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "bash",
-                Arguments = $"-c \"{cmd.Replace("\"", "\\\"")}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            }
-        };
+        var result = await runner.RunAsync("bash", $"-c \"{cmd.Replace("\"", "\\\"")}\"", timeoutMs: 7200_000, ct: ct);
 
-        process.Start();
-
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
-        var stderrTask = process.StandardError.ReadToEndAsync(ct);
-
-        await Task.WhenAll(stdoutTask, stderrTask);
-        process.WaitForExit();
-
-        if (process.ExitCode != 0)
-            throw new InvalidOperationException($"FFmpeg failed with code {process.ExitCode}: {stderrTask.Result}");
+        if (result.ExitCode != 0)
+            throw new InvalidOperationException($"FFmpeg failed with code {result.ExitCode}: {result.StdErr}");
     }
 
     private (string preArgs, string postArgs) GetFfSettings(Job job)
@@ -260,6 +239,9 @@ public sealed partial class FfmpegService(
         var result = await runner.RunAsync("ffprobe",
             $"-v error -print_format json -show_format -show_streams \"{sourcePath}\"",
             timeoutMs: 120_000, ct: ct);
+
+        db.Tracks.RemoveRange(db.Tracks.Where(t => t.JobId == job.Id));
+        await db.SaveChangesAsync(ct);
 
         if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.StdOut))
         {

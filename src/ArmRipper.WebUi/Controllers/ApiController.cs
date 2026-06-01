@@ -13,7 +13,7 @@ namespace ArmRipper.WebUi.Controllers;
 [Route("api")]
 public partial class ApiController(
     ArmDbContext db,
-    CliProcessRunner runner,
+    ICliProcessRunner runner,
     IOptions<ArmSettings> settings) : Controller
 {
     [HttpGet("health")]

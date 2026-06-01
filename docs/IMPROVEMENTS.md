@@ -57,6 +57,11 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 - No unit tests for XML parsing logic (`CheckMusicBrainzData`, `ProcessDiscRelease`, `ProcessCdStub`, `ProcessTracks`). Private methods — would need refactoring to expose or test via reflection.
 - **Investigate moving off XML where possible** — MusicBrainz XML parsing is fragile (manual XElement traversal, namespace handling). If MusicBrainz offers a JSON endpoint, prefer it. Also reduces boilerplate versus the heavy `XDocument` API.
 
+## HandBrakeService / FfmpegService
+
+- **Inconsistent error handling:** HandBrakeService.TranscodeMkvAsync logs transcode failures and continues to the next file (never throws); FfmpegService.TranscodeMkvAsync throws on failure, aborting the entire job. One convention should win — either both continue on failure (best-effort for batch MKV transcodes) or both fail fast.
+- **Track creation from MakeMKV TInfo:** MakeMKV prints detailed track metadata (duration, chapters, stream info) via TInfo lines, but this data is collected into a local list and discarded. Tracks are instead created after the fact from filenames on disk. For progress tracking and richer metadata, the TInfo output should be parsed into Track entities as the original ARM does.
+
 ## CRC64 / DVD Identification
 
 - `DvdCrc64.Compute()` uses synchronous file I/O wrapped in `Task.Run`. Fine for 64KB reads, but could be async for streaming reads on slow DVD media.
@@ -73,6 +78,11 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 - No CRC64 test with real DVD data (uses synthetic directory).
 - No SignalR hub tests.
 - `IEnumerable<INotificationBroadcaster>` in NotificationService — tests pass `[]` (empty collection), which is fine but silently skips broadcast verification. Would benefit from a `MockNotificationBroadcaster`.
+
+## Miscellaneous Dead Code
+
+- `MakeMkvService.HmsToSeconds` is a private helper declared but never called. Keep as-is — it was likely intended for parsing MakeMKV duration output and may be needed when TInfo track persistence is implemented.
+- `HandBrakeService` had an unused `_durationValuePattern` field + `DurationValuePatternGen()` method (identical to the `DurationPattern` fix) — removed in 888fab2.
 
 ## Security
 

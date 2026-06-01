@@ -12,7 +12,7 @@ namespace ArmRipper.WebUi.Controllers;
 [Route("settings")]
 public class SettingsController(
     ArmDbContext db,
-    CliProcessRunner runner,
+    ICliProcessRunner runner,
     IOptions<ArmSettings> settings) : Controller
 {
     [HttpGet("")]

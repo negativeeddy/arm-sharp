@@ -36,13 +36,23 @@ public sealed class ConductorTests : IDisposable
         });
     }
 
+    private static Mock<ICliProcessRunner> CreateMockRunner()
+    {
+        var mock = new Mock<ICliProcessRunner>();
+        mock.Setup(r => r.RunAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CliResult(0, "", "", false));
+        return mock;
+    }
+
     private Conductor CreateConductor(
         IIdentifyService? identify = null,
         IArmRipperService? ripper = null,
         IMusicBrainzService? musicBrainz = null,
-        IOptions<ArmSettings>? options = null)
+        IOptions<ArmSettings>? options = null,
+        ICliProcessRunner? runner = null)
     {
-        var runner = new CliProcessRunner(NullLogger<CliProcessRunner>.Instance);
+        runner ??= CreateMockRunner().Object;
         var musicBrainzService = musicBrainz ?? new Mock<IMusicBrainzService>().Object;
         return new Conductor(
             NullLogger<Conductor>.Instance,
@@ -85,7 +95,6 @@ public sealed class ConductorTests : IDisposable
     [Fact]
     public async Task RunAsync_WithMusic_ReturnsSuccess()
     {
-        var runner = new CliProcessRunner(NullLogger<CliProcessRunner>.Instance);
         var musicBrainzMock = new Mock<IMusicBrainzService>();
         musicBrainzMock.Setup(m => m.IdentifyAsync(It.IsAny<Job>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync("Some Album");

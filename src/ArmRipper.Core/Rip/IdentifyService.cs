@@ -14,7 +14,7 @@ using Microsoft.Extensions.Options;
 namespace ArmRipper.Core.Rip;
 
 public sealed partial class IdentifyService(
-    CliProcessRunner runner,
+    ICliProcessRunner runner,
     ILogger<IdentifyService> logger,
     ArmDbContext db,
     IOptions<ArmSettings> settings) : IIdentifyService

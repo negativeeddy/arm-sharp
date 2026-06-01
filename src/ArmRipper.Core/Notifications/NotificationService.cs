@@ -11,7 +11,7 @@ namespace ArmRipper.Core.Notifications;
 public sealed class NotificationService(
     ILogger<NotificationService> logger,
     ArmDbContext db,
-    CliProcessRunner runner,
+    ICliProcessRunner runner,
     IEnumerable<INotificationBroadcaster> broadcasters)
 {
     public const string NotifyTitle = "ARM notification";
