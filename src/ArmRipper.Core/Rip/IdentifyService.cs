@@ -65,7 +65,10 @@ public sealed partial class IdentifyService(
         }
 
         logger.LogInformation("Trying to mount disc at {DevPath}...", job.DevPath);
-        await runner.RunAsync("mount", $"--source {job.DevPath!}", timeoutMs: 30_000, ct: ct);
+        var devName = Path.GetFileName(job.DevPath);
+        var mountTarget = $"/mnt/dev/{devName}";
+        Directory.CreateDirectory(mountTarget);
+        await runner.RunAsync("mount", $"--source {job.DevPath!} --target {mountTarget}", timeoutMs: 30_000, ct: ct);
 
         mountPoint = await FindMountAsync(job.DevPath!, ct);
         if (mountPoint is not null)

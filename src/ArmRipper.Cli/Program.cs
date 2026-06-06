@@ -48,6 +48,7 @@ builder.Configuration["Arm:TestMode"] = testMode ? "true" : "false";
 
 var deviceArg = args.FirstOrDefault(a => a.StartsWith("--device="))?.Split('=')[1]
     ?? args.FirstOrDefault(a => a.StartsWith("-d="))?.Split('=')[1]
+    ?? args.Select((a, i) => a is "--device" or "-d" && i + 1 < args.Length ? args[i + 1] : null).FirstOrDefault(a => a is not null)
     ?? (args.Length > 0 && !args[0].StartsWith('-') ? args[0] : null);
 
 if (deviceArg is null)
