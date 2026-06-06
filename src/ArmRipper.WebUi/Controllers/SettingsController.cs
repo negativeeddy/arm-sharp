@@ -49,6 +49,22 @@ public class SettingsController(
 
         ViewBag.HardwareEncoders = await GetHardwareEncoderInfoAsync();
 
+        // Read abcde config if available
+        var abcdePath = "/etc/arm/config/abcde.conf";
+        var abcdeConfig = new Dictionary<string, string>();
+        if (System.IO.File.Exists(abcdePath))
+        {
+            foreach (var line in await System.IO.File.ReadAllLinesAsync(abcdePath))
+            {
+                var trimmed = line.Trim();
+                if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith('#')) continue;
+                var eq = trimmed.IndexOf('=');
+                if (eq > 0)
+                    abcdeConfig[trimmed[..eq].Trim()] = trimmed[(eq + 1)..].Trim();
+            }
+        }
+        ViewBag.AbcdeConfig = abcdeConfig;
+
         return View();
     }
 
@@ -312,6 +328,52 @@ public class SettingsController(
         });
 
         TempData["Message"] = $"Rip started for {devPath} in the background.";
+        return RedirectToAction("Index");
+    }
+
+    [HttpPost("save-ui")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveUi(string theme, int refreshRate, string iconStyle)
+    {
+        var ui = await db.UiSettings.FirstOrDefaultAsync();
+        if (ui is null)
+        {
+            ui = new UiSettings { Theme = theme, RefreshRate = refreshRate, IconStyle = iconStyle };
+            db.UiSettings.Add(ui);
+        }
+        else
+        {
+            ui.Theme = theme;
+            ui.RefreshRate = refreshRate;
+            ui.IconStyle = iconStyle;
+        }
+        await db.SaveChangesAsync();
+        TempData["Message"] = "UI settings saved.";
+        return RedirectToAction("Index");
+    }
+
+    [HttpPost("save-abcde")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveAbcde(string outputFormat, string outputDir)
+    {
+        try
+        {
+            var abcdeConf = "/etc/arm/config/abcde.conf";
+            var lines = new List<string>
+            {
+                $"OUTPUTTYPE={outputFormat}",
+                $"OUTPUTDIR={outputDir}",
+                "CDROMREADERSYNTAX=cdparanoia",
+                "WGET=wget",
+                "MUSICBRAINZ=musicbrainz"
+            };
+            await System.IO.File.WriteAllLinesAsync(abcdeConf, lines);
+            TempData["Message"] = $"abcde config saved to {abcdeConf}.";
+        }
+        catch (Exception ex)
+        {
+            TempData["Message"] = $"Failed to save abcde config: {ex.Message}";
+        }
         return RedirectToAction("Index");
     }
 

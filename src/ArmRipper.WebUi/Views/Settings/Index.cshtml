@@ -4,6 +4,8 @@
     var sysInfo = ViewBag.SystemInfo as ArmRipper.Core.Models.SystemInfo;
     var stats = ViewBag.Stats as Dictionary<string, object>;
     var armSettings = ViewBag.ArmSettings as ArmRipper.Core.Configuration.ArmSettings;
+    var uiSettings = ViewBag.UiSettings as ArmRipper.Core.Models.UiSettings;
+    var abcdeConfig = ViewBag.AbcdeConfig as Dictionary<string, string> ?? [];
 }
 
 <div id="settingsPage">
@@ -225,20 +227,68 @@
     <!-- UI Settings -->
     <div class="tab-pane fade" id="tab4" role="tabpanel">
         <h2>UI Settings</h2>
-        <div class="card">
-            <div class="card-body">
-                <p class="card-text text-muted">UI customization options (theme, refresh rate, etc.) coming in a future update.</p>
-            </div>
-        </div>
+        <form method="post" action="/settings/save-ui">
+            <table class="table table-sm">
+                <tr>
+                    <td><label>Theme:</label></td>
+                    <td>
+                        <select name="theme" class="form-control">
+                            <option value="light" selected="@(uiSettings?.Theme == "light" || uiSettings?.Theme is null)">Light</option>
+                            <option value="dark" selected="@(uiSettings?.Theme == "dark")">Dark</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td><label>Refresh Rate (seconds):</label></td>
+                    <td><input type="number" name="refreshRate" value="@(uiSettings?.RefreshRate ?? 10)" class="form-control" min="2" max="300" /></td>
+                </tr>
+                <tr>
+                    <td><label>Icon Style:</label></td>
+                    <td>
+                        <select name="iconStyle" class="form-control">
+                            <option value="default" selected="@(uiSettings?.IconStyle == "default" || uiSettings?.IconStyle is null)">Default</option>
+                            <option value="simple" selected="@(uiSettings?.IconStyle == "simple")">Simple</option>
+                            <option value="detailed" selected="@(uiSettings?.IconStyle == "detailed")">Detailed</option>
+                        </select>
+                    </td>
+                </tr>
+            </table>
+            <button type="submit" class="btn btn-primary">Save UI Settings</button>
+        </form>
     </div>
 
     <!-- abcde Config -->
     <div class="tab-pane fade" id="tab5" role="tabpanel">
         <h2>abcde Config</h2>
-        <div class="card">
-            <div class="card-body">
-                <p class="card-text text-muted">abcde configuration for audio CD ripping. Coming in a future update.</p>
-            </div>
+        <p>Configuration for audio CD ripping via abcde. Saved to <code>/etc/arm/config/abcde.conf</code>.</p>
+        <form method="post" action="/settings/save-abcde">
+            <table class="table table-sm">
+                <tr>
+                    <td><label>Output Format:</label></td>
+                    <td>
+                        <select name="outputFormat" class="form-control">
+                            <option value="ogg" selected="@(abcdeConfig.GetValueOrDefault("OUTPUTTYPE") == "ogg")">OGG</option>
+                            <option value="mp3" selected="@(abcdeConfig.GetValueOrDefault("OUTPUTTYPE") == "mp3")">MP3</option>
+                            <option value="flac" selected="@(abcdeConfig.GetValueOrDefault("OUTPUTTYPE") == "flac")">FLAC</option>
+                            <option value="aac" selected="@(abcdeConfig.GetValueOrDefault("OUTPUTTYPE") == "aac")">AAC</option>
+                            <option value="wav" selected="@(abcdeConfig.GetValueOrDefault("OUTPUTTYPE") == "wav")">WAV</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td><label>Output Directory:</label></td>
+                    <td><input type="text" name="outputDir" value="@(abcdeConfig.GetValueOrDefault("OUTPUTDIR", "/home/arm/media/raw"))" class="form-control" /></td>
+                </tr>
+            </table>
+            <button type="submit" class="btn btn-primary">Save abcde Config</button>
+        </form>
+        <div class="mt-3">
+            <h4>Current Config</h4>
+            <pre class="bg-light p-2"><code>@foreach (var kv in abcdeConfig)
+{
+    <text>@kv.Key=@kv.Value
+</text>
+}</code></pre>
         </div>
     </div>
 

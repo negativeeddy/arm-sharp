@@ -112,14 +112,7 @@ else
 
 <h2>Database Actions</h2>
 <div class="btn-group" role="group">
-    <form method="post" action="/database/update" style="display:inline;">
-        <input type="hidden" name="action" value="migrate" />
-        <button type="submit" class="btn btn-outline-secondary">Migrate Database</button>
-    </form>
-    <form method="post" action="/database/update" style="display:inline;">
-        <input type="hidden" name="action" value="create" />
-        <button type="submit" class="btn btn-outline-secondary">Create Database</button>
-    </form>
+    <a href="/database/update" class="btn btn-outline-secondary">Manage Database</a>
     <a href="/database/import" class="btn btn-outline-secondary">Scan Completed Path</a>
 </div>
 

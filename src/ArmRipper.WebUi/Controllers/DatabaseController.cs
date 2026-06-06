@@ -57,7 +57,14 @@ public class DatabaseController(ArmDbContext db) : Controller
         return View(jobs);
     }
 
+    [HttpGet("update")]
+    public IActionResult Update()
+    {
+        return View();
+    }
+
     [HttpPost("update")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Update(string action)
     {
         if (action == "migrate")
