@@ -5,15 +5,29 @@ using ArmRipper.Core.Metadata;
 using ArmRipper.Core.Notifications;
 using ArmRipper.Core.Rip;
 using ArmRipper.WebUi.Hubs;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var yamlValues = ArmYamlConfigLoader.LoadYamlValues("/etc/arm/config/arm.yaml");
+builder.Configuration.AddInMemoryCollection(yamlValues);
 
 var connectionString = builder.Configuration.GetConnectionString("ArmDb") ?? "Data Source=/etc/arm/config/arm.db";
 builder.Services.AddDbContext<ArmDbContext>(options =>
     options.UseSqlite(connectionString));
 
 builder.Services.Configure<ArmSettings>(builder.Configuration.GetSection(ArmSettings.SectionName));
+
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/auth/login";
+        options.LogoutPath = "/auth/logout";
+        options.AccessDeniedPath = "/auth/login";
+    });
+
+builder.Services.AddAuthorization();
 
 builder.Services.AddRazorPages();
 builder.Services.AddControllers();
@@ -47,6 +61,8 @@ using (var scope = app.Services.CreateScope())
 
 app.UseStaticFiles();
 app.UseRouting();
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapRazorPages();
 app.MapControllers();
 app.MapHub<NotificationHub>("/hubs/notifications");

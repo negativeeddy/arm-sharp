@@ -1,9 +1,11 @@
 using ArmRipper.Core.Infrastructure.Data;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace ArmRipper.WebUi.Controllers;
 
+[Authorize]
 [Route("history")]
 public class HistoryController(ArmDbContext db) : Controller
 {

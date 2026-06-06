@@ -96,7 +96,10 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 - Add MCP integration so the project can be queried/supervised by AI agents during development and debugging. MCP tools could expose log streaming, config editing, job management, and disc identification — making the system observable and controllable through AI assistants.
 - MCP server could expose: `get_jobs`, `get_logs`, `update_config`, `eject_drive`, `trigger_identify` as tools.
 
+- GitHub Actions `setup-dotnet` with `dotnet-version: 10.0.x` may fail if .NET 10 SDK isn't in the runner tool cache. Pin to a specific build or use `global.json` if the SDK feed changes.
+
 ## Container / Deployment
 
 - `WebServer:Port` appsetting controls port but defaults to 8080 in `Program.cs`. Dockerfile should expose this and document env var override.
 - Docker image is ~2GB with full .NET SDK. Switch to self-contained publish with runtime-only image to reduce size.
+- GitHub Actions CI has QEMU set up but only builds `linux/amd64`. Add `linux/arm64` multi-arch build once ARM64 runners or cross-compilation are available.

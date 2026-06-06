@@ -16,6 +16,9 @@
         "-v", "/mnt/docker/arm-sharp/media:/home/arm/media",
         "-v", "/mnt/docker/arm-sharp/config:/etc/arm/config"
     ],
+    "mounts": [
+        "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+    ],
     "forwardPorts": [8080],
     "containerEnv": {
         "TZ": "America/Chicago",

@@ -1,10 +1,12 @@
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace ArmRipper.WebUi.Controllers;
 
+[Authorize]
 [Route("database")]
 public class DatabaseController(ArmDbContext db) : Controller
 {

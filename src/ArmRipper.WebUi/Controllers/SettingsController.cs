@@ -4,12 +4,14 @@ using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
 using ArmRipper.Core.Rip;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace ArmRipper.WebUi.Controllers;
 
+[Authorize]
 [Route("settings")]
 public class SettingsController(
     ArmDbContext db,

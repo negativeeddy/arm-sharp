@@ -2,11 +2,13 @@ using System.Runtime.InteropServices;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace ArmRipper.WebUi.Controllers;
 
+[Authorize]
 [Route("")]
 public class HomeController(ArmDbContext db, ICliProcessRunner runner) : Controller
 {
@@ -199,6 +201,7 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner) : Control
         });
     }
 
+    [AllowAnonymous]
     [HttpGet("error")]
     public IActionResult Error(string message)
     {
@@ -206,6 +209,7 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner) : Control
         return View();
     }
 
+    [AllowAnonymous]
     [HttpGet("setup")]
     public IActionResult Setup()
     {

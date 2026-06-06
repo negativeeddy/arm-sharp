@@ -4,11 +4,15 @@ using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Notifications;
 using ArmRipper.Core.Rip;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 var builder = Host.CreateApplicationBuilder(args);
+
+var yamlValues = ArmYamlConfigLoader.LoadYamlValues("/etc/arm/config/arm.yaml");
+builder.Configuration.AddInMemoryCollection(yamlValues);
 
 var connectionString = builder.Configuration["ConnectionStrings:ArmDb"] ?? "Data Source=/etc/arm/config/arm.db";
 builder.Services.AddDbContext<ArmDbContext>(options =>

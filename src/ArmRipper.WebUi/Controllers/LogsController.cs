@@ -1,9 +1,11 @@
 using ArmRipper.Core.Configuration;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
 namespace ArmRipper.WebUi.Controllers;
 
+[Authorize]
 [Route("logs")]
 public class LogsController(IOptions<ArmSettings> settings) : Controller
 {

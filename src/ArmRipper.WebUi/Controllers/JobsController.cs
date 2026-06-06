@@ -1,11 +1,13 @@
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Metadata;
 using ArmRipper.Core.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace ArmRipper.WebUi.Controllers;
 
+[Authorize]
 [Route("jobs")]
 public class JobsController(ArmDbContext db, OmdbService omdb) : Controller
 {

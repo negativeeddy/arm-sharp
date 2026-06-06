@@ -1,0 +1,15 @@
+**/.git/
+**/.gitignore
+**/bin/
+**/obj/
+**/node_modules/
+**/.DS_Store
+docs/
+scripts/
+
+.git/
+.opencode/
+devcontainer-lock.json
+.devcontainer/
+*.md
+!README.md

@@ -4,12 +4,14 @@ using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace ArmRipper.WebUi.Controllers;
 
+[Authorize]
 [Route("api")]
 public partial class ApiController(
     ArmDbContext db,
@@ -101,6 +103,7 @@ public partial class ApiController(
     }
 
     [HttpPost("abandon/{id}")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Abandon(int id)
     {
         var job = await db.Jobs.Include(j => j.Config).FirstOrDefaultAsync(j => j.Id == id);
@@ -139,6 +142,7 @@ public partial class ApiController(
     }
 
     [HttpPost("change-params")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> ChangeParams(
         int jobId, string? disctype = null, int? minLength = null,
         int? maxLength = null, string? ripMethod = null, bool? mainFeature = null)
