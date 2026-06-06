@@ -75,11 +75,33 @@ public sealed partial class IdentifyService(
         {
             logger.LogInformation("Successfully mounted disc to {MountPoint}", mountPoint);
             job.MountPoint = mountPoint;
+            await ExtractDiscLabelAsync(job, ct);
             return true;
         }
 
+        if (!string.IsNullOrEmpty(job.MountPoint))
+            await ExtractDiscLabelAsync(job, ct);
+
         logger.LogError("Disc was not and could not be mounted. Rip might fail.");
         return false;
+    }
+
+    private async Task ExtractDiscLabelAsync(Job job, CancellationToken ct)
+    {
+        try
+        {
+            var result = await runner.RunAsync("blkid",
+                $"-s LABEL -o value {job.DevPath!}", timeoutMs: 5_000, ct: ct);
+            if (result.ExitCode == 0 && !string.IsNullOrWhiteSpace(result.StdOut))
+            {
+                job.Label = result.StdOut.Trim();
+                logger.LogInformation("Disc label: {Label}", job.Label);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to extract disc label");
+        }
     }
 
     private async Task<string?> FindMountAsync(string devPath, CancellationToken ct)
@@ -245,8 +267,8 @@ public sealed partial class IdentifyService(
 
             if (!string.IsNullOrEmpty(job.Label))
             {
-                var blurayTitle = job.Label.Replace("_", " ");
-                blurayTitle = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(blurayTitle);
+                var blurayTitle = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(
+                    job.Label.Replace("_", " ").ToLowerInvariant());
                 job.Title = job.TitleAuto = blurayTitle;
                 job.Year = "";
                 await db.SaveChangesAsync(ct);

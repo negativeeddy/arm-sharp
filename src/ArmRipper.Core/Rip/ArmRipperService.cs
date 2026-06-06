@@ -44,52 +44,59 @@ public sealed class ArmRipperService(
 
         if (useMakeMkv)
         {
-            logger.LogInformation("************* Ripping disc with MakeMKV *************");
-            job.Status = JobState.VideoRipping;
-            await db.SaveChangesAsync(ct);
-
-            try
+            if (settings.Value.TestMode && job.DiscType == DiscType.Bluray)
             {
-                if (!Directory.Exists(makeMkvOutPath))
-                    Directory.CreateDirectory(makeMkvOutPath);
+                logger.LogInformation("Test mode: skipping MakeMKV rip for Blu-ray (whole-title rip too large)");
+            }
+            else
+            {
+                logger.LogInformation("************* Ripping disc with MakeMKV *************");
+                job.Status = JobState.VideoRipping;
+                await db.SaveChangesAsync(ct);
 
-                var mkvTitles = settings.Value.TestMode ? "0" : "all";
-                await foreach (var _ in makeMkv.RunAsync<TInfo>(
-                    ["mkv", $"dev:{job.DevPath}", mkvTitles, makeMkvOutPath],
-                    MakeMkvOutputType.TInfo, ct)) { }
-
-                if (Directory.Exists(makeMkvOutPath))
-                {
-                    foreach (var file in Directory.EnumerateFiles(makeMkvOutPath, "*.mkv"))
+                    try
                     {
-                        var fileName = Path.GetFileName(file);
-                        var track = new Track
+                        if (!Directory.Exists(makeMkvOutPath))
+                            Directory.CreateDirectory(makeMkvOutPath);
+
+                        var mkvTitles = settings.Value.TestMode ? "0" : "all";
+                        await foreach (var _ in makeMkv.RunAsync<TInfo>(
+                            ["mkv", $"dev:{job.DevPath}", mkvTitles, makeMkvOutPath],
+                            MakeMkvOutputType.TInfo, ct)) { }
+
+                        if (Directory.Exists(makeMkvOutPath))
                         {
-                            JobId = job.Id,
-                            FileName = fileName,
-                            Source = "MakeMKV",
-                            BaseName = jobTitle,
-                        };
-                        db.Tracks.Add(track);
+                            foreach (var file in Directory.EnumerateFiles(makeMkvOutPath, "*.mkv"))
+                            {
+                                var fileName = Path.GetFileName(file);
+                                var track = new Track
+                                {
+                                    JobId = job.Id,
+                                    FileName = fileName,
+                                    Source = "MakeMKV",
+                                    BaseName = jobTitle,
+                                };
+                                db.Tracks.Add(track);
+                            }
+                            await db.SaveChangesAsync(ct);
+                        }
                     }
-                    await db.SaveChangesAsync(ct);
+                    catch (Exception mkvError)
+                    {
+                        logger.LogError(mkvError, "Error while running MakeMKV");
+                        throw;
+                    }
+
+                    if (job.Config?.NotifyRip ?? settings.Value.NotifyRip)
+                    {
+                        await notifications.NotifyAsync(job, NotificationService.NotifyTitle,
+                            $"{job.Title} rip complete. Starting transcode.", ct);
+                    }
+
+                    logger.LogInformation("************* Ripping with MakeMKV completed *************");
+                    transcodeInPath = makeMkvOutPath;
                 }
             }
-            catch (Exception mkvError)
-            {
-                logger.LogError(mkvError, "Error while running MakeMKV");
-                throw;
-            }
-
-            if (job.Config?.NotifyRip ?? settings.Value.NotifyRip)
-            {
-                await notifications.NotifyAsync(job, NotificationService.NotifyTitle,
-                    $"{job.Title} rip complete. Starting transcode.", ct);
-            }
-
-            logger.LogInformation("************* Ripping with MakeMKV completed *************");
-            transcodeInPath = makeMkvOutPath;
-        }
 
         if (settings.Value.TestMode && transcodeInPath is not null && Directory.Exists(transcodeInPath))
         {
