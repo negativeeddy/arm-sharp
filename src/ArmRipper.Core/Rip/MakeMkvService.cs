@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
+using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -10,9 +11,9 @@ namespace ArmRipper.Core.Rip;
 
 public partial class MakeMkvService
 {
+    internal const int MakeMkvStreamCodeTypeVideo = 6201;
     private const int UnknownDrv = 999;
     private const int MaxDevices = 16;
-    private const int StreamCodeTypeVideo = 6201;
     private const string Source = "MakeMKV";
     private const string BetaKeyUrl = "https://cable.ayra.ch/MakeMKV/api.php?raw";
     private static readonly string SettingsPath = Path.Combine(
@@ -104,6 +105,136 @@ public partial class MakeMkvService
             if (select.HasFlag(parsed.Type) && parsed.Data is T result)
                 yield return result;
         }
+    }
+
+    public async Task<List<Track>> GetTrackInfoAsync(Job job, CancellationToken ct = default)
+    {
+        await EnsureKeyAsync(ct);
+
+        var tracks = new List<Track>();
+        var minLength = job.Config?.MinLength ?? _settings.Value.MinLength;
+
+        var cmd = new[] { "makemkvcon", "--robot", "--messages=-stdout",
+            "info", "--cache=1", $"dev:{job.DevPath}", $"--minlength={minLength}" };
+
+        var currentTid = -1;
+        var seconds = 0L;
+        var aspect = "";
+        var fps = 0.0;
+        var filename = "";
+        var chapters = 0;
+        var filesize = 0L;
+        var streamType = 0;
+
+        await foreach (var line in _runner.RunStreamingAsync(cmd[0], string.Join(" ", cmd[1..]), ct: ct))
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            var parsed = ParseLine(line);
+            if (parsed is null) continue;
+
+            switch (parsed.Data)
+            {
+                case SinFo sinfo:
+                    if (sinfo.Id == (int)StreamId.Type)
+                    {
+                        streamType = sinfo.Code;
+                    }
+                    else if (streamType == MakeMkvStreamCodeTypeVideo)
+                    {
+                        switch ((StreamId)sinfo.Id)
+                        {
+                            case StreamId.Aspect:
+                                aspect = sinfo.Value.Trim();
+                                break;
+                            case StreamId.Fps:
+                                var parts = sinfo.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                                if (parts.Length > 0)
+                                    double.TryParse(parts[0], out fps);
+                                break;
+                        }
+                    }
+                    break;
+
+                case TInfo tinfo:
+                    if (currentTid >= 0 && tinfo.Tid != currentTid)
+                    {
+                        tracks.Add(CreateTrackObj(job, currentTid, seconds, aspect, fps, filename, chapters, filesize));
+                        seconds = 0; aspect = ""; fps = 0.0; filename = ""; chapters = 0; filesize = 0; streamType = 0;
+                    }
+                    currentTid = tinfo.Tid;
+                    switch ((TrackId)tinfo.Id)
+                    {
+                        case TrackId.Filename:
+                            filename = StripQuotes(tinfo.Value);
+                            break;
+                        case TrackId.Duration:
+                            seconds = HmsToSeconds(tinfo.Value);
+                            break;
+                        case TrackId.Chapters:
+                            int.TryParse(tinfo.Value, out chapters);
+                            break;
+                        case TrackId.Filesize:
+                            long.TryParse(tinfo.Value, out filesize);
+                            break;
+                    }
+                    break;
+
+                case Titles titles:
+                    _logger.LogInformation("Found {Count} titles on disc", titles.Count);
+                    break;
+            }
+        }
+
+        if (currentTid >= 0)
+        {
+            tracks.Add(CreateTrackObj(job, currentTid, seconds, aspect, fps, filename, chapters, filesize));
+        }
+
+        return tracks;
+    }
+
+    public async Task RipTrackAsync(Job job, string trackNumber, string outputPath, string mkvArgs, CancellationToken ct = default)
+    {
+        var options = new List<string> { "mkv" };
+        if (!string.IsNullOrEmpty(mkvArgs))
+            options.AddRange(mkvArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        options.AddRange(new[] { $"dev:{job.DevPath}", trackNumber, outputPath });
+
+        await foreach (var _ in RunAsync<TInfo>([.. options], MakeMkvOutputType.TInfo, ct)) { }
+    }
+
+    public async Task RipAllTitlesAsync(Job job, string outputPath, string mkvArgs, CancellationToken ct = default)
+    {
+        var options = new List<string> { "mkv" };
+        if (!string.IsNullOrEmpty(mkvArgs))
+            options.AddRange(mkvArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        options.AddRange(new[] { $"dev:{job.DevPath}", "all", outputPath });
+
+        await foreach (var _ in RunAsync<TInfo>([.. options], MakeMkvOutputType.TInfo, ct)) { }
+    }
+
+    private static Track CreateTrackObj(Job job, int tid, long seconds, string aspect, double fps, string filename, int chapters, long filesize)
+    {
+        return new Track
+        {
+            JobId = job.Id,
+            TrackNumber = tid.ToString(),
+            Length = (int)seconds,
+            AspectRatio = string.IsNullOrEmpty(aspect) ? null : aspect,
+            Fps = fps > 0 ? fps : null,
+            FileName = string.IsNullOrEmpty(filename) ? null : filename,
+            Chapters = chapters > 0 ? chapters : null,
+            FileSize = filesize > 0 ? filesize : null,
+            Source = Source,
+            BaseName = job.Title,
+        };
+    }
+
+    private static string StripQuotes(string value)
+    {
+        if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
+            return value[1..^1];
+        return value;
     }
 
     public record ParsedLine(MakeMkvOutputType Type, object Data);

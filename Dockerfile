@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL https://dotnet.microsoft.com/download/dotnet/scripts/v1/dotnet-install.sh \
-    | bash /dev/stdin --channel 10.0 --install-dir /usr/share/dotnet \
+    | bash /dev/stdin --channel 10.0 --runtime aspnetcore --install-dir /usr/share/dotnet \
     && ln -sf /usr/share/dotnet/dotnet /usr/local/bin/dotnet
 
 ENV DOTNET_ROOT=/usr/share/dotnet \

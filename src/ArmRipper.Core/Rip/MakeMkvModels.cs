@@ -1,5 +1,20 @@
 namespace ArmRipper.Core.Rip;
 
+public enum TrackId
+{
+    Chapters = 8,
+    Duration = 9,
+    Filesize = 11,
+    Filename = 27
+}
+
+public enum StreamId
+{
+    Type = 1,
+    Aspect = 20,
+    Fps = 21
+}
+
 [Flags]
 public enum MakeMkvOutputType
 {

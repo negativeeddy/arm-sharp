@@ -3,6 +3,7 @@ using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
 using ArmRipper.Core.Notifications;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -50,51 +51,116 @@ public sealed class ArmRipperService(
             }
             else
             {
+                logger.LogInformation("************* Getting track info from MakeMKV *************");
+
+                var config = job.Config;
+                var minLength = config?.MinLength ?? settings.Value.MinLength;
+                var maxLength = config?.MaxLength ?? settings.Value.MaxLength;
+
+                var tracks = await makeMkv.GetTrackInfoAsync(job, ct);
+
+                Track? longestTrack = null;
+                foreach (var track in tracks)
+                {
+                    var length = track.Length ?? 0;
+                    track.Process = length >= minLength && length <= maxLength;
+
+                    if (longestTrack is null || length > (longestTrack.Length ?? 0))
+                        longestTrack = track;
+                }
+
+                if (longestTrack is not null)
+                    longestTrack.MainFeature = true;
+
+                foreach (var track in tracks)
+                    db.Tracks.Add(track);
+                await db.SaveChangesAsync(ct);
+
                 logger.LogInformation("************* Ripping disc with MakeMKV *************");
                 job.Status = JobState.VideoRipping;
                 await db.SaveChangesAsync(ct);
 
-                    try
+                try
+                {
+                    if (!Directory.Exists(makeMkvOutPath))
+                        Directory.CreateDirectory(makeMkvOutPath);
+
+                    var eligibleTracks = tracks.Where(t => t.Process).ToList();
+                    var mkvArgs = config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
+                    var ripCount = 0;
+
+                    if (settings.Value.TestMode)
                     {
-                        if (!Directory.Exists(makeMkvOutPath))
-                            Directory.CreateDirectory(makeMkvOutPath);
-
-                        var mkvTitles = settings.Value.TestMode ? "0" : "all";
-                        await foreach (var _ in makeMkv.RunAsync<TInfo>(
-                            ["mkv", $"dev:{job.DevPath}", mkvTitles, makeMkvOutPath],
-                            MakeMkvOutputType.TInfo, ct)) { }
-
-                        if (Directory.Exists(makeMkvOutPath))
+                        var firstTrack = eligibleTracks.FirstOrDefault();
+                        if (firstTrack is not null)
+                            await makeMkv.RipTrackAsync(job, firstTrack.TrackNumber!, makeMkvOutPath, mkvArgs, ct);
+                        else
+                            await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, ct);
+                    }
+                    else if (config?.MainFeature ?? settings.Value.MainFeature)
+                    {
+                        var main = tracks.FirstOrDefault(t => t.MainFeature);
+                        if (main is not null)
                         {
-                            foreach (var file in Directory.EnumerateFiles(makeMkvOutPath, "*.mkv"))
-                            {
-                                var fileName = Path.GetFileName(file);
-                                var track = new Track
-                                {
-                                    JobId = job.Id,
-                                    FileName = fileName,
-                                    Source = "MakeMKV",
-                                    BaseName = jobTitle,
-                                };
-                                db.Tracks.Add(track);
-                            }
-                            await db.SaveChangesAsync(ct);
+                            await makeMkv.RipTrackAsync(job, main.TrackNumber!, makeMkvOutPath, mkvArgs, ct);
+                            ripCount = 1;
                         }
                     }
-                    catch (Exception mkvError)
+                    else if (maxLength > 99998)
                     {
-                        logger.LogError(mkvError, "Error while running MakeMKV");
-                        throw;
+                        await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, ct);
+                        ripCount = eligibleTracks.Count;
+                    }
+                    else
+                    {
+                        foreach (var track in eligibleTracks)
+                        {
+                            await makeMkv.RipTrackAsync(job, track.TrackNumber!, makeMkvOutPath, mkvArgs, ct);
+                            ripCount++;
+                        }
                     }
 
-                    if (job.Config?.NotifyRip ?? settings.Value.NotifyRip)
-                    {
-                        await notifications.NotifyAsync(job, NotificationService.NotifyTitle,
-                            $"{job.Title} rip complete. Starting transcode.", ct);
-                    }
+                    logger.LogInformation("Ripped {Count} titles", ripCount);
 
-                    logger.LogInformation("************* Ripping with MakeMKV completed *************");
-                    transcodeInPath = makeMkvOutPath;
+                    if (Directory.Exists(makeMkvOutPath))
+                    {
+                        var dbTracks = await db.Tracks.Where(t => t.JobId == job.Id).ToListAsync(ct);
+                        foreach (var file in Directory.EnumerateFiles(makeMkvOutPath, "*.mkv"))
+                        {
+                            var fileName = Path.GetFileName(file);
+                            var fileInfo = new FileInfo(file);
+
+                            var track = dbTracks.FirstOrDefault(t =>
+                                !string.IsNullOrEmpty(t.FileName) &&
+                                t.FileName.Equals(fileName, StringComparison.OrdinalIgnoreCase))
+                                ?? dbTracks.FirstOrDefault(t =>
+                                    !string.IsNullOrEmpty(t.TrackNumber) &&
+                                    fileName.Contains($"t{int.Parse(t.TrackNumber):D2}"));
+
+                            if (track is not null)
+                            {
+                                track.FileName = fileName;
+                                track.FileSize = fileInfo.Length;
+                                track.Ripped = true;
+                            }
+                        }
+                        await db.SaveChangesAsync(ct);
+                    }
+                }
+                catch (Exception mkvError)
+                {
+                    logger.LogError(mkvError, "Error while running MakeMKV");
+                    throw;
+                }
+
+                if (job.Config?.NotifyRip ?? settings.Value.NotifyRip)
+                {
+                    await notifications.NotifyAsync(job, NotificationService.NotifyTitle,
+                        $"{job.Title} rip complete. Starting transcode.", ct);
+                }
+
+                logger.LogInformation("************* Ripping with MakeMKV completed *************");
+                transcodeInPath = makeMkvOutPath;
                 }
             }
 

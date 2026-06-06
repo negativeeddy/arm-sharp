@@ -39,29 +39,33 @@ public sealed partial class HandBrakeService(
             var cmd = BuildCommand(file, outputFile, job, trackNumber: null, mainFeature: false);
             lastResult = await RunHandBrakeCommandAsync(cmd, ct);
 
-            if (lastResult.ExitCode == 0)
+            if (lastResult.ExitCode != 0)
             {
-                var track = job.Tracks.FirstOrDefault(t => t.FileName == $"{destFile}.mkv");
-                if (track is null)
-                {
-                    track = new Track
-                    {
-                        JobId = job.Id,
-                        FileName = $"{destFile}.{ext}",
-                        OrigFileName = $"{destFile}.mkv",
-                        Source = "MakeMKV",
-                        BaseName = job.Title,
-                    };
-                    db.Tracks.Add(track);
-                }
-                else
-                {
-                    track.OrigFileName = track.FileName;
-                    track.FileName = $"{destFile}.{ext}";
-                }
-                track.Ripped = true;
-                await db.SaveChangesAsync(ct);
+                var msg = $"HandBrake failed on {file} with code {lastResult.ExitCode}: {lastResult.StdErr}";
+                logger.LogError(msg);
+                throw new InvalidOperationException(msg);
             }
+
+            var track = job.Tracks.FirstOrDefault(t => t.FileName == $"{destFile}.mkv");
+            if (track is null)
+            {
+                track = new Track
+                {
+                    JobId = job.Id,
+                    FileName = $"{destFile}.{ext}",
+                    OrigFileName = $"{destFile}.mkv",
+                    Source = "MakeMKV",
+                    BaseName = job.Title,
+                };
+                db.Tracks.Add(track);
+            }
+            else
+            {
+                track.OrigFileName = track.FileName;
+                track.FileName = $"{destFile}.{ext}";
+            }
+            track.Ripped = true;
+            await db.SaveChangesAsync(ct);
         }
 
         return lastResult ?? new CliResult(0, "", "", false);
