@@ -69,3 +69,5 @@ app.MapHub<NotificationHub>("/hubs/notifications");
 
 var port = builder.Configuration.GetValue<int?>("WebServer:Port") ?? 8080;
 app.Run($"http://0.0.0.0:{port}");
+
+public partial class Program { }

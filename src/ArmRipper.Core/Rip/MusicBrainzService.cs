@@ -25,7 +25,7 @@ public sealed partial class MusicBrainzService(
         if (string.IsNullOrEmpty(discId))
             return "";
 
-        if (settings.Value.GetAudioTitle)
+        if (settings.Value.GetAudioTitle is not null and not "none")
         {
             var title = await MusicBrainzLookupAsync(job, discId, ct);
             if (!string.IsNullOrEmpty(title))

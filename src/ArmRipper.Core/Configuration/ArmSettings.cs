@@ -18,7 +18,7 @@ public class ArmSettings
     public bool AllowDuplicates { get; set; }
     public bool Prevent99 { get; set; }
     public bool GetVideoTitle { get; set; } = true;
-    public bool GetAudioTitle { get; set; } = true;
+    public string? GetAudioTitle { get; set; } = "musicbrainz";
     public bool AutoEject { get; set; } = true;
     public bool DelRawFiles { get; set; } = true;
 

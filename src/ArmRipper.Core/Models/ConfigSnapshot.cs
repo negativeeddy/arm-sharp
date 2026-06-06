@@ -14,7 +14,7 @@ public class ConfigSnapshot
     public bool AllowDuplicates { get; set; }
     public bool Prevent99 { get; set; }
     public bool GetVideoTitle { get; set; }
-    public bool GetAudioTitle { get; set; }
+    public string? GetAudioTitle { get; set; }
     public bool AutoEject { get; set; }
     public bool DelRawFiles { get; set; }
 

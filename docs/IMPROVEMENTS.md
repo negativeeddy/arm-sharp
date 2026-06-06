@@ -76,6 +76,10 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 
 ## Testing
 
+- **Audio CD test (Phase 4.3):** Deferred — low priority. Needs abcde conf and audio disc in drive.
+- **Data disc test (Phase 4.4):** Deferred — needs data disc for testing.
+- **Error recovery tests (Phase 4.6):** Deferred — needs dirty/scratched discs for edge case testing.
+
 - No integration tests for controllers/views.
 - No CRC64 test with real DVD data (uses synthetic directory).
 - No SignalR hub tests.
