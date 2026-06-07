@@ -2,7 +2,6 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
-using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -107,7 +106,7 @@ public partial class MakeMkvService
         }
     }
 
-    public async Task<List<Track>> GetTrackInfoAsync(Job job, CancellationToken ct = default)
+    public async Task<List<Track>> GetTrackInfoAsync(Job job, string baseName, CancellationToken ct = default)
     {
         await EnsureKeyAsync(ct);
 
@@ -118,7 +117,7 @@ public partial class MakeMkvService
             "info", "--cache=1", $"dev:{job.DevPath}", $"--minlength={minLength}" };
 
         var currentTid = -1;
-        var seconds = 0L;
+        var seconds = 0;
         var aspect = "";
         var fps = 0.0;
         var filename = "";
@@ -158,7 +157,7 @@ public partial class MakeMkvService
                 case TInfo tinfo:
                     if (currentTid >= 0 && tinfo.Tid != currentTid)
                     {
-                        tracks.Add(CreateTrackObj(job, currentTid, seconds, aspect, fps, filename, chapters, filesize));
+                        tracks.Add(CreateTrackObj(job, currentTid, baseName, seconds, aspect, fps, filename, chapters, filesize));
                         seconds = 0; aspect = ""; fps = 0.0; filename = ""; chapters = 0; filesize = 0; streamType = 0;
                     }
                     currentTid = tinfo.Tid;
@@ -187,7 +186,7 @@ public partial class MakeMkvService
 
         if (currentTid >= 0)
         {
-            tracks.Add(CreateTrackObj(job, currentTid, seconds, aspect, fps, filename, chapters, filesize));
+            tracks.Add(CreateTrackObj(job, currentTid, baseName, seconds, aspect, fps, filename, chapters, filesize));
         }
 
         return tracks;
@@ -197,7 +196,7 @@ public partial class MakeMkvService
     {
         var options = new List<string> { "mkv" };
         if (!string.IsNullOrEmpty(mkvArgs))
-            options.AddRange(mkvArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+            options.AddRange(SplitArgs(mkvArgs));
         options.AddRange(new[] { $"dev:{job.DevPath}", trackNumber, outputPath });
 
         await foreach (var _ in RunAsync<TInfo>([.. options], MakeMkvOutputType.TInfo, ct)) { }
@@ -207,27 +206,60 @@ public partial class MakeMkvService
     {
         var options = new List<string> { "mkv" };
         if (!string.IsNullOrEmpty(mkvArgs))
-            options.AddRange(mkvArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+            options.AddRange(SplitArgs(mkvArgs));
         options.AddRange(new[] { $"dev:{job.DevPath}", "all", outputPath });
 
         await foreach (var _ in RunAsync<TInfo>([.. options], MakeMkvOutputType.TInfo, ct)) { }
     }
 
-    private static Track CreateTrackObj(Job job, int tid, long seconds, string aspect, double fps, string filename, int chapters, long filesize)
+    private static Track CreateTrackObj(Job job, int tid, string baseName, int seconds, string aspect, double fps, string filename, int chapters, long filesize)
     {
         return new Track
         {
             JobId = job.Id,
             TrackNumber = tid.ToString(),
-            Length = (int)seconds,
+            Length = seconds,
             AspectRatio = string.IsNullOrEmpty(aspect) ? null : aspect,
             Fps = fps > 0 ? fps : null,
             FileName = string.IsNullOrEmpty(filename) ? null : filename,
             Chapters = chapters > 0 ? chapters : null,
             FileSize = filesize > 0 ? filesize : null,
             Source = Source,
-            BaseName = job.Title,
+            BaseName = baseName,
         };
+    }
+
+    private static string[] SplitArgs(string args)
+    {
+        var result = new List<string>();
+        var current = new System.Text.StringBuilder();
+        var inQuotes = false;
+
+        for (var i = 0; i < args.Length; i++)
+        {
+            var c = args[i];
+            if (c == '"')
+            {
+                inQuotes = !inQuotes;
+            }
+            else if (c == ' ' && !inQuotes)
+            {
+                if (current.Length > 0)
+                {
+                    result.Add(current.ToString());
+                    current.Clear();
+                }
+            }
+            else
+            {
+                current.Append(c);
+            }
+        }
+
+        if (current.Length > 0)
+            result.Add(current.ToString());
+
+        return [.. result];
     }
 
     private static string StripQuotes(string value)

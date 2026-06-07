@@ -57,7 +57,7 @@ public sealed class ArmRipperService(
                 var minLength = config?.MinLength ?? settings.Value.MinLength;
                 var maxLength = config?.MaxLength ?? settings.Value.MaxLength;
 
-                var tracks = await makeMkv.GetTrackInfoAsync(job, ct);
+                var tracks = await makeMkv.GetTrackInfoAsync(job, jobTitle, ct);
 
                 Track? longestTrack = null;
                 foreach (var track in tracks)
