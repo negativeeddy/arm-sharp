@@ -288,14 +288,21 @@ public sealed partial class HandBrakeService(
                     AddTrack(job, tNo, seconds, aspect, fps, mainFeature, "HandBrake");
 
                 mainFeature = false;
-                tNo = int.Parse(titleMatch.Groups[1].Value);
+                if (int.TryParse(titleMatch.Groups[1].Value, out var parsedNo))
+                    tNo = parsedNo;
             }
 
             var durMatch = durationPattern.Match(line);
             if (durMatch.Success)
             {
                 var parts = durMatch.Groups[1].Value.Split(':');
-                seconds = int.Parse(parts[0]) * 3600 + int.Parse(parts[1]) * 60 + int.Parse(parts[2]);
+                if (parts.Length == 3 &&
+                    int.TryParse(parts[0], out var h) &&
+                    int.TryParse(parts[1], out var m) &&
+                    int.TryParse(parts[2], out var s))
+                {
+                    seconds = h * 3600 + m * 60 + s;
+                }
             }
 
             if (mainFeaturePattern.IsMatch(line))
@@ -334,7 +341,7 @@ public sealed partial class HandBrakeService(
     [GeneratedRegex(@"scan: (BD|DVD) has (\d{1,3}) title\(s\)")]
     private static partial Regex TitleCountPattern();
 
-    [GeneratedRegex(@".*\+ title *")]
+    [GeneratedRegex(@".*\+ title (\d+)")]
     private static partial Regex TitleStartPattern();
 
     [GeneratedRegex(@".*duration:\s*(\d{2}:\d{2}:\d{2})")]

@@ -58,7 +58,7 @@ dotnet run --project src/ArmRipper.WebUi
 ## Hardware Testing (Tarantino)
 Current environment (`/workspaces/arm-sharp`):
 - **Drives:** `/dev/sr0` (BD-RE BU40N), `/dev/sr1` (DRW-24B1ST) — both accessible
-- **CLI tools:** HandBrakeCLI, makemkvcon, ffmpeg, ffprobe, abcde, eject — all installed
+- **CLI tools:** HandBrakeCLI (custom rebuild with nvdec in devcontainer; production Dockerfile still uses base image build without nvdec), makemkvcon, ffmpeg, ffprobe, abcde, eject — all installed
 - **Paths:** `/opt/arm/{raw,transcode,completed,logs}` — exist, empty
 - **Config:** `/etc/arm/config/` — empty (Tarantino volume mounts not set up)
 - **No discs currently loaded** — need to insert media for testing
@@ -70,4 +70,3 @@ Current environment (`/workspaces/arm-sharp`):
 - No integration tests for controllers/views
 - No SignalR hub tests
 - No authentication (intentional, Phase 5)
-- Docker uses `mcr.microsoft.com/dotnet/aspnet` base (not `arm-dependencies`)

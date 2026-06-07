@@ -107,3 +107,6 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 - `WebServer:Port` appsetting controls port but defaults to 8080 in `Program.cs`. Dockerfile should expose this and document env var override.
 - Docker image is ~2GB with full .NET SDK. Switch to self-contained publish with runtime-only image to reduce size.
 - GitHub Actions CI has QEMU set up but only builds `linux/amd64`. Add `linux/arm64` multi-arch build once ARM64 runners or cross-compilation are available.
+- **HandBrake nvdec support** — current `arm-dependencies:1.7.3` base image compiles HandBrake without `--enable-nvdec`. The devcontainer has a custom rebuild with nvdec working, but the production Dockerfile still uses the base image's build (no hw-decoding). Need to either:
+  - Fork and rebuild `arm-dependencies` with `--enable-nvdec --enable-nvdec` (requires `nv-codec-headers`), or
+  - Add a multi-stage HandBrake build step to the production Dockerfile (~30+ min build time)

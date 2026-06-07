@@ -78,7 +78,13 @@ public static partial class ArmYamlConfigLoader
                 continue;
 
             var key = match.Groups[1].Value;
-            var value = match.Groups[2].Value;
+            var value = match.Groups[2].Value.Trim();
+
+            if (value.Length >= 2 && ((value[0] == '"' && value[^1] == '"') ||
+                (value[0] == '\'' && value[^1] == '\'')))
+            {
+                value = value[1..^1];
+            }
 
             if (!KeyMap.TryGetValue(key, out var configKey))
                 continue;
