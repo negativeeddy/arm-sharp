@@ -5,63 +5,70 @@ using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ArmRipper.WebUi.Tests;
 
-public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
 {
     private readonly WebApplicationFactory<Program> _factory;
+    private readonly SqliteConnection _dbConnection;
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
     public ApiIntegrationTests(WebApplicationFactory<Program> factory)
     {
+        _dbConnection = new SqliteConnection("DataSource=:memory:");
+        _dbConnection.Open();
+
         _factory = factory.WithWebHostBuilder(builder =>
         {
             builder.ConfigureServices(services =>
             {
+                var dbDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<ArmDbContext>));
+                if (dbDescriptor != null) services.Remove(dbDescriptor);
+                services.AddDbContext<ArmDbContext>(options => options.UseSqlite(_dbConnection));
+
                 using var scope = services.BuildServiceProvider().CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
                 db.Database.EnsureCreated();
 
-                if (!db.Users.Any())
+                db.Users.Add(new User
                 {
-                    var hasher = new PasswordHasher<User>();
-                    db.Users.Add(new User
-                    {
-                        Username = "admin",
-                        PasswordHash = hasher.HashPassword(new User(), "admin"),
-                        IsAdmin = true
-                    });
-                }
+                    Username = "admin",
+                    PasswordHash = new PasswordHasher<User>().HashPassword(new User(), "admin"),
+                    IsAdmin = true
+                });
 
-                if (!db.Jobs.Any())
+                db.Jobs.Add(new Job
                 {
-                    var job = new Job
+                    Title = "Test Movie",
+                    Year = "2026",
+                    VideoType = "movie",
+                    DiscType = DiscType.Dvd,
+                    Status = JobState.Active,
+                    StartTime = DateTime.UtcNow,
+                    DevPath = "/dev/sr99",
+                    Config = new ConfigSnapshot
                     {
-                        Title = "Test Movie",
-                        Year = "2026",
-                        VideoType = "movie",
-                        DiscType = DiscType.Dvd,
-                        Status = JobState.Active,
-                        StartTime = DateTime.UtcNow,
-                        DevPath = "/dev/sr99",
-                        Config = new ConfigSnapshot
-                        {
-                            MinLength = 300,
-                            MaxLength = 9999,
-                            RipMethod = "mkv",
-                            MainFeature = true,
-                            GetAudioTitle = ""
-                        }
-                    };
-                    db.Jobs.Add(job);
-                }
+                        MinLength = 300,
+                        MaxLength = 9999,
+                        RipMethod = "mkv",
+                        MainFeature = true,
+                        GetAudioTitle = ""
+                    }
+                });
 
                 db.SaveChanges();
             });
         });
+    }
+
+    public void Dispose()
+    {
+        _dbConnection.Close();
+        _dbConnection.Dispose();
     }
 
     private int _testJobId;
