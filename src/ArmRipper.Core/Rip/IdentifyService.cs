@@ -67,6 +67,7 @@ public sealed partial class IdentifyService(
         {
             logger.LogInformation("Found disc {DevPath} mounted at {MountPoint}", job.DevPath, mountPoint);
             job.MountPoint = mountPoint;
+            await ExtractDiscLabelAsync(job, ct);
             return true;
         }
 

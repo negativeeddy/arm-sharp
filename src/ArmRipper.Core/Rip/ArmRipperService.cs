@@ -73,6 +73,13 @@ public sealed class ArmRipperService(
                     await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, ct);
                     logger.LogInformation("Ripped all titles from encrypted BD");
 
+                    if (!Directory.EnumerateFileSystemEntries(makeMkvOutPath).Any())
+                    {
+                        var msg = "MakeMKV rip produced no output files for encrypted BD";
+                        logger.LogError(msg);
+                        throw new InvalidOperationException(msg);
+                    }
+
                     if (job.Config?.NotifyRip ?? settings.Value.NotifyRip)
                     {
                         await notifications.NotifyAsync(job, NotificationService.NotifyTitle,
@@ -227,6 +234,7 @@ afterMakeMkv:
             await db.SaveChangesAsync(ct);
         }
 
+        await db.Entry(job).Collection(j => j.Tracks).LoadAsync(ct);
         await MoveFilesPostAsync(transcodeOutPath, job, ct);
 
         await ScanEmbyAsync(job, ct);

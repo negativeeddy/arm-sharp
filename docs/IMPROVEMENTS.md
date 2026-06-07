@@ -110,3 +110,12 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 - **HandBrake nvdec support** — current `arm-dependencies:1.7.3` base image compiles HandBrake without `--enable-nvdec`. The devcontainer has a custom rebuild with nvdec working, but the production Dockerfile still uses the base image's build (no hw-decoding). Need to either:
   - Fork and rebuild `arm-dependencies` with `--enable-nvdec --enable-nvdec` (requires `nv-codec-headers`), or
   - Add a multi-stage HandBrake build step to the production Dockerfile (~30+ min build time)
+
+## Disc Databases (Track Identification)
+
+- **thediscdb.com integration** — Encrypted BDs often return 0 tracks from `makemkvcon info --robot` because the scanning/parsing is slow and fragile. thediscdb.com stores disc IDs (volume label, CRC) mapped to known track layouts (main feature, chapters, durations, language streams). Adding a lookup step would let us:
+  - Skip the expensive `makemkvcon info` scan for known discs entirely.
+  - Identify the correct main feature track without guessing by filesize.
+  - Pre-populate track metadata (aspect ratio, fps, audio languages, forced subtitle flags) for smarter HandBrake args.
+  - Fall back to `makemkvcon` scanning only for discs not in the database.
+  - API is simple REST — define a `DiscDatabaseService` client with disc-id → track-list response model, cache results locally, and plug into `IdentifyService` or a new `TrackIdentifyService` between identify and rip.
