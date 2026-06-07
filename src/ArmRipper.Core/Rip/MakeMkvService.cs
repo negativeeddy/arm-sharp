@@ -14,7 +14,8 @@ public partial class MakeMkvService
     private const int UnknownDrv = 999;
     private const int MaxDevices = 16;
     private const string Source = "MakeMKV";
-    private const string BetaKeyUrl = "https://cable.ayra.ch/MakeMKV/api.php?raw";
+    private const string BetaKeyApi = "https://cable.ayra.ch/MakeMKV/api.php?json";
+    private const string BetaKeyForum = "https://forum.makemkv.com/forum/viewtopic.php?f=5&t=1053";
     private static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         ".MakeMKV", "settings.conf");
@@ -54,19 +55,20 @@ public partial class MakeMkvService
             using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
             httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 
-            // Try the API first
+            // Primary: Ayra JSON API
             try
             {
-                var key = (await httpClient.GetStringAsync(BetaKeyUrl, ct)).Trim();
+                var json = await httpClient.GetStringAsync(BetaKeyApi, ct);
+                var doc = System.Text.Json.JsonDocument.Parse(json);
+                var key = doc.RootElement.GetProperty("key").GetString();
                 if (!string.IsNullOrEmpty(key) && key.StartsWith("T-"))
                     return key;
             }
             catch { }
 
             // Fallback: scrape the MakeMKV forum
-            var html = await httpClient.GetStringAsync(
-                "https://forum.makemkv.com/forum/viewtopic.php?f=5&t=1053", ct);
-            var match = Regex.Match(html, @"<code>(T-[A-Za-z0-9@]+)</code>");
+            var html = await httpClient.GetStringAsync(BetaKeyForum, ct);
+            var match = Regex.Match(html, @"<code>(T-[A-Za-z0-9_@]+)</code>");
             if (match.Success)
                 return match.Groups[1].Value;
         }
