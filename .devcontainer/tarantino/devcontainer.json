@@ -38,5 +38,5 @@
             ]
         }
     },
-    "postCreateCommand": "dotnet restore && dotnet build"
+    "postCreateCommand": ".devcontainer/post-create.sh"
 }

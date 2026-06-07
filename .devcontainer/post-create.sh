@@ -1,11 +1,16 @@
 #!/bin/bash
 set -e
 
-echo "=== Installing opencode ==="
-curl -fsSL https://opencode.ai/install | bash
+echo "=== Installing opencode (if missing) ==="
+if ! command -v opencode >/dev/null 2>&1; then
+    echo "opencode not found — installing..."
+    curl -fsSL https://opencode.ai/install | bash
+else
+    echo "opencode already installed — skipping."
+fi
 
-echo "=== Fixing workspace permissions ==="
-sudo chown vscode:vscode /workspaces
+# echo "=== Fixing workspace permissions ==="
+# chown vscode:vscode /workspaces
 
 echo "=== Cloning original ARM Python reference ==="
 if [ ! -d "/workspaces/automatic-ripping-machine" ]; then
@@ -14,4 +19,6 @@ fi
 
 echo "=== Restoring .NET tools & building ==="
 dotnet tool restore
+dotnet restore
 dotnet build
+
