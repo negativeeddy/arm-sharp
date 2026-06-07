@@ -24,7 +24,13 @@ public sealed partial class IdentifyService(
         var mounted = await CheckMountAsync(job, ct);
 
         if (mounted)
+        {
             job.DiscType = GetDiscType(job.MountPoint!);
+        }
+        else
+        {
+            job.DiscType = await DetectDiscTypeFallbackAsync(job, ct);
+        }
 
         if (job.DiscType is DiscType.Dvd or DiscType.Bluray)
         {
@@ -102,6 +108,45 @@ public sealed partial class IdentifyService(
         {
             logger.LogDebug(ex, "Failed to extract disc label");
         }
+    }
+
+    private async Task<DiscType> DetectDiscTypeFallbackAsync(Job job, CancellationToken ct)
+    {
+        try
+        {
+            // Use sysfs to read sector count — works even on encrypted discs
+            var devName = Path.GetFileName(job.DevPath!.TrimEnd('/'));
+            var sysfsPath = $"/sys/block/{devName}/size";
+            if (!File.Exists(sysfsPath))
+                return DiscType.Unknown;
+
+            var content = await File.ReadAllTextAsync(sysfsPath, ct);
+            if (!long.TryParse(content.Trim(), out var sectors))
+                return DiscType.Unknown;
+
+            var bytes = sectors * 512L;
+
+            // BD single layer ~25GB, dual layer ~50GB; DVD max is ~8.5GB
+            if (bytes > 15_000_000_000L)
+            {
+                logger.LogInformation("Disc size {Size}GB exceeds DVD limit, identified as Blu-ray (fallback)",
+                    bytes / 1_000_000_000);
+                return DiscType.Bluray;
+            }
+
+            if (bytes > 4_000_000_000L)
+            {
+                logger.LogInformation("Disc size {Size}GB, identified as DVD (fallback)",
+                    bytes / 1_000_000_000);
+                return DiscType.Dvd;
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to detect disc type by size");
+        }
+
+        return DiscType.Unknown;
     }
 
     private async Task<string?> FindMountAsync(string devPath, CancellationToken ct)
