@@ -59,6 +59,31 @@ public sealed class ArmRipperService(
 
                 var tracks = await makeMkv.GetTrackInfoAsync(job, jobTitle, ct);
 
+                // Encrypted BDs often return 0 tracks from info; rip all titles directly
+                if (tracks.Count == 0 && job.DiscType == DiscType.Bluray)
+                {
+                    logger.LogWarning("MakeMKV returned 0 titles (encrypted BD). Falling back to rip-all.");
+                    job.Status = JobState.VideoRipping;
+                    await db.SaveChangesAsync(ct);
+
+                    if (!Directory.Exists(makeMkvOutPath))
+                        Directory.CreateDirectory(makeMkvOutPath);
+
+                    var mkvArgs = config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
+                    await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, ct);
+                    logger.LogInformation("Ripped all titles from encrypted BD");
+
+                    if (job.Config?.NotifyRip ?? settings.Value.NotifyRip)
+                    {
+                        await notifications.NotifyAsync(job, NotificationService.NotifyTitle,
+                            $"{job.Title} rip complete. Starting transcode.", ct);
+                    }
+
+                    logger.LogInformation("************* Ripping with MakeMKV completed *************");
+                    transcodeInPath = makeMkvOutPath;
+                    goto afterMakeMkv;
+                }
+
                 Track? longestTrack = null;
                 foreach (var track in tracks)
                 {
@@ -164,6 +189,7 @@ public sealed class ArmRipperService(
                 }
             }
 
+afterMakeMkv:
         if (settings.Value.TestMode && transcodeInPath is not null && Directory.Exists(transcodeInPath))
         {
             logger.LogInformation("Test mode: trimming raw MKV files to 120 seconds");
