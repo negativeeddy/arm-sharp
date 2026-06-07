@@ -115,8 +115,15 @@ public partial class MakeMkvService
         var tracks = new List<Track>();
         var minLength = job.Config?.MinLength ?? _settings.Value.MinLength;
 
-        var cmd = new[] { "makemkvcon", "--robot", "--messages=-stdout",
-            "info", "--cache=1", $"dev:{job.DevPath}", $"--minlength={minLength}" };
+        var fileName = "makemkvcon";
+        var arguments = $"--robot --messages=-stdout info dev:{job.DevPath} --minlength={minLength}";
+
+        var result = await _runner.RunAsync(fileName, arguments, timeoutMs: 300_000, ct: ct);
+        if (result.TimedOut)
+        {
+            _logger.LogWarning("makemkvcon info timed out");
+            return tracks;
+        }
 
         var currentTid = -1;
         var seconds = 0;
@@ -127,8 +134,11 @@ public partial class MakeMkvService
         var filesize = 0L;
         var streamType = 0;
 
-        await foreach (var line in _runner.RunStreamingAsync(cmd[0], string.Join(" ", cmd[1..]), ct: ct))
+        var lineCount = 0;
+        using var reader = new StringReader(result.StdOut);
+        while (await reader.ReadLineAsync(ct) is { } line)
         {
+            lineCount++;
             if (string.IsNullOrWhiteSpace(line)) continue;
             var parsed = ParseLine(line);
             if (parsed is null) continue;
@@ -148,9 +158,9 @@ public partial class MakeMkvService
                                 aspect = sinfo.Value.Trim();
                                 break;
                             case StreamId.Fps:
-                                var parts = sinfo.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                                if (parts.Length > 0)
-                                    double.TryParse(parts[0], out fps);
+                                var fpsParts = sinfo.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                                if (fpsParts.Length > 0)
+                                    double.TryParse(fpsParts[0], out fps);
                                 break;
                         }
                     }
@@ -191,27 +201,27 @@ public partial class MakeMkvService
             tracks.Add(CreateTrackObj(job, currentTid, baseName, seconds, aspect, fps, filename, chapters, filesize));
         }
 
+        _logger.LogInformation("GetTrackInfo: {Lines} lines, {Tracks} tracks, lastTid={Tid}", lineCount, tracks.Count, currentTid);
+
         return tracks;
     }
 
     public async Task RipTrackAsync(Job job, string trackNumber, string outputPath, string mkvArgs, CancellationToken ct = default)
     {
-        var options = new List<string> { "mkv" };
+        var args = $"mkv dev:{job.DevPath} {trackNumber} {outputPath}";
         if (!string.IsNullOrEmpty(mkvArgs))
-            options.AddRange(SplitArgs(mkvArgs));
-        options.AddRange(new[] { $"dev:{job.DevPath}", trackNumber, outputPath });
+            args = $"mkv {mkvArgs} dev:{job.DevPath} {trackNumber} {outputPath}";
 
-        await foreach (var _ in RunAsync<TInfo>([.. options], MakeMkvOutputType.TInfo, ct)) { }
+        await foreach (var _ in _runner.RunStreamingAsync("makemkvcon", args, ct: ct)) { }
     }
 
     public async Task RipAllTitlesAsync(Job job, string outputPath, string mkvArgs, CancellationToken ct = default)
     {
-        var options = new List<string> { "mkv" };
+        var args = $"mkv dev:{job.DevPath} all {outputPath}";
         if (!string.IsNullOrEmpty(mkvArgs))
-            options.AddRange(SplitArgs(mkvArgs));
-        options.AddRange(new[] { $"dev:{job.DevPath}", "all", outputPath });
+            args = $"mkv {mkvArgs} dev:{job.DevPath} all {outputPath}";
 
-        await foreach (var _ in RunAsync<TInfo>([.. options], MakeMkvOutputType.TInfo, ct)) { }
+        await foreach (var _ in _runner.RunStreamingAsync("makemkvcon", args, ct: ct)) { }
     }
 
     private static Track CreateTrackObj(Job job, int tid, string baseName, int seconds, string aspect, double fps, string filename, int chapters, long filesize)
@@ -281,7 +291,7 @@ public partial class MakeMkvService
         var typeStr = line[..colonIdx];
         var content = line[(colonIdx + 1)..];
 
-        if (!Enum.TryParse<MakeMkvOutputType>(typeStr, out var type))
+        if (!Enum.TryParse<MakeMkvOutputType>(typeStr, ignoreCase: true, out var type))
             return null;
 
         return type switch

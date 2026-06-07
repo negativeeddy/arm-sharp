@@ -113,6 +113,8 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 
 ## Disc Databases (Track Identification)
 
+- **`GetTrackInfoAsync` BD parser** — `makemkvcon info --robot` outputs 29 TINFO/SINFO lines correctly (confirmed manually), but the C# parser returns 0 tracks for encrypted BDs. Likely a buffering/line-splitting issue in the `process_standard_output` callback or a swallowed exception during the 30-60 second BD scan. Fixing this enables `--main-feature` single-title rip instead of the rip-all-29-titles fallback. Root cause investigation needed: the stdout output handler may buffer lines incompletely, the TInfo switch-case may fall through silently, or a timeout may cancel parsing before completion.
+
 - **thediscdb.com integration** — Encrypted BDs often return 0 tracks from `makemkvcon info --robot` because the scanning/parsing is slow and fragile. thediscdb.com stores disc IDs (volume label, CRC) mapped to known track layouts (main feature, chapters, durations, language streams). Adding a lookup step would let us:
   - Skip the expensive `makemkvcon info` scan for known discs entirely.
   - Identify the correct main feature track without guessing by filesize.

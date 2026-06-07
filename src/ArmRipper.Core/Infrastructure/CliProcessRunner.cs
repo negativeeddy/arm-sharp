@@ -15,11 +15,7 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
     {
         logger.LogDebug("Running: {FileName} {Arguments}", fileName, arguments);
 
-        var tcs = new TaskCompletionSource<CliResult>();
-        var stdout = new StringWriter();
-        var stderr = new StringWriter();
-
-        var process = new Process
+        using var process = new Process
         {
             StartInfo = new ProcessStartInfo
             {
@@ -30,42 +26,37 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
-            },
-            EnableRaisingEvents = true
+            }
         };
-
-        process.OutputDataReceived += (_, e) => stdout.WriteLine(e.Data);
-        process.ErrorDataReceived += (_, e) => stderr.WriteLine(e.Data);
-
-        process.Exited += (_, _) =>
-        {
-            tcs.TrySetResult(new CliResult(
-                process.ExitCode,
-                stdout.ToString(),
-                stderr.ToString(),
-                false));
-            process.Dispose();
-        };
-
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(timeoutMs);
 
         process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
 
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs, cts.Token));
+        var stdout = ReadAllLinesAsync(process.StandardOutput, ct);
+        var stderr = ReadAllLinesAsync(process.StandardError, ct);
 
-        if (completed != tcs.Task)
+        var exited = process.WaitForExit(timeoutMs) && !ct.IsCancellationRequested;
+
+        if (!exited)
         {
-            try { process.Kill(entireProcessTree: true); } catch { /* best effort */ }
+            try { process.Kill(entireProcessTree: true); } catch { }
             logger.LogWarning("Process timed out after {Timeout}ms: {FileName}", timeoutMs, fileName);
-            return new CliResult(-1, stdout.ToString(), stderr.ToString(), true);
+            return new CliResult(-1, string.Join("\n", await stdout), string.Join("\n", await stderr), true);
         }
 
-        var result = await tcs.Task;
+        // Wait for async readers to finish (they may lag behind process exit)
+        await Task.WhenAll(stdout, stderr);
+
+        var result = new CliResult(process.ExitCode, string.Join("\n", await stdout), string.Join("\n", await stderr), false);
         logger.LogDebug("Exit code {Code}: {FileName}", result.ExitCode, fileName);
         return result;
+    }
+
+    private static async Task<List<string>> ReadAllLinesAsync(StreamReader reader, CancellationToken ct)
+    {
+        var lines = new List<string>();
+        while (await reader.ReadLineAsync(ct) is { } line)
+            lines.Add(line);
+        return lines;
     }
 
     public async IAsyncEnumerable<string> RunStreamingAsync(

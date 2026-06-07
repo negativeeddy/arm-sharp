@@ -24,7 +24,7 @@ public class ArmSettings
 
     public string? RipMethod { get; set; } = "mkv";
     public string? MkvArgs { get; set; } = "";
-    public int MinLength { get; set; }
+    public int MinLength { get; set; } = 600;
     public int MaxLength { get; set; } = 99999;
 
     public string? HbPresetDvd { get; set; } = "Very Fast 1080p30";
