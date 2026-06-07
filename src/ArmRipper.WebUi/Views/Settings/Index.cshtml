@@ -228,6 +228,7 @@
     <div class="tab-pane fade" id="tab4" role="tabpanel">
         <h2>UI Settings</h2>
         <form method="post" action="/settings/save-ui">
+            @Html.AntiForgeryToken()
             <table class="table table-sm">
                 <tr>
                     <td><label>Theme:</label></td>
@@ -262,6 +263,7 @@
         <h2>abcde Config</h2>
         <p>Configuration for audio CD ripping via abcde. Saved to <code>/etc/arm/config/abcde.conf</code>.</p>
         <form method="post" action="/settings/save-abcde">
+            @Html.AntiForgeryToken()
             <table class="table table-sm">
                 <tr>
                     <td><label>Output Format:</label></td>
