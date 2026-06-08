@@ -82,11 +82,25 @@ public class DatabaseController(ArmDbContext db) : Controller
     }
 
     [HttpGet("import")]
-    public async Task<IActionResult> Import()
+    public IActionResult Import()
+    {
+        var completedPath = "/home/arm/media";
+        ViewBag.Path = completedPath;
+        return View();
+    }
+
+    [HttpPost("import")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportPost()
     {
         var completedPath = "/home/arm/media";
         if (!Directory.Exists(completedPath))
-            return Json(new { message = "Completed path does not exist", path = completedPath });
+        {
+            ViewBag.Path = completedPath;
+            ViewBag.Added = 0;
+            ViewBag.Errors = new List<string> { "Path does not exist" };
+            return View("Import");
+        }
 
         var dirs = Directory.GetDirectories(completedPath);
         var added = 0;
@@ -125,7 +139,10 @@ public class DatabaseController(ArmDbContext db) : Controller
         }
 
         await db.SaveChangesAsync();
-        return Json(new { added, notFound = errors });
+        ViewBag.Path = completedPath;
+        ViewBag.Added = added;
+        ViewBag.Errors = errors;
+        return View("Import");
     }
 
     [HttpPost("delete/{id}")]

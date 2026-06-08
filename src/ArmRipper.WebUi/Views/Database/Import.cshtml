@@ -1,0 +1,41 @@
+@{
+    ViewData["Title"] = "Import Movies - ARM";
+    var added = ViewBag.Added as int?;
+    var errors = ViewBag.Errors as List<string>;
+    var path = ViewBag.Path as string;
+}
+
+<h1>Scan Completed Path</h1>
+
+<p>Import movies from the completed path into the database. The scanner looks for directories matching <code>Title (Year)</code> format.</p>
+
+@if (added.HasValue)
+{
+    <div class="alert alert-success">Imported <strong>@added</strong> movies.</div>
+    if (errors is { Count: > 0 })
+    {
+        <div class="alert alert-warning">
+            <strong>@errors.Count</strong> directories didn't match the expected format:
+            <ul class="mb-0 mt-1">
+                @foreach (var err in errors)
+                {
+                    <li><code>@err</code></li>
+                }
+            </ul>
+        </div>
+    }
+    <a href="/database" class="btn btn-primary">Back to Database</a>
+}
+else
+{
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Scan Path</h5>
+            <p class="card-text">Scan <code>@path</code> for completed movie directories.</p>
+            <form method="post" action="/database/import">
+                <button type="submit" class="btn btn-primary">Scan and Import</button>
+                <a href="/database" class="btn btn-outline-secondary">Cancel</a>
+            </form>
+        </div>
+    </div>
+}
