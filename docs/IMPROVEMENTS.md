@@ -19,22 +19,21 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 ## UI / User Experience
 
 - Currently uses SimpleCSS from CDN with no JS framework. ARM uses Bootstrap 4 + jQuery + tablesorter. Should bundle or vendor these for offline/reduced-network operation.
-- **Pipeline visualization** — show the full rip pipeline in the WebUI (mount → identify → MakeMKV rip → HandBrake transcode → file move → cleanup) with per-stage status indicators (pending, active, success, failure). Each job's detail page should render a pipeline view so users can see at a glance which stage succeeded or failed.
+- **Pipeline visualization** — show the full rip pipeline in the WebUI (mount → identify → MakeMKV rip → HandBrake transcode → file move → cleanup) with per-stage status indicators (pending, active, success, failure). Each job's detail page should render a pipeline view so users can see at a glance which stage succeeded or failed. Specifics: left-to-right node graph showing completed/current/future stages, with current stage % progress and start/end times for each stage.
 - **Restart from last successful stage** — add a "retry from failure" action that resumes the pipeline at the last failed stage instead of restarting from scratch. Requires each stage to checkpoint its completion state in the DB (e.g. a `Stages` table or bitfield on `Job`).
-- Log viewer polls every 2s with no backoff or error handling on disconnect. Use SignalR for live log streaming instead of polling.
+- Log viewer polls every 2s with no backoff or error handling on disconnect. Use SignalR for live log streaming instead of polling. Also: tail logs view should auto-scroll to end on load.
 - Dark mode exists (`arm.toggleDarkMode` + CSS class) but visual polish incomplete — some elements (tables, cards, nav) don't fully invert or remain unreadable.
 - Nav has no active-tab highlighting.
-- No favicon or branding assets.
+- No favicon or branding assets. ARM .NET Port needs proper name, link to GitHub repo, and eventually commit ID/version displayed in the UI.
 - Error pages are plain ASP.NET Core default — should add custom error views.
 - ~~No dark mode. ARM has one.~~ ✅ Implemented via CSS class toggle + localStorage.
+- **Link log files** — everywhere a log file path is displayed, make it a clickable link to view/download the log.
+- **Job status timestamps** — show both "job start time" and "current stage start time" on job detail page.
+- **Notifications "mark all read"** — add a button to mark all notifications as read.
+- **Settings tooltips** — all settings on the settings page should have an (i) indicator for tooltip/popup descriptions of the field.
+- **Progress bar in WebUI** — MakeMKV outputs `PRGV:title,current,total` progress lines during rip. The C# `RunStreamingAsync` already yields these lines — pipe them via SignalR so users see a % progress bar in the UI.
 
 ### Polish Items (not yet started)
-
-- **SignalR toast notifications** — when a `Notification` arrives via SignalR, show a Bootstrap toast popup in the corner instead of just updating the badge count.
-- **Dark mode polish** — verify all Bootstrap components invert correctly: `.table-striped`, `.card`, `.modal`, `.form-control`, `.btn-outline-*`. Some may need custom CSS overrides.
-- **Responsive fixes** — test on 1024px and 320px widths. The stats cards row on Home may wrap poorly. The TitleSearch inline form may overflow its cell.
-- **Error handling UX** — when `fetch()` API calls fail (network errors, 500s), show a dismissible alert or toast instead of silently failing. Currently most `fetch()` calls have empty `.catch(function () {})`.
-- **Active nav highlighting** — add JS or server-side logic to set `.active` on the nav item matching the current route.
 
 ## SignalR
 
@@ -46,6 +45,8 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 
 ## Pages / Views
 
+- **Title search** — add title search similar to the Python ARM's search functionality.
+- **Redesign Identification section** — improve the layout of the Identification section on the Job detail page.
 - **DVD/Blu-ray detection workflow** — the Settings page has a "Detect Disc" / "Scan Drives" button but the actual udev-based monitoring workflow from the original ARM isn't replicated. Should add a "Start Monitoring" action that runs the Conductor/IdentifyService loop.
 - **Logs viewer page** (`/logs`) — currently lists log files with download/view links. Consider adding inline log viewer with search, follow-tail, and SignalR live streaming.
 - **Active Rips page** (`/jobs/activerips`) — separate page from the Home dashboard active-rips table. Currently just lists all active jobs. Could add batch actions (abandon all, retry all).

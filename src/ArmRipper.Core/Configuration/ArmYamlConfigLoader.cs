@@ -57,6 +57,7 @@ public static partial class ArmYamlConfigLoader
         ["MAX_CONCURRENT_TRANSCODES"] = "Arm:MaxConcurrentTranscodes",
         ["MAX_CONCURRENT_MAKEMKVINFO"] = "Arm:MaxConcurrentMakemkvInfo",
         ["MAKEMKV_PERMA_KEY"] = "Arm:MakeMkvPermaKey",
+        ["DISABLE_LOGIN"] = "Arm:DisableLogin",
     };
 
     private static readonly Regex YamlLineRegex = YamlLineRegexFactory();

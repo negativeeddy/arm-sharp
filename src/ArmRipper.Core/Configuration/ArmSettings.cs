@@ -67,4 +67,5 @@ public class ArmSettings
 
     public string? MakeMkvPermaKey { get; set; }
     public bool TestMode { get; set; }
+    public bool DisableLogin { get; set; }
 }
