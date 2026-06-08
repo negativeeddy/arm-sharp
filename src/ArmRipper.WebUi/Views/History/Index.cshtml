@@ -65,7 +65,10 @@ else
 @section Scripts {
 <script>
     $(function () {
-        $('.tablesorter').tablesorter();
+        $('.tablesorter').tablesorter({
+            sortList: [[0,1]],
+            headers: { 0: { sorter: 'digit' } }
+        });
     });
 </script>
 }

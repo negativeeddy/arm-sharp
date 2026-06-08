@@ -21,7 +21,7 @@ public class HistoryController(ArmDbContext db) : Controller
         page = Math.Clamp(page, 1, totalPages);
 
         var jobs = await query
-            .OrderByDescending(j => j.StartTime)
+            .OrderByDescending(j => j.Id)
             .Skip((page - 1) * PageSize)
             .Take(PageSize)
             .ToListAsync();
