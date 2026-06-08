@@ -5,6 +5,13 @@
 
 <h1>Notifications</h1>
 
+@if (Model.Any(n => !n.Read))
+{
+    <form method="post" action="/notifications/markallread" class="mb-3">
+        <button type="submit" class="btn btn-outline-danger btn-sm">Mark All Read</button>
+    </form>
+}
+
 @if (!Model.Any())
 {
     <div class="alert alert-info">No notifications.</div>

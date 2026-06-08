@@ -39,4 +39,14 @@ public class NotificationsController(ArmDbContext db) : Controller
 
         return RedirectToAction("Index");
     }
+
+    [HttpPost("markallread")]
+    public async Task<IActionResult> MarkAllRead()
+    {
+        await db.Notifications
+            .Where(n => !n.Read)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(n => n.Read, true));
+
+        return RedirectToAction("Index");
+    }
 }
