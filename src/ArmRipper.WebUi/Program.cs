@@ -74,7 +74,7 @@ if (armSettings.DisableLogin)
     });
 }
 
-app.UseStatusCodePagesWithReExecute("/home/error", "?code={0}");
+app.UseStatusCodePagesWithReExecute("/error", "?code={0}");
 app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthentication();

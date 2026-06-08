@@ -8,6 +8,8 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
+using ArmRipper.Core.Configuration;
+
 namespace ArmRipper.WebUi.Tests;
 
 public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
@@ -22,8 +24,12 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
 
         _factory = factory.WithWebHostBuilder(builder =>
         {
+            var webUiDir = Path.GetFullPath(Path.Combine(
+                AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "ArmRipper.WebUi"));
+            builder.UseContentRoot(webUiDir);
             builder.ConfigureServices(services =>
             {
+                services.PostConfigure<ArmSettings>(a => a.DisableLogin = false);
                 var dbDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<ArmDbContext>));
                 if (dbDescriptor != null) services.Remove(dbDescriptor);
                 services.AddDbContext<ArmDbContext>(options => options.UseSqlite(_dbConnection));

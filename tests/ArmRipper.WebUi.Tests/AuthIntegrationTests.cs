@@ -8,33 +8,13 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace ArmRipper.WebUi.Tests;
 
-public class AuthIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+public class AuthIntegrationTests : IClassFixture<CustomWebApplicationFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly CustomWebApplicationFactory _factory;
 
-    public AuthIntegrationTests(WebApplicationFactory<Program> factory)
+    public AuthIntegrationTests(CustomWebApplicationFactory factory)
     {
-        _factory = factory.WithWebHostBuilder(builder =>
-        {
-            builder.ConfigureServices(services =>
-            {
-                using var scope = services.BuildServiceProvider().CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-                db.Database.EnsureCreated();
-
-                if (!db.Users.Any())
-                {
-                    var hasher = new PasswordHasher<User>();
-                    db.Users.Add(new User
-                    {
-                        Username = "admin",
-                        PasswordHash = hasher.HashPassword(new User(), "admin"),
-                        IsAdmin = true
-                    });
-                    db.SaveChanges();
-                }
-            });
-        });
+        _factory = factory;
     }
 
     [Fact]
@@ -101,7 +81,7 @@ public class AuthIntegrationTests : IClassFixture<WebApplicationFactory<Program>
             { "password", "admin" }
         }));
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -120,8 +100,7 @@ public class AuthIntegrationTests : IClassFixture<WebApplicationFactory<Program>
             @"<input[^>]*name=""__RequestVerificationToken""[^>]*value=""([^""]+)""");
         var token = match.Success ? match.Groups[1].Value : "";
 
-        var cookieHeader = page.Headers.GetValues("Set-Cookie")
-            .FirstOrDefault(c => c.Contains(".AspNetCore.Antiforgery", StringComparison.OrdinalIgnoreCase)) ?? "";
+        var cookieHeader = "";
         return (token, cookieHeader);
     }
 

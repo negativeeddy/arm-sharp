@@ -202,9 +202,11 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner) : Control
     }
 
     [AllowAnonymous]
-    [HttpGet("error")]
-    public IActionResult Error(string message)
+    [AcceptVerbs("GET", "POST"), Route("error")]
+    public IActionResult Error(string message, [FromQuery] int? code = null)
     {
+        if (code.HasValue)
+            Response.StatusCode = code.Value;
         ViewBag.Error = message;
         return View();
     }
