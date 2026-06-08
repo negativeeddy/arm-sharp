@@ -1,0 +1,42 @@
+@model ArmRipper.Core.Models.Job
+
+@{
+    var pipelineStages = new[]
+    {
+        ("setup", "Setup", true, Model.Status != JobState.Active),
+        ("identify", "Identify", Model.Status is JobState.Active or JobState.VideoInfo, Model.Status is not JobState.Active and not JobState.VideoInfo),
+        ("rip", "Rip", Model.Status is JobState.VideoRipping, Model.Status is JobState.TranscodeActive or JobState.Success or JobState.Failure),
+        ("transcode", "Transcode", Model.Status is JobState.TranscodeActive, Model.Status is JobState.Success or JobState.Failure),
+        ("done", "Done", false, Model.Status is JobState.Success or JobState.Failure),
+    };
+}
+
+<div class="d-flex justify-content-between align-items-center">
+    @foreach (var (name, label, active, done) in pipelineStages)
+    {
+        var cls = done ? "bg-success text-white" : active ? "bg-primary text-white" : "bg-light text-muted";
+        <div class="text-center flex-fill mx-1" style="min-width:0;">
+            <div class="rounded py-1 px-1 small @cls text-nowrap">@label</div>
+            @if (active && Model.MakeMkvProgress.HasValue && name == "rip")
+            {
+                <div class="progress mt-1" style="height:4px;">
+                    <div class="progress-bar" role="progressbar"
+                         style="width:@(Model.MakeMkvProgress)%" aria-valuenow="@Model.MakeMkvProgress" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+            }
+        </div>
+        @if (name != "done")
+        {
+            <div class="text-muted flex-shrink-0" style="width:12px;text-align:center;">&rarr;</div>
+        }
+    }
+</div>
+@if (Model.MakeMkvProgress.HasValue)
+{
+    <div class="progress mt-2" style="height:6px;">
+        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
+             style="width:@(Model.MakeMkvProgress)%" aria-valuenow="@Model.MakeMkvProgress" aria-valuemin="0" aria-valuemax="100">
+            @Model.MakeMkvProgress%
+        </div>
+    </div>
+}
