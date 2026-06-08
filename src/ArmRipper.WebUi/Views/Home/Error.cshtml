@@ -1,9 +1,31 @@
 @{
-    ViewData["Title"] = "Error - ARM";
+    var code = (string?)Context.Request.Query["code"];
+    var heading = code switch
+    {
+        "404" => "Page Not Found",
+        "403" => "Forbidden",
+        "500" => "Server Error",
+        _ => "Error"
+    };
+    var message = code switch
+    {
+        "404" => "The page you requested does not exist.",
+        "403" => "You don't have permission to access this page.",
+        "500" => "Something went wrong on our end.",
+        _ => ViewBag.Error ?? "An unexpected error occurred."
+    };
+    ViewData["Title"] = string.IsNullOrEmpty(code) ? "Error - ARM" : $"Error {code} - ARM";
 }
 
-<div class="alert alert-danger" role="alert">
-    <h4 class="alert-heading">Error</h4>
-    <p class="mb-0">@ViewBag.Error</p>
+<div class="alert alert-@(code == "404" ? "warning" : "danger")" role="alert">
+    @if (!string.IsNullOrEmpty(code))
+    {
+        <h1 class="display-4">@code</h1>
+    }
+    <h4 class="alert-heading">@heading</h4>
+    <p class="mb-0">@message</p>
 </div>
-<a href="/" class="btn btn-outline-primary">&larr; Back to Home</a>
+@if (!string.IsNullOrEmpty(code))
+{
+    <a href="/" class="btn btn-outline-primary">&larr; Back to Home</a>
+}

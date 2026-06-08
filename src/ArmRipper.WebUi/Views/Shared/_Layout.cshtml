@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] — ARM</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='28' fill='%23444' stroke='%2300a8ff' stroke-width='3'/><circle cx='32' cy='32' r='12' fill='%2300a8ff' opacity='.35'/><circle cx='32' cy='18' r='3' fill='%23fff' opacity='.5'/></svg>">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css"
           integrity="sha384-xOolHFLEh07PJGoPkLv1IbcEPTNtaed2xpHsD9ESMhqIYd0nLMwNLD69Npy4HI+N"
           crossorigin="anonymous" />
@@ -18,16 +19,20 @@
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navMain">
+            @{
+                var path = Context.Request.Path.Value?.Trim('/')?.ToLowerInvariant() ?? "";
+                var activeClass = (string href) => path.StartsWith(href.Trim('/').ToLowerInvariant()) ? "active" : "";
+            }
             <ul class="navbar-nav mr-auto">
-                <li class="nav-item"><a class="nav-link" href="/">Home</a></li>
-                <li class="nav-item"><a class="nav-link" href="/jobs/activerips">Active Rips</a></li>
-                <li class="nav-item"><a class="nav-link" href="/jobs/titlesearch">Search</a></li>
-                <li class="nav-item"><a class="nav-link" href="/history">History</a></li>
-                <li class="nav-item"><a class="nav-link" href="/database">Database</a></li>
-                <li class="nav-item"><a class="nav-link" href="/logs">Logs</a></li>
-                <li class="nav-item"><a class="nav-link" href="/settings">Settings</a></li>
+                <li class="nav-item"><a class="nav-link @activeClass("/")" href="/">Home</a></li>
+                <li class="nav-item"><a class="nav-link @activeClass("/jobs")" href="/jobs/activerips">Active Rips</a></li>
+                <li class="nav-item"><a class="nav-link @activeClass("/jobs/titlesearch")" href="/jobs/titlesearch">Search</a></li>
+                <li class="nav-item"><a class="nav-link @activeClass("/history")" href="/history">History</a></li>
+                <li class="nav-item"><a class="nav-link @activeClass("/database")" href="/database">Database</a></li>
+                <li class="nav-item"><a class="nav-link @activeClass("/logs")" href="/logs">Logs</a></li>
+                <li class="nav-item"><a class="nav-link @activeClass("/settings")" href="/settings">Settings</a></li>
                 <li class="nav-item">
-                    <a class="nav-link" href="/notifications">
+                    <a class="nav-link @activeClass("/notifications")" href="/notifications">
                         Notifications
                         <span id="notifBadge" class="badge badge-pill badge-danger badge-notif" style="display:none;">0</span>
                     </a>
