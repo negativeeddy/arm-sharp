@@ -47,7 +47,8 @@ public sealed partial class FfmpegService(
 
             try
             {
-                await RunTranscodeAsync(file, outFile, job, ct);
+                var totalSec = track?.Length is int l && l > 0 ? l : (int?)null;
+                await RunTranscodeAsync(file, outFile, job, totalSec, progress, ct);
                 logger.LogInformation("FFmpeg call successful");
                 track ??= new Track
                 {
@@ -109,7 +110,8 @@ public sealed partial class FfmpegService(
         try
         {
             EnsureDirectory(outputPath);
-            await RunTranscodeAsync(rawPath, outputFile, job, ct);
+            var totalSec = track.Length is int l && l > 0 ? l : (int?)null;
+            await RunTranscodeAsync(rawPath, outputFile, job, totalSec, progress, ct);
             logger.LogInformation("FFmpeg call successful");
             track.Ripped = true;
             track.Status = "success";
@@ -169,7 +171,8 @@ public sealed partial class FfmpegService(
 
             try
             {
-                await RunTranscodeAsync(rawPath, outFilePath, job, ct);
+                var totalSec = track.Length is int l && l > 0 ? l : (int?)null;
+                await RunTranscodeAsync(rawPath, outFilePath, job, totalSec, progress, ct);
                 track.Status = "success";
             }
             catch (Exception ex)
@@ -208,17 +211,22 @@ public sealed partial class FfmpegService(
         logger.LogInformation("Exiting sleep check of ffmpeg");
     }
 
-    private async Task RunTranscodeAsync(string inputFile, string outputFile, Job job, CancellationToken ct)
+    private async Task RunTranscodeAsync(string inputFile, string outputFile, Job job, int? totalSeconds, IProgress<int>? progress, CancellationToken ct)
     {
         var (ffPreArgs, ffPostArgs) = GetFfSettings(job);
 
         var cmd = $"ffmpeg {ffPreArgs} -i \"{inputFile}\" {ffPostArgs} \"{outputFile}\"";
         logger.LogDebug("FFmpeg command: {Command}", cmd);
 
-        var result = await runner.RunAsync("bash", $"-c \"{cmd.Replace("\"", "\\\"")}\"", timeoutMs: 7200_000, ct: ct);
-
-        if (result.ExitCode != 0)
-            throw new InvalidOperationException($"FFmpeg failed with code {result.ExitCode}: {result.StdErr}");
+        await foreach (var (line, isStdErr) in runner.RunStreamingAllAsync("bash", $"-c \"{cmd.Replace("\"", "\\\"")}\"", ct: ct))
+        {
+            if (isStdErr && progress is not null && totalSeconds.HasValue)
+            {
+                var pct = ParseFfProgress(line, totalSeconds.Value);
+                if (pct.HasValue)
+                    progress.Report(pct.Value);
+            }
+        }
     }
 
     private (string preArgs, string postArgs) GetFfSettings(Job job)
@@ -230,6 +238,23 @@ public sealed partial class FfmpegService(
         }
 
         return ("", "");
+    }
+
+    [GeneratedRegex(@"time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})")]
+    private static partial Regex FfTimeRegex();
+
+    private static int? ParseFfProgress(string line, int totalSeconds)
+    {
+        var match = FfTimeRegex().Match(line);
+        if (!match.Success) return null;
+
+        var h = int.Parse(match.Groups[1].ValueSpan);
+        var m = int.Parse(match.Groups[2].ValueSpan);
+        var s = int.Parse(match.Groups[3].ValueSpan);
+        var elapsed = h * 3600 + m * 60 + s;
+        if (totalSeconds <= 0) return null;
+
+        return (int)Math.Clamp(elapsed * 100.0 / totalSeconds, 0, 100);
     }
 
     private async Task GetTrackInfoAsync(string sourcePath, Job job, CancellationToken ct)
