@@ -54,7 +54,7 @@ public sealed class ArmRipperService(
 
                 var mkvArgs = job.Config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
                 var minLength = job.Config?.MinLength ?? settings.Value.MinLength;
-                await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, minLength, ct);
+                await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, minLength, MkvProgress(job, ct), ct);
                 logger.LogInformation("Ripped track 0 in test mode");
 
                 transcodeInPath = makeMkvOutPath;
@@ -80,7 +80,7 @@ public sealed class ArmRipperService(
                         Directory.CreateDirectory(makeMkvOutPath);
 
                     var mkvArgs = config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
-                        await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLength, ct);
+                        await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLength, MkvProgress(job, ct), ct);
                     logger.LogInformation("Ripped all titles from encrypted BD");
 
                     if (!Directory.EnumerateFileSystemEntries(makeMkvOutPath).Any())
@@ -131,33 +131,34 @@ public sealed class ArmRipperService(
                     var mkvArgs = config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
                     var ripCount = 0;
 
+                    var mkvProgress = MkvProgress(job, ct);
                     if (settings.Value.TestMode)
                     {
                         var firstTrack = eligibleTracks.FirstOrDefault();
                         if (firstTrack is not null)
-                            await makeMkv.RipTrackAsync(job, firstTrack.TrackNumber!, makeMkvOutPath, mkvArgs, minLength, ct);
+                            await makeMkv.RipTrackAsync(job, firstTrack.TrackNumber!, makeMkvOutPath, mkvArgs, minLength, mkvProgress, ct);
                         else
-                            await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, minLength, ct);
+                            await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, minLength, mkvProgress, ct);
                     }
                     else if (config?.MainFeature ?? settings.Value.MainFeature)
                     {
                         var main = tracks.FirstOrDefault(t => t.MainFeature);
                         if (main is not null)
                         {
-                            await makeMkv.RipTrackAsync(job, main.TrackNumber!, makeMkvOutPath, mkvArgs, minLength, ct);
+                            await makeMkv.RipTrackAsync(job, main.TrackNumber!, makeMkvOutPath, mkvArgs, minLength, mkvProgress, ct);
                             ripCount = 1;
                         }
                     }
                     else if (maxLength > 99998)
                     {
-                    await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLength, ct);
+                    await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLength, mkvProgress, ct);
                         ripCount = eligibleTracks.Count;
                     }
                     else
                     {
                         foreach (var track in eligibleTracks)
                         {
-                            await makeMkv.RipTrackAsync(job, track.TrackNumber!, makeMkvOutPath, mkvArgs, minLength, ct);
+                            await makeMkv.RipTrackAsync(job, track.TrackNumber!, makeMkvOutPath, mkvArgs, minLength, mkvProgress, ct);
                             ripCount++;
                         }
                     }
@@ -317,6 +318,13 @@ afterMakeMkv:
             await db.SaveChangesAsync(ct);
         }
     }
+
+    private IProgress<int> MkvProgress(Job job, CancellationToken ct) =>
+        new Progress<int>(async pct =>
+        {
+            job.MakeMkvProgress = pct;
+            await db.SaveChangesAsync(ct);
+        });
 
     private async Task NotifyExitAsync(Job job, CancellationToken ct)
     {

@@ -47,6 +47,7 @@ public class ArmDbContext : DbContext
             entity.Property(e => e.PosterUrlManual).HasMaxLength(256);
             entity.Property(e => e.DevPath).HasMaxLength(15);
             entity.Property(e => e.DiscFingerprint).HasMaxLength(128);
+            entity.Property(e => e.MakeMkvProgress);
             entity.Property(e => e.MountPoint).HasMaxLength(20);
             entity.Property(e => e.Label).HasMaxLength(256);
             entity.Property(e => e.Path).HasMaxLength(256);

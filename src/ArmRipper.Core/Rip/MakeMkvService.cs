@@ -373,22 +373,42 @@ public partial class MakeMkvService
         public bool Forced { get; set; }
     }
 
-    public async Task RipTrackAsync(Job job, string trackNumber, string outputPath, string mkvArgs, int minLength, CancellationToken ct = default)
+    public async Task RipTrackAsync(Job job, string trackNumber, string outputPath, string mkvArgs, int minLength, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         var args = $"mkv --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
         if (!string.IsNullOrEmpty(mkvArgs))
             args = $"mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
 
-        await foreach (var _ in _runner.RunStreamingAsync("makemkvcon", args, ct: ct)) { }
+        await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
+            ParseAndReportProgress(line, progress);
     }
 
-    public async Task RipAllTitlesAsync(Job job, string outputPath, string mkvArgs, int minLength, CancellationToken ct = default)
+    public async Task RipAllTitlesAsync(Job job, string outputPath, string mkvArgs, int minLength, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         var args = $"mkv --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
         if (!string.IsNullOrEmpty(mkvArgs))
             args = $"mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
 
-        await foreach (var _ in _runner.RunStreamingAsync("makemkvcon", args, ct: ct)) { }
+        await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
+            ParseAndReportProgress(line, progress);
+    }
+
+    private void ParseAndReportProgress(string line, IProgress<int>? progress)
+    {
+        if (progress is null) return;
+
+        var parsed = ParseLine(line);
+        if (parsed is null) return;
+
+        var pct = parsed.Type switch
+        {
+            MakeMkvOutputType.PrgC when parsed.Data is PrgC pc => (int)(pc.CurrentProgress * 100.0 / pc.TotalProgress),
+            MakeMkvOutputType.PrgV when parsed.Data is PrgV pv => (int)(pv.CurrentProgress * 100.0 / pv.TotalProgress),
+            _ => (int?)null
+        };
+
+        if (pct.HasValue)
+            progress.Report(pct.Value);
     }
 
     private static Track CreateTrackObj(Job job, int tid, string baseName, int seconds, string aspect, double fps, string filename, int chapters, long filesize)
@@ -469,6 +489,9 @@ public partial class MakeMkvService
             MakeMkvOutputType.CinFo => ParseCInfo(content),
             MakeMkvOutputType.TInfo => ParseTInfo(content),
             MakeMkvOutputType.SinFo => ParseSInfo(content),
+            MakeMkvOutputType.PrgV => ParsePrgV(content),
+            MakeMkvOutputType.PrgC => ParsePrgC(content),
+            MakeMkvOutputType.PrgT => ParsePrgT(content),
             _ => null
         };
     }
@@ -529,6 +552,27 @@ public partial class MakeMkvService
         var parts = SplitCsv(content);
         return new ParsedLine(MakeMkvOutputType.SinFo,
             new SinFo(int.Parse(parts[0]), int.Parse(parts[1]), int.Parse(parts[2]), int.Parse(parts[3]), parts[4]));
+    }
+
+    private static ParsedLine ParsePrgV(string content)
+    {
+        var parts = content.Split(',');
+        var ct = int.Parse(parts[0]);
+        var tt = int.Parse(parts[1]);
+        var cp = int.Parse(parts[2]);
+        var tp = int.Parse(parts[3]);
+        return new ParsedLine(MakeMkvOutputType.PrgV, new PrgV(ct, tt, cp, tp));
+    }
+
+    private static ParsedLine ParsePrgC(string content)
+    {
+        var parts = content.Split(',');
+        return new ParsedLine(MakeMkvOutputType.PrgC, new PrgC(int.Parse(parts[0]), int.Parse(parts[1])));
+    }
+
+    private static ParsedLine ParsePrgT(string content)
+    {
+        return new ParsedLine(MakeMkvOutputType.PrgT, new PrgT(int.Parse(content)));
     }
 
     private static string[] SplitCsv(string input)

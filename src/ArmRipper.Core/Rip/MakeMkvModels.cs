@@ -111,3 +111,7 @@ public record DriveInfo(int Index, bool Visible, bool Enabled, int Flags, string
     public bool MediaDvd { get; init; }
     public bool MediaBd { get; init; }
 }
+
+public record PrgV(int CurrentTitle, int TotalTitles, int CurrentProgress, int TotalProgress);
+public record PrgC(int CurrentProgress, int TotalProgress);
+public record PrgT(int TotalProgress);

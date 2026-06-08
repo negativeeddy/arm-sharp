@@ -18,6 +18,18 @@
                 <dd class="col-sm-9">@Model.DiscType</dd>
                 <dt class="col-sm-3">Status</dt>
                 <dd class="col-sm-9">@Model.Status</dd>
+                @if (Model.MakeMkvProgress.HasValue)
+                {
+                    <dt class="col-sm-3">Rip Progress</dt>
+                    <dd class="col-sm-9">
+                        <div class="progress" style="height:20px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
+                                 style="width:@(Model.MakeMkvProgress)%" aria-valuenow="@Model.MakeMkvProgress" aria-valuemin="0" aria-valuemax="100">
+                                @Model.MakeMkvProgress%
+                            </div>
+                        </div>
+                    </dd>
+                }
                 <dt class="col-sm-3">Stage</dt>
                 <dd class="col-sm-9">@(Model.Stage ?? "—")</dd>
                 <dt class="col-sm-3">Started</dt>
@@ -39,6 +51,18 @@
                 <dd class="col-sm-10">@Model.DiscType</dd>
                 <dt class="col-sm-2">Status</dt>
                 <dd class="col-sm-10">@Model.Status</dd>
+                @if (Model.MakeMkvProgress.HasValue)
+                {
+                    <dt class="col-sm-2">Rip Progress</dt>
+                    <dd class="col-sm-10">
+                        <div class="progress" style="height:20px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
+                                 style="width:@(Model.MakeMkvProgress)%" aria-valuenow="@Model.MakeMkvProgress" aria-valuemin="0" aria-valuemax="100">
+                                @Model.MakeMkvProgress%
+                            </div>
+                        </div>
+                    </dd>
+                }
                 <dt class="col-sm-2">Stage</dt>
                 <dd class="col-sm-10">@(Model.Stage ?? "—")</dd>
                 <dt class="col-sm-2">Started</dt>
@@ -386,4 +410,11 @@ else
             <pre class="mb-0 small">@Model.Errors</pre>
         </div>
     </div>
+}
+
+@if (Model.Status is not JobState.Success and not JobState.Failure)
+{
+    <script>
+        setTimeout(() => location.reload(), 5000);
+    </script>
 }
