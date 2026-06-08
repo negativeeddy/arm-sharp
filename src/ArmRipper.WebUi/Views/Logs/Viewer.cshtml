@@ -4,7 +4,7 @@
     var mode = ViewBag.Mode as string ?? "full";
 }
 
-<h4>Loading log: <code>@file</code> ...</h4>
+<h4>Log: <code>@file</code></h4>
 
 <div class="card">
     <div class="card-body p-0">
@@ -15,23 +15,30 @@
 @section Scripts {
 <script>
     const output = document.getElementById('log-content');
-    const readerMode = '@(mode == "tail" ? "full" : mode)';
+    const connection = new signalR.HubConnectionBuilder()
+        .withUrl('/hubs/notifications')
+        .withAutomaticReconnect()
+        .build();
 
-    async function fetchLog() {
-        try {
-            const response = await fetch('/logs/reader?file=@file&mode=' + readerMode);
-            const text = await response.text();
-            output.textContent = text;
-            @if (mode == "tail")
-            {
-                <text>window.scrollTo(0, document.body.scrollHeight);</text>
-            }
-        } catch (err) {
-            output.textContent = 'Error loading log: ' + err.message;
-        }
-    }
-
-    fetchLog();
-    setInterval(fetchLog, 2000);
+    connection.start()
+        .then(() => {
+            connection.stream('StreamLog', '@file', '@mode')
+                .subscribe({
+                    next: (data) => {
+                        output.textContent += data;
+                        @if (mode == "tail")
+                        {
+                            <text>window.scrollTo(0, document.body.scrollHeight);</text>
+                        }
+                    },
+                    complete: () => {},
+                    error: (err) => {
+                        output.textContent = 'Error loading log: ' + err.message;
+                    }
+                });
+        })
+        .catch(err => {
+            output.textContent = 'Connection error: ' + err.message;
+        });
 </script>
 }
