@@ -205,20 +205,38 @@
 
     <!-- Ripper Settings -->
     <div class="tab-pane fade" id="tab3" role="tabpanel">
+        @{
+            var tips = new Dictionary<string, string>
+            {
+                ["RipMethod"] = "Which program to use: mkv (MakeMKV), backup, or abcde",
+                ["MkvArgs"] = "Extra arguments passed to makemkvcon (e.g. --decrypt)",
+                ["MinLength"] = "Shortest track length in seconds to include",
+                ["MaxLength"] = "Longest track length in seconds (99999 = no limit)",
+                ["MainFeature"] = "Rip only the main feature (longest track)",
+                ["SkipTranscode"] = "Skip video transcoding; keep raw MakeMKV output",
+                ["UseFfmpeg"] = "Use FFmpeg instead of HandBrake for transcoding",
+                ["AutoEject"] = "Automatically eject disc after processing",
+                ["HbPresetDvd"] = "HandBrake preset name for DVD encodes",
+                ["HbPresetBd"] = "HandBrake preset name for Blu-ray encodes",
+                ["DestExt"] = "Output file extension (mp4, mkv, etc.)",
+            };
+            static string tip(string key, Dictionary<string, string> tips) =>
+                $"<span class=\"text-info ml-1\" data-toggle=\"tooltip\" title=\"{tips[key]}\" style=\"cursor:help\">&#9432;</span>";
+        }
         <h2>Ripper Settings</h2>
         <form method="post" action="/settings/save-ripper">
             <table class="table table-sm">
-                <tr><td><label>Rip Method:</label></td><td><input type="text" name="RipMethod" value="@armSettings?.RipMethod" class="form-control" /></td></tr>
-                <tr><td><label>MKV Args:</label></td><td><input type="text" name="MkvArgs" value="@armSettings?.MkvArgs" class="form-control" /></td></tr>
-                <tr><td><label>Min Length:</label></td><td><input type="number" name="MinLength" value="@armSettings?.MinLength" class="form-control" /></td></tr>
-                <tr><td><label>Max Length:</label></td><td><input type="number" name="MaxLength" value="@armSettings?.MaxLength" class="form-control" /></td></tr>
-                <tr><td><label>Main Feature:</label></td><td><input type="checkbox" name="MainFeature" value="true" checked="@armSettings?.MainFeature" /></td></tr>
-                <tr><td><label>Skip Transcode:</label></td><td><input type="checkbox" name="SkipTranscode" value="true" checked="@armSettings?.SkipTranscode" /></td></tr>
-                <tr><td><label>Use FFmpeg:</label></td><td><input type="checkbox" name="UseFfmpeg" value="true" checked="@armSettings?.UseFfmpeg" /></td></tr>
-                <tr><td><label>Auto Eject:</label></td><td><input type="checkbox" name="AutoEject" value="true" checked="@armSettings?.AutoEject" /></td></tr>
-                <tr><td><label>HB Preset DVD:</label></td><td><input type="text" name="HbPresetDvd" value="@armSettings?.HbPresetDvd" class="form-control" /></td></tr>
-                <tr><td><label>HB Preset BD:</label></td><td><input type="text" name="HbPresetBd" value="@armSettings?.HbPresetBd" class="form-control" /></td></tr>
-                <tr><td><label>Dest Ext:</label></td><td><input type="text" name="DestExt" value="@armSettings?.DestExt" class="form-control" /></td></tr>
+                <tr><td class="w-25"><label>Rip Method:</label>@Html.Raw(tip("RipMethod", tips))</td><td><input type="text" name="RipMethod" value="@armSettings?.RipMethod" class="form-control" /></td></tr>
+                <tr><td><label>MKV Args:</label>@Html.Raw(tip("MkvArgs", tips))</td><td><input type="text" name="MkvArgs" value="@armSettings?.MkvArgs" class="form-control" /></td></tr>
+                <tr><td><label>Min Length:</label>@Html.Raw(tip("MinLength", tips))</td><td><input type="number" name="MinLength" value="@armSettings?.MinLength" class="form-control" /></td></tr>
+                <tr><td><label>Max Length:</label>@Html.Raw(tip("MaxLength", tips))</td><td><input type="number" name="MaxLength" value="@armSettings?.MaxLength" class="form-control" /></td></tr>
+                <tr><td><label>Main Feature:</label>@Html.Raw(tip("MainFeature", tips))</td><td><input type="checkbox" name="MainFeature" value="true" checked="@armSettings?.MainFeature" /></td></tr>
+                <tr><td><label>Skip Transcode:</label>@Html.Raw(tip("SkipTranscode", tips))</td><td><input type="checkbox" name="SkipTranscode" value="true" checked="@armSettings?.SkipTranscode" /></td></tr>
+                <tr><td><label>Use FFmpeg:</label>@Html.Raw(tip("UseFfmpeg", tips))</td><td><input type="checkbox" name="UseFfmpeg" value="true" checked="@armSettings?.UseFfmpeg" /></td></tr>
+                <tr><td><label>Auto Eject:</label>@Html.Raw(tip("AutoEject", tips))</td><td><input type="checkbox" name="AutoEject" value="true" checked="@armSettings?.AutoEject" /></td></tr>
+                <tr><td><label>HB Preset DVD:</label>@Html.Raw(tip("HbPresetDvd", tips))</td><td><input type="text" name="HbPresetDvd" value="@armSettings?.HbPresetDvd" class="form-control" /></td></tr>
+                <tr><td><label>HB Preset BD:</label>@Html.Raw(tip("HbPresetBd", tips))</td><td><input type="text" name="HbPresetBd" value="@armSettings?.HbPresetBd" class="form-control" /></td></tr>
+                <tr><td><label>Dest Ext:</label>@Html.Raw(tip("DestExt", tips))</td><td><input type="text" name="DestExt" value="@armSettings?.DestExt" class="form-control" /></td></tr>
             </table>
             <button type="submit" class="btn btn-primary">Save Ripper Settings</button>
         </form>
@@ -334,6 +352,7 @@
 @section Scripts {
     <script>
         $(document).ready(function () {
+            $('[data-toggle="tooltip"]').tooltip();
             var lastTab = sessionStorage.getItem('armSettingsTab');
             if (lastTab) {
                 $('#settingsTabs a[href="' + lastTab + '"]').tab('show');
@@ -384,6 +403,7 @@
                 if (lastTab) {
                     $('#settingsTabs a[href="' + lastTab + '"]').tab('show');
                 }
+                $('[data-toggle="tooltip"]').tooltip();
             }
         });
     </script>
