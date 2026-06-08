@@ -45,11 +45,22 @@ public sealed class ArmRipperService(
 
         if (useMakeMkv)
         {
-            if (settings.Value.TestMode && job.DiscType == DiscType.Bluray)
+            if (settings.Value.TestMode)
             {
-                logger.LogInformation("Test mode: skipping MakeMKV rip for Blu-ray (whole-title rip too large)");
+                logger.LogInformation("Test mode: ripping track 0 directly");
+
+                if (!Directory.Exists(makeMkvOutPath))
+                    Directory.CreateDirectory(makeMkvOutPath);
+
+                var mkvArgs = job.Config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
+                var minLength = job.Config?.MinLength ?? settings.Value.MinLength;
+                await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, minLength, ct);
+                logger.LogInformation("Ripped track 0 in test mode");
+
+                transcodeInPath = makeMkvOutPath;
+                goto afterMakeMkv;
             }
-            else
+
             {
                 logger.LogInformation("************* Getting track info from MakeMKV *************");
 
@@ -62,7 +73,6 @@ public sealed class ArmRipperService(
                 // Encrypted BDs often return 0 tracks from info; rip all titles directly
                 if (tracks.Count == 0 && job.DiscType == DiscType.Bluray)
                 {
-                    logger.LogWarning("MakeMKV returned 0 titles (encrypted BD). Falling back to rip-all.");
                     job.Status = JobState.VideoRipping;
                     await db.SaveChangesAsync(ct);
 
@@ -70,7 +80,7 @@ public sealed class ArmRipperService(
                         Directory.CreateDirectory(makeMkvOutPath);
 
                     var mkvArgs = config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
-                    await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, ct);
+                        await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLength, ct);
                     logger.LogInformation("Ripped all titles from encrypted BD");
 
                     if (!Directory.EnumerateFileSystemEntries(makeMkvOutPath).Any())
@@ -125,29 +135,29 @@ public sealed class ArmRipperService(
                     {
                         var firstTrack = eligibleTracks.FirstOrDefault();
                         if (firstTrack is not null)
-                            await makeMkv.RipTrackAsync(job, firstTrack.TrackNumber!, makeMkvOutPath, mkvArgs, ct);
+                            await makeMkv.RipTrackAsync(job, firstTrack.TrackNumber!, makeMkvOutPath, mkvArgs, minLength, ct);
                         else
-                            await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, ct);
+                            await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, minLength, ct);
                     }
                     else if (config?.MainFeature ?? settings.Value.MainFeature)
                     {
                         var main = tracks.FirstOrDefault(t => t.MainFeature);
                         if (main is not null)
                         {
-                            await makeMkv.RipTrackAsync(job, main.TrackNumber!, makeMkvOutPath, mkvArgs, ct);
+                            await makeMkv.RipTrackAsync(job, main.TrackNumber!, makeMkvOutPath, mkvArgs, minLength, ct);
                             ripCount = 1;
                         }
                     }
                     else if (maxLength > 99998)
                     {
-                        await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, ct);
+                    await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLength, ct);
                         ripCount = eligibleTracks.Count;
                     }
                     else
                     {
                         foreach (var track in eligibleTracks)
                         {
-                            await makeMkv.RipTrackAsync(job, track.TrackNumber!, makeMkvOutPath, mkvArgs, ct);
+                            await makeMkv.RipTrackAsync(job, track.TrackNumber!, makeMkvOutPath, mkvArgs, minLength, ct);
                             ripCount++;
                         }
                     }
@@ -199,12 +209,12 @@ public sealed class ArmRipperService(
 afterMakeMkv:
         if (settings.Value.TestMode && transcodeInPath is not null && Directory.Exists(transcodeInPath))
         {
-            logger.LogInformation("Test mode: trimming raw MKV files to 120 seconds");
+            logger.LogInformation("Test mode: trimming raw MKV files to 30 seconds");
             foreach (var file in Directory.EnumerateFiles(transcodeInPath, "*.mkv"))
             {
                 var tmp = file + ".trimmed";
                 var trimResult = await runner.RunAsync("ffmpeg",
-                    $"-t 120 -i \"{file}\" -c copy -y \"{tmp}\"", timeoutMs: 120_000, ct: ct);
+                    $"-t 30 -i \"{file}\" -c copy -y \"{tmp}\"", timeoutMs: 60_000, ct: ct);
                 if (trimResult.ExitCode == 0 && File.Exists(tmp))
                 {
                     File.Delete(file);
@@ -625,3 +635,4 @@ afterMakeMkv:
         return true;
     }
 }
+

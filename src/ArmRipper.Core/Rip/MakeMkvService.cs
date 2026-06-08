@@ -206,20 +206,20 @@ public partial class MakeMkvService
         return tracks;
     }
 
-    public async Task RipTrackAsync(Job job, string trackNumber, string outputPath, string mkvArgs, CancellationToken ct = default)
+    public async Task RipTrackAsync(Job job, string trackNumber, string outputPath, string mkvArgs, int minLength, CancellationToken ct = default)
     {
-        var args = $"mkv dev:{job.DevPath} {trackNumber} {outputPath}";
+        var args = $"mkv --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
         if (!string.IsNullOrEmpty(mkvArgs))
-            args = $"mkv {mkvArgs} dev:{job.DevPath} {trackNumber} {outputPath}";
+            args = $"mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
 
         await foreach (var _ in _runner.RunStreamingAsync("makemkvcon", args, ct: ct)) { }
     }
 
-    public async Task RipAllTitlesAsync(Job job, string outputPath, string mkvArgs, CancellationToken ct = default)
+    public async Task RipAllTitlesAsync(Job job, string outputPath, string mkvArgs, int minLength, CancellationToken ct = default)
     {
-        var args = $"mkv dev:{job.DevPath} all {outputPath}";
+        var args = $"mkv --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
         if (!string.IsNullOrEmpty(mkvArgs))
-            args = $"mkv {mkvArgs} dev:{job.DevPath} all {outputPath}";
+            args = $"mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
 
         await foreach (var _ in _runner.RunStreamingAsync("makemkvcon", args, ct: ct)) { }
     }
@@ -397,3 +397,4 @@ public partial class MakeMkvService
         return int.Parse(parts[0]) * 3600 + int.Parse(parts[1]) * 60 + int.Parse(parts[2]);
     }
 }
+

@@ -209,7 +209,7 @@ public sealed partial class HandBrakeService(
             cmd += $" {hbArgs}";
 
         if (settings.Value.TestMode)
-            cmd += " --start-at duration:0 --stop-at duration:120";
+            cmd += " --start-at duration:0 --stop-at duration:30";
 
         cmd += " 2>&1";
         return cmd;

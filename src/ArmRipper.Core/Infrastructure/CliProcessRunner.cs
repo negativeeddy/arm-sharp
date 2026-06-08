@@ -65,7 +65,7 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         string? workingDirectory = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        logger.LogDebug("Streaming: {FileName} {Arguments}", fileName, arguments);
+        logger.LogInformation("Streaming: {FileName} {Arguments}", fileName, arguments);
 
         var process = new Process
         {
@@ -75,6 +75,7 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
                 Arguments = arguments,
                 WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory,
                 RedirectStandardOutput = true,
+                RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             }
@@ -82,12 +83,20 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
 
         process.Start();
 
+        var stderrTask = ReadAllLinesAsync(process.StandardError, ct);
+
         while (await process.StandardOutput.ReadLineAsync(ct) is { } line)
         {
             yield return line;
         }
 
         process.WaitForExit();
+
+        var stderr = await stderrTask;
+        if (stderr.Count > 0)
+            logger.LogWarning("Process stderr ({Name}): {Lines}", fileName, string.Join("\n", stderr));
+        logger.LogInformation("Process exited ({Name}) code={Code}", fileName, process.ExitCode);
+
         process.Dispose();
     }
 }

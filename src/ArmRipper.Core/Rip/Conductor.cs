@@ -213,7 +213,7 @@ public sealed class Conductor(
             : "/etc/arm/config/abcde.conf";
 
         var cmd = File.Exists(abcFile)
-            ? $"abcde -d \"{job.DevPath}\" -c {abcFile} >> \"{Path.Combine(job.Config?.LogPath ?? "", job.LogFile ?? "")}\" 2>&1"
+            ? $"abcde -d \"{job.DevPath}\" -c \"{abcFile}\" >> \"{Path.Combine(job.Config?.LogPath ?? "", job.LogFile ?? "")}\" 2>&1"
             : $"abcde -d \"{job.DevPath}\" >> \"{Path.Combine(job.Config?.LogPath ?? "", job.LogFile ?? "")}\" 2>&1";
 
         logger.LogDebug("Sending command: {Command}", cmd);
