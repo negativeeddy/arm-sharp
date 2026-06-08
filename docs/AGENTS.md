@@ -65,8 +65,35 @@ Current environment (`/workspaces/arm-sharp`):
 
 ## Known Gaps (Deferred)
 - `MusicBrainzService` — HttpClient creation, fire-and-forget, no XML tests, XML parsing fragility
-- MakeMKV TInfo → Track persistence (track metadata lost; post-transcode workaround in place)
 - Inconsistent error handling between HandBrake (best-effort) and FFmpeg (fail-fast)
 - No integration tests for controllers/views
 - No SignalR hub tests
 - No authentication (intentional, Phase 5)
+
+## Completed — Disc Metadata Caching
+
+### Disc Fingerprint
+- **Fingerprint**: `{VolumeLabel}::{SectorCount}` — computed in `IdentifyService.ComputeDiscFingerprintAsync` from blkid label + sysfs sector count
+- Stored in `Job.DiscFingerprint` (saved to `jobs` table)
+- `IdentifyService.cs:534-556`
+
+### Database Tables (3 new + jobs column)
+| Table | Model | Purpose |
+|-------|-------|---------|
+| `disc_metadata` | `DiscMetadata` | Per-disc cache entry (fingerprint, label, sector count, disc type, timestamps) |
+| `disc_tracks` | `DiscTrack` | Per-track metadata from TINFO lines (track number, duration, chapters, filesize, aspect, fps, resolution) |
+| `disc_track_streams` | `DiscTrackStream` | Per-stream metadata from SINFO lines (stream type, language code, codec, channel count, forced flag) |
+
+### SINFO Expansion
+- `StreamId` enum now includes: `LanguageCode(2)`, `LanguageName(3)`, `CodecId(4)`, `CodecName(5)`, `CodecDetail(6)`, `Channels(7)`, `SampleRate(8)`, `Bitrate(13)`, `Forced(16)`, `Resolution(19)`, `Interlace(22)`
+- `GetTrackInfoAsync` captures all stream types (Video/Audio/Subtitle), not just video
+- Stream data is accumulated per-track during parsing and persisted to `DiscTrackStream`
+
+### Cache Flow
+1. `ArmRipperService.RipVisualMediaAsync` calls `MakeMkvService.GetTrackInfoWithCacheAsync`
+2. If `job.DiscFingerprint` matches existing `DiscMetadata`, cached tracks are returned (skipping `makemkvcon info`)
+3. On cache miss, `GetTrackInfoAsync` runs `makemkvcon info`, persists results to cache, and returns tracks
+4. Cache timestamp (`LastUsedAt`) is updated on cache hit
+
+### MakeMkvStreamCodes
+- Refactored stream type constants into `MakeMkvStreamCodes` static class: `Video(6201)`, `Audio(6202)`, `Subtitle(6203)`

@@ -57,6 +57,8 @@ public sealed partial class IdentifyService(
             }
         }
 
+        await ComputeDiscFingerprintAsync(job, ct);
+
         await UnmountAsync(job, ct);
     }
 
@@ -506,6 +508,42 @@ public sealed partial class IdentifyService(
 
         var json = JsonSerializer.Serialize(wrapper);
         return JsonDocument.Parse(json);
+    }
+
+    private async Task ComputeDiscFingerprintAsync(Job job, CancellationToken ct)
+    {
+        var label = job.Label;
+        if (string.IsNullOrEmpty(label))
+        {
+            logger.LogDebug("Cannot compute disc fingerprint: no label");
+            return;
+        }
+
+        try
+        {
+            var devName = Path.GetFileName(job.DevPath!.TrimEnd('/'));
+            var sysfsPath = $"/sys/block/{devName}/size";
+            long sectors = 0;
+            if (File.Exists(sysfsPath))
+            {
+                var content = await File.ReadAllTextAsync(sysfsPath, ct);
+                long.TryParse(content.Trim(), out sectors);
+            }
+
+            if (sectors == 0)
+            {
+                logger.LogDebug("Cannot compute disc fingerprint: sector count is 0");
+                return;
+            }
+
+            job.DiscFingerprint = $"{label}::{sectors}";
+            logger.LogInformation("Disc fingerprint: {Fingerprint}", job.DiscFingerprint);
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to compute disc fingerprint");
+        }
     }
 
     private async Task UnmountAsync(Job job, CancellationToken ct)

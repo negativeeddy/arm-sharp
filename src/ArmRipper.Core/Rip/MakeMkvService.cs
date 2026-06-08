@@ -2,7 +2,9 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
+using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -10,7 +12,6 @@ namespace ArmRipper.Core.Rip;
 
 public partial class MakeMkvService
 {
-    internal const int MakeMkvStreamCodeTypeVideo = 6201;
     private const int UnknownDrv = 999;
     private const int MaxDevices = 16;
     private const string Source = "MakeMKV";
@@ -23,12 +24,14 @@ public partial class MakeMkvService
     private readonly ICliProcessRunner _runner;
     private readonly ILogger<MakeMkvService> _logger;
     private readonly IOptions<ArmSettings> _settings;
+    private readonly ArmDbContext _db;
 
-    public MakeMkvService(ICliProcessRunner runner, ILogger<MakeMkvService> logger, IOptions<ArmSettings> settings)
+    public MakeMkvService(ICliProcessRunner runner, ILogger<MakeMkvService> logger, IOptions<ArmSettings> settings, ArmDbContext db)
     {
         _runner = runner;
         _logger = logger;
         _settings = settings;
+        _db = db;
     }
 
     public async Task EnsureKeyAsync(CancellationToken ct = default)
@@ -113,6 +116,7 @@ public partial class MakeMkvService
         await EnsureKeyAsync(ct);
 
         var tracks = new List<Track>();
+        var discTracks = new List<DiscTrack>();
         var minLength = job.Config?.MinLength ?? _settings.Value.MinLength;
 
         var fileName = "makemkvcon";
@@ -133,6 +137,8 @@ public partial class MakeMkvService
         var chapters = 0;
         var filesize = 0L;
         var streamType = 0;
+        var resolution = "";
+        var streamAccums = new Dictionary<int, StreamAccum>();
 
         var lineCount = 0;
         using var reader = new StringReader(result.StdOut);
@@ -146,32 +152,46 @@ public partial class MakeMkvService
             switch (parsed.Data)
             {
                 case SinFo sinfo:
-                    if (sinfo.Id == (int)StreamId.Type)
+                    switch ((StreamId)sinfo.Id)
                     {
-                        streamType = sinfo.Code;
-                    }
-                    else if (streamType == MakeMkvStreamCodeTypeVideo)
-                    {
-                        switch ((StreamId)sinfo.Id)
-                        {
-                            case StreamId.Aspect:
+                        case StreamId.Type:
+                            streamType = sinfo.Code;
+                            GetOrCreateAccum(streamAccums, sinfo.Sid).StreamTypeCode = sinfo.Code;
+                            break;
+                        case StreamId.LanguageCode:
+                            GetOrCreateAccum(streamAccums, sinfo.Sid).LanguageCode = sinfo.Value.Trim();
+                            break;
+                        case StreamId.CodecId:
+                            GetOrCreateAccum(streamAccums, sinfo.Sid).Codec = sinfo.Value.Trim();
+                            break;
+                        case StreamId.Channels:
+                            if (int.TryParse(sinfo.Value.Trim(), out var ch))
+                                GetOrCreateAccum(streamAccums, sinfo.Sid).Channels = ch;
+                            break;
+                        case StreamId.Forced:
+                            GetOrCreateAccum(streamAccums, sinfo.Sid).Forced = sinfo.Value.Trim() is "1";
+                            break;
+                        case StreamId.Resolution:
+                            resolution = sinfo.Value.Trim();
+                            break;
+                        case StreamId.Aspect:
+                            if (streamType == MakeMkvStreamCodes.Video)
                                 aspect = sinfo.Value.Trim();
-                                break;
-                            case StreamId.Fps:
+                            break;
+                        case StreamId.Fps:
+                            if (streamType == MakeMkvStreamCodes.Video)
+                            {
                                 var fpsParts = sinfo.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                                 if (fpsParts.Length > 0)
                                     double.TryParse(fpsParts[0], out fps);
-                                break;
-                        }
+                            }
+                            break;
                     }
                     break;
 
                 case TInfo tinfo:
                     if (currentTid >= 0 && tinfo.Tid != currentTid)
-                    {
-                        tracks.Add(CreateTrackObj(job, currentTid, baseName, seconds, aspect, fps, filename, chapters, filesize));
-                        seconds = 0; aspect = ""; fps = 0.0; filename = ""; chapters = 0; filesize = 0; streamType = 0;
-                    }
+                        FinalizeTrack(job, baseName, tracks, discTracks, currentTid, ref seconds, ref aspect, ref fps, ref filename, ref chapters, ref filesize, ref streamType, ref resolution, streamAccums);
                     currentTid = tinfo.Tid;
                     switch ((TrackId)tinfo.Id)
                     {
@@ -197,13 +217,160 @@ public partial class MakeMkvService
         }
 
         if (currentTid >= 0)
-        {
-            tracks.Add(CreateTrackObj(job, currentTid, baseName, seconds, aspect, fps, filename, chapters, filesize));
-        }
+            FinalizeTrack(job, baseName, tracks, discTracks, currentTid, ref seconds, ref aspect, ref fps, ref filename, ref chapters, ref filesize, ref streamType, ref resolution, streamAccums);
 
         _logger.LogInformation("GetTrackInfo: {Lines} lines, {Tracks} tracks, lastTid={Tid}", lineCount, tracks.Count, currentTid);
 
+        await PersistTrackCacheAsync(job, discTracks, ct);
+
         return tracks;
+    }
+
+    public async Task<List<Track>> GetTrackInfoWithCacheAsync(Job job, string baseName, CancellationToken ct = default)
+    {
+        if (!string.IsNullOrEmpty(job.DiscFingerprint))
+        {
+            var cached = await _db.DiscMetadata
+                .AsNoTracking()
+                .Include(d => d.Tracks)
+                .ThenInclude(t => t.Streams)
+                .FirstOrDefaultAsync(d => d.Fingerprint == job.DiscFingerprint, ct);
+
+            if (cached is not null)
+            {
+                _logger.LogInformation("Found cached track info for fingerprint {Fingerprint} ({Count} tracks)",
+                    job.DiscFingerprint, cached.Tracks.Count);
+
+                cached.LastUsedAt = DateTime.UtcNow;
+                _db.DiscMetadata.Update(cached);
+                await _db.SaveChangesAsync(ct);
+
+                var tracks = cached.Tracks.Select(t => new Track
+                {
+                    JobId = job.Id,
+                    TrackNumber = t.TrackNumber,
+                    Length = t.Length,
+                    AspectRatio = t.AspectRatio,
+                    Fps = t.Fps,
+                    Chapters = t.Chapters,
+                    FileSize = t.FileSize,
+                    Source = Source,
+                    BaseName = baseName,
+                }).ToList();
+
+                return tracks;
+            }
+        }
+
+        return await GetTrackInfoAsync(job, baseName, ct);
+    }
+
+    private static StreamAccum GetOrCreateAccum(Dictionary<int, StreamAccum> accums, int sid)
+    {
+        if (!accums.TryGetValue(sid, out var accum))
+        {
+            accum = new StreamAccum();
+            accums[sid] = accum;
+        }
+        return accum;
+    }
+
+    private static void FinalizeTrack(Job job, string baseName, List<Track> tracks, List<DiscTrack> discTracks,
+        int currentTid, ref int seconds, ref string aspect, ref double fps, ref string filename,
+        ref int chapters, ref long filesize, ref int streamType, ref string resolution,
+        Dictionary<int, StreamAccum> streamAccums)
+    {
+        tracks.Add(CreateTrackObj(job, currentTid, baseName, seconds, aspect, fps, filename, chapters, filesize));
+
+        var discTrack = new DiscTrack
+        {
+            TrackNumber = currentTid.ToString(),
+            Length = seconds > 0 ? seconds : null,
+            Chapters = chapters > 0 ? chapters : null,
+            FileSize = filesize > 0 ? filesize : null,
+            AspectRatio = string.IsNullOrEmpty(aspect) ? null : aspect,
+            Fps = fps > 0 ? fps : null,
+            Resolution = string.IsNullOrEmpty(resolution) ? null : resolution,
+        };
+
+        foreach (var (sid, accum) in streamAccums)
+        {
+            var typeName = accum.StreamTypeCode switch
+            {
+                MakeMkvStreamCodes.Video => "Video",
+                MakeMkvStreamCodes.Audio => "Audio",
+                MakeMkvStreamCodes.Subtitle => "Subtitle",
+                _ => "Unknown"
+            };
+
+            discTrack.Streams.Add(new DiscTrackStream
+            {
+                StreamIndex = sid,
+                StreamType = typeName,
+                LanguageCode = accum.LanguageCode,
+                Codec = accum.Codec,
+                ChannelCount = accum.Channels,
+                Forced = accum.Forced,
+            });
+        }
+
+        discTracks.Add(discTrack);
+
+        seconds = 0; aspect = ""; fps = 0.0; filename = ""; chapters = 0; filesize = 0; streamType = 0; resolution = "";
+        streamAccums.Clear();
+    }
+
+    private async Task PersistTrackCacheAsync(Job job, List<DiscTrack> discTracks, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(job.DiscFingerprint) || discTracks.Count == 0)
+            return;
+
+        try
+        {
+            var existing = await _db.DiscMetadata
+                .FirstOrDefaultAsync(d => d.Fingerprint == job.DiscFingerprint, ct);
+
+            if (existing is not null)
+            {
+                existing.LastUsedAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                _logger.LogInformation("Disc fingerprint {Fingerprint} already cached, updating timestamp",
+                    job.DiscFingerprint);
+                return;
+            }
+            else
+            {
+                var metadata = new DiscMetadata
+                {
+                    Fingerprint = job.DiscFingerprint,
+                    VolumeLabel = job.Label ?? "",
+                    SectorCount = 0,
+                    DiscType = job.DiscType.ToString(),
+                    CreatedAt = DateTime.UtcNow,
+                    LastUsedAt = DateTime.UtcNow,
+                    Tracks = discTracks,
+                };
+
+                _db.DiscMetadata.Add(metadata);
+                _logger.LogInformation("Caching {Count} tracks for disc fingerprint {Fingerprint}",
+                    discTracks.Count, job.DiscFingerprint);
+            }
+
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to persist disc track cache for fingerprint {Fingerprint}", job.DiscFingerprint);
+        }
+    }
+
+    private sealed record StreamAccum
+    {
+        public int StreamTypeCode { get; set; }
+        public string? LanguageCode { get; set; }
+        public string? Codec { get; set; }
+        public int? Channels { get; set; }
+        public bool Forced { get; set; }
     }
 
     public async Task RipTrackAsync(Job job, string trackNumber, string outputPath, string mkvArgs, int minLength, CancellationToken ct = default)

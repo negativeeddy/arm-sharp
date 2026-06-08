@@ -68,7 +68,7 @@ public sealed class ArmRipperService(
                 var minLength = config?.MinLength ?? settings.Value.MinLength;
                 var maxLength = config?.MaxLength ?? settings.Value.MaxLength;
 
-                var tracks = await makeMkv.GetTrackInfoAsync(job, jobTitle, ct);
+                var tracks = await makeMkv.GetTrackInfoWithCacheAsync(job, jobTitle, ct);
 
                 // Encrypted BDs often return 0 tracks from info; rip all titles directly
                 if (tracks.Count == 0 && job.DiscType == DiscType.Bluray)

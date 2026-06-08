@@ -15,6 +15,9 @@ public class ArmDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<SystemInfo> SystemInfos => Set<SystemInfo>();
     public DbSet<UiSettings> UiSettings => Set<UiSettings>();
+    public DbSet<DiscMetadata> DiscMetadata => Set<DiscMetadata>();
+    public DbSet<DiscTrack> DiscTracks => Set<DiscTrack>();
+    public DbSet<DiscTrackStream> DiscTrackStreams => Set<DiscTrackStream>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -43,6 +46,7 @@ public class ArmDbContext : DbContext
             entity.Property(e => e.PosterUrlAuto).HasMaxLength(256);
             entity.Property(e => e.PosterUrlManual).HasMaxLength(256);
             entity.Property(e => e.DevPath).HasMaxLength(15);
+            entity.Property(e => e.DiscFingerprint).HasMaxLength(128);
             entity.Property(e => e.MountPoint).HasMaxLength(20);
             entity.Property(e => e.Label).HasMaxLength(256);
             entity.Property(e => e.Path).HasMaxLength(256);
@@ -111,6 +115,36 @@ public class ArmDbContext : DbContext
         {
             entity.ToTable("ui_settings");
             entity.HasKey(e => e.Id);
+        });
+
+        modelBuilder.Entity<DiscMetadata>(entity =>
+        {
+            entity.ToTable("disc_metadata");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Fingerprint).HasMaxLength(128);
+            entity.HasIndex(e => e.Fingerprint).IsUnique();
+            entity.Property(e => e.VolumeLabel).HasMaxLength(256);
+            entity.Property(e => e.DiscType).HasMaxLength(20);
+            entity.HasMany(e => e.Tracks).WithOne(t => t.DiscMetadata).HasForeignKey(t => t.DiscMetadataId);
+        });
+
+        modelBuilder.Entity<DiscTrack>(entity =>
+        {
+            entity.ToTable("disc_tracks");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TrackNumber).HasMaxLength(4);
+            entity.Property(e => e.AspectRatio).HasMaxLength(20);
+            entity.Property(e => e.Resolution).HasMaxLength(20);
+            entity.HasMany(e => e.Streams).WithOne(s => s.DiscTrack).HasForeignKey(s => s.DiscTrackId);
+        });
+
+        modelBuilder.Entity<DiscTrackStream>(entity =>
+        {
+            entity.ToTable("disc_track_streams");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.StreamType).HasMaxLength(10);
+            entity.Property(e => e.LanguageCode).HasMaxLength(10);
+            entity.Property(e => e.Codec).HasMaxLength(50);
         });
     }
 }

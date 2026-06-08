@@ -1,5 +1,12 @@
 namespace ArmRipper.Core.Rip;
 
+public static class MakeMkvStreamCodes
+{
+    public const int Video = 6201;
+    public const int Audio = 6202;
+    public const int Subtitle = 6203;
+}
+
 public enum TrackId
 {
     Chapters = 8,
@@ -11,8 +18,19 @@ public enum TrackId
 public enum StreamId
 {
     Type = 1,
+    LanguageCode = 2,
+    LanguageName = 3,
+    CodecId = 4,
+    CodecName = 5,
+    CodecDetail = 6,
+    Channels = 7,
+    SampleRate = 8,
+    Bitrate = 13,
+    Forced = 16,
+    Resolution = 19,
     Aspect = 20,
-    Fps = 21
+    Fps = 21,
+    Interlace = 22,
 }
 
 [Flags]

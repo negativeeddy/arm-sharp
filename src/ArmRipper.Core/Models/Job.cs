@@ -41,6 +41,7 @@ public class Job
     public bool ManualStart { get; set; }
     public bool ManualMode { get; set; }
     public bool HasTrack99 { get; set; }
+    public string? DiscFingerprint { get; set; }
 
     public ICollection<Track> Tracks { get; init; } = new List<Track>();
     public ConfigSnapshot? Config { get; set; }

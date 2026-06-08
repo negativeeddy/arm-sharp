@@ -63,7 +63,7 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 ## HandBrakeService / FfmpegService
 
 - **Inconsistent error handling:** HandBrakeService.TranscodeMkvAsync logs transcode failures and continues to the next file (never throws); FfmpegService.TranscodeMkvAsync throws on failure, aborting the entire job. One convention should win — either both continue on failure (best-effort for batch MKV transcodes) or both fail fast.
-- **Track creation from MakeMKV TInfo:** MakeMKV prints detailed track metadata (duration, chapters, stream info) via TInfo lines, but this data is collected into a local list and discarded. Tracks are instead created after the fact from filenames on disk. For progress tracking and richer metadata, the TInfo output should be parsed into Track entities as the original ARM does.
+- **~~Track creation from MakeMKV TInfo~~** ✅ **Implemented** — MakeMKV TINFO/SINFO lines are now parsed and persisted to the `disc_tracks`/`disc_track_streams` tables. Tracks are also returned as `Track` entities immediately (as the original ARM does), and cached by disc fingerprint for future runs. The old post-rip filesystem-based track matching still runs as a fallback for file-size/name tracking.
 
 ## CRC64 / DVD Identification
 
@@ -88,7 +88,7 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 
 ## Miscellaneous Dead Code
 
-- `MakeMkvService.HmsToSeconds` is a private helper declared but never called. Keep as-is — it was likely intended for parsing MakeMKV duration output and may be needed when TInfo track persistence is implemented.
+- ~~`MakeMkvService.HmsToSeconds` is a private helper declared but never called.~~ ✅ **Now in use** — `HmsToSeconds` is actively called in the TINFO parsing within `GetTrackInfoAsync`.
 - `HandBrakeService` had an unused `_durationValuePattern` field + `DurationValuePatternGen()` method (identical to the `DurationPattern` fix) — removed in 888fab2.
 
 ## Security
@@ -114,7 +114,9 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 
 ## Disc Databases (Track Identification)
 
-- **`GetTrackInfoAsync` BD parser** — `makemkvcon info --robot` outputs 29 TINFO/SINFO lines correctly (confirmed manually), but the C# parser returns 0 tracks for encrypted BDs. Likely a buffering/line-splitting issue in the `process_standard_output` callback or a swallowed exception during the 30-60 second BD scan. Fixing this enables `--main-feature` single-title rip instead of the rip-all-29-titles fallback. Root cause investigation needed: the stdout output handler may buffer lines incompletely, the TInfo switch-case may fall through silently, or a timeout may cancel parsing before completion.
+- **~~`GetTrackInfoAsync` BD parser~~** ✅ **Fixed** — SINFO parsing now captures all stream types (video, audio, subtitle). Stream metadata (language, codec, channels, forced flag, resolution) is persisted to the `disc_track_streams` table. Per-track accumulators were refactored into a `FinalizeTrack` helper and the `StreamAccum` record type.
+
+- **Disc metadata caching** ✅ **Implemented** — Disc fingerprint (`{VolumeLabel}::{SectorCount}`) computed during identification. Cached track metadata is persisted in `disc_metadata`, `disc_tracks`, and `disc_track_streams` tables. The `GetTrackInfoWithCacheAsync` method checks the cache first, skipping `makemkvcon info` for known discs. Cache eviction (old entries) still needs a strategy.
 
 - **thediscdb.com integration** — Encrypted BDs often return 0 tracks from `makemkvcon info --robot` because the scanning/parsing is slow and fragile. thediscdb.com stores disc IDs (volume label, CRC) mapped to known track layouts (main feature, chapters, durations, language streams). Adding a lookup step would let us:
   - Skip the expensive `makemkvcon info` scan for known discs entirely.
@@ -122,3 +124,4 @@ Focus: user-friendliness, easy setup, easy diagnosis.
   - Pre-populate track metadata (aspect ratio, fps, audio languages, forced subtitle flags) for smarter HandBrake args.
   - Fall back to `makemkvcon` scanning only for discs not in the database.
   - API is simple REST — define a `DiscDatabaseService` client with disc-id → track-list response model, cache results locally, and plug into `IdentifyService` or a new `TrackIdentifyService` between identify and rip.
+  - **Note:** The current disc fingerprinting and track caching provides a local-first foundation. thediscdb.com could be added as an upstream cache-population source later.

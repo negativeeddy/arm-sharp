@@ -263,6 +263,36 @@ ENTRYPOINT ["docker-entrypoint.sh"]
 
 ---
 
+## Phase 6: Disc Metadata Caching (Completed)
+
+### 6.1 — Disc fingerprint design
+- **Fingerprint**: `{VolumeLabel}::{SectorCount}` — volume label from blkid + sector count from sysfs (`/sys/block/{dev}/size`)
+- Computed in `IdentifyService.ComputeDiscFingerprintAsync` after disc identification
+- Stored as `Job.DiscFingerprint` in the `jobs` table
+
+### 6.2 — Database tables (3 new)
+| Table | Model | Fields |
+|-------|-------|--------|
+| `disc_metadata` | `DiscMetadata` | Fingerprint (unique), volume label, sector count, disc type, created/last-used timestamps |
+| `disc_tracks` | `DiscTrack` | Track number, duration, chapters, filesize, aspect ratio, FPS, resolution |
+| `disc_track_streams` | `DiscTrackStream` | Stream index, stream type, language code, codec, channel count, forced flag |
+
+### 6.3 — SINFO expansion
+- `StreamId` enum extended with 12 new field IDs (language, codec, channels, forced, resolution, etc.)
+- `GetTrackInfoAsync` now captures ALL stream types (audio, subtitle, video), not just video
+- Stream data accumulated per-track during parsing and persisted to `disc_track_streams`
+
+### 6.4 — Cache flow
+1. `ArmRipperService.RipVisualMediaAsync` calls `GetTrackInfoWithCacheAsync`
+2. Cache lookup by fingerprint — if hit, returns stored `Track` objects; updates `LastUsedAt`
+3. Cache miss → `GetTrackInfoAsync` runs `makemkvcon info`, parses TINFO/SINFO, persists to `DiscMetadata`/`DiscTrack`/`DiscTrackStream`
+4. Cached tracks returned as standard `Track` objects for downstream processing
+
+### 6.5 — MakeMkvStreamCodes
+- Refactored stream type constants to `MakeMkvStreamCodes.Video(6201)`, `.Audio(6202)`, `.Subtitle(6203)`
+
+---
+
 ## Immediate Next Steps (What to do first)
 
 1. **Create Tarantino devcontainer** — so you can develop directly on the target hardware
