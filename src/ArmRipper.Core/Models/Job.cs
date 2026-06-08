@@ -43,6 +43,7 @@ public class Job
     public bool HasTrack99 { get; set; }
     public string? DiscFingerprint { get; set; }
     public int? MakeMkvProgress { get; set; }
+    public int? TranscodeProgress { get; set; }
 
     public ICollection<Track> Tracks { get; init; } = new List<Track>();
     public ConfigSnapshot? Config { get; set; }

@@ -16,7 +16,7 @@ public sealed partial class FfmpegService(
     ArmDbContext db,
     IOptions<ArmSettings> settings) : IFfmpegService
 {
-    public async Task TranscodeMkvAsync(Job job, string rawPath, string outputPath, CancellationToken ct)
+    public async Task TranscodeMkvAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         await SleepCheckAsync(ct);
         logger.LogInformation("Starting FFmpeg for MKV files");
@@ -80,7 +80,7 @@ public sealed partial class FfmpegService(
         }
     }
 
-    public async Task TranscodeMainFeatureAsync(Job job, string rawPath, string outputPath, CancellationToken ct)
+    public async Task TranscodeMainFeatureAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         await SleepCheckAsync(ct);
         logger.LogInformation("Starting DVD/BluRay main feature transcoding");
@@ -127,7 +127,7 @@ public sealed partial class FfmpegService(
         }
     }
 
-    public async Task TranscodeAllAsync(Job job, string rawPath, string outputPath, CancellationToken ct)
+    public async Task TranscodeAllAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         await SleepCheckAsync(ct);
         logger.LogInformation("Starting BluRay/DVD transcoding - All titles");

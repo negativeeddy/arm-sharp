@@ -271,23 +271,25 @@ afterMakeMkv:
         job.Status = JobState.TranscodeActive;
         await db.SaveChangesAsync(ct);
 
+        var tcProgress = TranscodeProgress(job, ct);
+
         if (job.Config?.UseFfmpeg ?? settings.Value.UseFfmpeg)
         {
             logger.LogInformation("************* Starting Transcode With FFMPEG *************");
             if (RipWithMkv(job, protection) && (job.Config?.RipMethod ?? settings.Value.RipMethod) == "mkv")
             {
                 logger.LogDebug("ffmpeg_mkv: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
-                await ffmpeg.TranscodeMkvAsync(job, rawInPath, transcodeOutPath, ct);
+                await ffmpeg.TranscodeMkvAsync(job, rawInPath, transcodeOutPath, tcProgress, ct);
             }
             else if (job.VideoType == "movie" && (job.Config?.MainFeature ?? settings.Value.MainFeature) && job.HasNiceTitle)
             {
                 logger.LogDebug("ffmpeg_main_feature: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
-                await ffmpeg.TranscodeMainFeatureAsync(job, rawInPath, transcodeOutPath, ct);
+                await ffmpeg.TranscodeMainFeatureAsync(job, rawInPath, transcodeOutPath, tcProgress, ct);
             }
             else
             {
                 logger.LogDebug("ffmpeg_all: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
-                await ffmpeg.TranscodeAllAsync(job, rawInPath, transcodeOutPath, ct);
+                await ffmpeg.TranscodeAllAsync(job, rawInPath, transcodeOutPath, tcProgress, ct);
             }
             logger.LogInformation("************* Finished Transcode With FFMPEG *************");
 
@@ -300,17 +302,17 @@ afterMakeMkv:
             if (RipWithMkv(job, protection) && (job.Config?.RipMethod ?? settings.Value.RipMethod) == "mkv")
             {
                 logger.LogDebug("handbrake_mkv: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
-                await handBrake.TranscodeMkvAsync(job, rawInPath, transcodeOutPath, ct);
+                await handBrake.TranscodeMkvAsync(job, rawInPath, transcodeOutPath, tcProgress, ct);
             }
             else if (job.VideoType == "movie" && (job.Config?.MainFeature ?? settings.Value.MainFeature) && job.HasNiceTitle)
             {
                 logger.LogDebug("handbrake_main_feature: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
-                await handBrake.TranscodeMainFeatureAsync(job, rawInPath, transcodeOutPath, ct);
+                await handBrake.TranscodeMainFeatureAsync(job, rawInPath, transcodeOutPath, tcProgress, ct);
             }
             else
             {
                 logger.LogDebug("handbrake_all: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
-                await handBrake.TranscodeAllAsync(job, rawInPath, transcodeOutPath, ct);
+                await handBrake.TranscodeAllAsync(job, rawInPath, transcodeOutPath, tcProgress, ct);
             }
             logger.LogInformation("************* Finished Transcode With HandBrake *************");
 
@@ -323,6 +325,13 @@ afterMakeMkv:
         new Progress<int>(async pct =>
         {
             job.MakeMkvProgress = pct;
+            await db.SaveChangesAsync(ct);
+        });
+
+    private IProgress<int> TranscodeProgress(Job job, CancellationToken ct) =>
+        new Progress<int>(async pct =>
+        {
+            job.TranscodeProgress = pct;
             await db.SaveChangesAsync(ct);
         });
 

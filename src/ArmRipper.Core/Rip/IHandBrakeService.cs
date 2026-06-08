@@ -5,7 +5,7 @@ namespace ArmRipper.Core.Rip;
 
 public interface IHandBrakeService
 {
-    Task<CliResult> TranscodeMkvAsync(Job job, string rawPath, string outputPath, CancellationToken ct = default);
-    Task<CliResult> TranscodeMainFeatureAsync(Job job, string rawPath, string outputPath, CancellationToken ct = default);
-    Task<CliResult> TranscodeAllAsync(Job job, string rawPath, string outputPath, CancellationToken ct = default);
+    Task<CliResult> TranscodeMkvAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default);
+    Task<CliResult> TranscodeMainFeatureAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default);
+    Task<CliResult> TranscodeAllAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default);
 }

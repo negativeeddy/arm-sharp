@@ -16,7 +16,7 @@ public sealed partial class HandBrakeService(
     ArmDbContext db,
     IOptions<ArmSettings> settings) : IHandBrakeService
 {
-    public async Task<CliResult> TranscodeMkvAsync(Job job, string rawPath, string outputPath, CancellationToken ct)
+    public async Task<CliResult> TranscodeMkvAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         await SleepCheckAsync(ct);
         logger.LogInformation("Starting HandBrake for MKV files");
@@ -37,7 +37,7 @@ public sealed partial class HandBrakeService(
 
             logger.LogInformation("Transcoding {File} to {Output}", file, outputFile);
             var cmd = BuildCommand(file, outputFile, job, trackNumber: null, mainFeature: false);
-            lastResult = await RunHandBrakeCommandAsync(cmd, ct);
+            lastResult = await RunHandBrakeCommandAsync(cmd, ct, progress);
 
             if (lastResult.ExitCode != 0)
             {
@@ -71,7 +71,7 @@ public sealed partial class HandBrakeService(
         return lastResult ?? new CliResult(0, "", "", false);
     }
 
-    public async Task<CliResult> TranscodeMainFeatureAsync(Job job, string rawPath, string outputPath, CancellationToken ct)
+    public async Task<CliResult> TranscodeMainFeatureAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         await SleepCheckAsync(ct);
         logger.LogInformation("Starting DVD/BluRay main feature transcoding");
@@ -98,7 +98,7 @@ public sealed partial class HandBrakeService(
 
         try
         {
-            var result = await RunHandBrakeCommandAsync(cmd, ct);
+            var result = await RunHandBrakeCommandAsync(cmd, ct, progress);
             logger.LogInformation("HandBrake call successful");
             track.Ripped = true;
             await db.SaveChangesAsync(ct);
@@ -113,7 +113,7 @@ public sealed partial class HandBrakeService(
         }
     }
 
-    public async Task<CliResult> TranscodeAllAsync(Job job, string rawPath, string outputPath, CancellationToken ct)
+    public async Task<CliResult> TranscodeAllAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         await SleepCheckAsync(ct);
         logger.LogInformation("Starting BluRay/DVD transcoding - All titles");
@@ -156,7 +156,7 @@ public sealed partial class HandBrakeService(
 
             try
             {
-                lastResult = await RunHandBrakeCommandAsync(cmd, ct);
+                lastResult = await RunHandBrakeCommandAsync(cmd, ct, progress);
                 track.Ripped = true;
                 await db.SaveChangesAsync(ct);
             }
@@ -226,16 +226,40 @@ public sealed partial class HandBrakeService(
         return (settings.Value.HbPresetDvd, "");
     }
 
-    private async Task<CliResult> RunHandBrakeCommandAsync(string cmd, CancellationToken ct)
+    private async Task<CliResult> RunHandBrakeCommandAsync(string cmd, CancellationToken ct, IProgress<int>? progress = null)
     {
         logger.LogDebug("Sending command: {Command}", cmd);
 
-        var result = await runner.RunAsync("bash", $"-c \"{cmd.Replace("\"", "\\\"")}\"", timeoutMs: 7200_000, ct: ct);
+        var lines = new List<string>();
+        var stderrLines = new List<string>();
+        var escaped = $"-c \"{cmd.Replace("\"", "\\\"")}\"";
 
+        await foreach (var (line, isErr) in runner.RunStreamingAllAsync("bash", escaped, ct: ct))
+        {
+            if (isErr)
+            {
+                stderrLines.Add(line);
+                ParseHandBrakeProgress(line, progress);
+            }
+            else
+            {
+                lines.Add(line);
+            }
+        }
+
+        var result = new CliResult(0, string.Join("\n", lines), string.Join("\n", stderrLines), false);
         if (result.ExitCode != 0)
             logger.LogError("HandBrake failed with code {Code}: {Error}", result.ExitCode, result.StdErr);
 
         return result;
+    }
+
+    private static void ParseHandBrakeProgress(string line, IProgress<int>? progress)
+    {
+        if (progress is null) return;
+        var match = Regex.Match(line, @"Encoding:\s*task\s+\d+\s+of\s+\d+,\s*([\d.]+)\s*%");
+        if (match.Success && double.TryParse(match.Groups[1].Value, out var pct))
+            progress.Report((int)pct);
     }
 
     private async Task GetTrackInfoAsync(string sourcePath, Job job, CancellationToken ct)

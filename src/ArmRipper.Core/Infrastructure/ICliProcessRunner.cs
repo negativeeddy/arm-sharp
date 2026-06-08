@@ -16,4 +16,10 @@ public interface ICliProcessRunner
         string arguments,
         string? workingDirectory = null,
         CancellationToken ct = default);
+
+    IAsyncEnumerable<(string Line, bool IsStdErr)> RunStreamingAllAsync(
+        string fileName,
+        string arguments,
+        string? workingDirectory = null,
+        CancellationToken ct = default);
 }

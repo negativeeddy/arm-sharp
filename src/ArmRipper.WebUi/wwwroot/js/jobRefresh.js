@@ -11,7 +11,8 @@ arm.startJobRefresh = function (intervalMs) {
         fetch('/api/jobs/active')
             .then(function (r) { return r.text(); })
             .then(function (html) {
-                container.innerHTML = html;
+                var tbody = container.querySelector('tbody');
+                if (tbody) tbody.innerHTML = html;
             })
             .catch(function () {});
     }, intervalMs);

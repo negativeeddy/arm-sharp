@@ -20,7 +20,8 @@ job_cols = ['Id','ArmVersion','CrcId','LogFile','StartTime','StopTime','JobLengt
     'ImdbId','ImdbIdAuto','ImdbIdManual',
     'PosterUrl','PosterUrlAuto','PosterUrlManual',
     'DevPath','MountPoint','HasNiceTitle','Errors','DiscType','Label','Path','Ejected',
-    'Pid','PidHash','IsIso','ManualStart','ManualMode','HasTrack99']
+    'Pid','PidHash','IsIso','ManualStart','ManualMode','HasTrack99',
+    'MakeMkvProgress','TranscodeProgress']
 job_sql = f"INSERT INTO jobs ({','.join(job_cols)}) VALUES ({','.join(['?']*len(job_cols))})"
 
 config_cols = ['SkipTranscode','MainFeature','UseFfmpeg','ManualWait','AllowDuplicates','Prevent99',
@@ -44,15 +45,16 @@ track_sql = f"INSERT INTO tracks ({','.join(track_cols)}) VALUES ({','.join(['?'
 # ─── Job 1: Active rip ────────────────────────────────────────────────
 cur.execute(job_sql, (
     1,'1.0.0','ABCD1234','rip_20260531_001.log','2026-05-31 10:00:00',None,None,
-    'Active','Ripping',12,
-    'The Matrix','The Matrix',None,
-    '1999','1999',None,
-    'movie','movie',None,
-    'tt0133093','tt0133093',None,
-    'https://m.media-amazon.com/images/M/MV5BNzQzOTk3OTAtNDQ0Zi00ZTVkLWI0MTEtMDllZjNkYzNjNTc4L2ltYWdlXkEyXkFqcGdeQXVyNjU0OTQ0OTY@._V1_SX300.jpg',
-    'https://m.media-amazon.com/images/M/MV5BNzQzOTk3OTAtNDQ0Zi00ZTVkLWI0MTEtMDllZjNkYzNjNTc4L2ltYWdlXkEyXkFqcGdeQXVyNjU0OTQ0OTY@._V1_SX300.jpg',None,
-    '/dev/sr0','/mnt/rip/the_matrix',1,None,'Bluray','THE_MATRIX','/home/arm/media/completed/The Matrix (1999)',0,
-    12345,'abc123',0,0,0,0))
+     'Active','Ripping',12,
+     'The Matrix','The Matrix',None,
+     '1999','1999',None,
+     'movie','movie',None,
+     'tt0133093','tt0133093',None,
+     'https://m.media-amazon.com/images/M/MV5BNzQzOTk3OTAtNDQ0Zi00ZTVkLWI0MTEtMDllZjNkYzNjNTc4L2ltYWdlXkEyXkFqcGdeQXVyNjU0OTQ0OTY@._V1_SX300.jpg',
+     'https://m.media-amazon.com/images/M/MV5BNzQzOTk3OTAtNDQ0Zi00ZTVkLWI0MTEtMDllZjNkYzNjNTc4L2ltYWdlXkEyXkFqcGdeQXVyNjU0OTQ0OTY@._V1_SX300.jpg',None,
+     '/dev/sr0','/mnt/rip/the_matrix',1,None,'Bluray','THE_MATRIX','/home/arm/media/completed/The Matrix (1999)',0,
+     12345,'abc123',0,0,0,0,
+     45,None))
 cur.execute(config_sql, (
     1,
     0,0,0,0,1,1,1,1,1,0,
@@ -82,8 +84,9 @@ cur.execute(job_sql, (
     'tt1375666','tt1375666',None,
     'https://m.media-amazon.com/images/M/MV5BMjAxMzY3NjcxNF5BMl5BanBnXkFtZTcwNTI5OTM0Mw@@._V1_SX300.jpg',
     'https://m.media-amazon.com/images/M/MV5BMjAxMzY3NjcxNF5BMl5BanBnXkFtZTcwNTI5OTM0Mw@@._V1_SX300.jpg',None,
-    '/dev/sr0','/mnt/rip/inception',1,None,'Dvd','INCEPTION','/home/arm/media/completed/Inception (2010)',1,
-    12346,'def456',0,0,0,0))
+     '/dev/sr0','/mnt/rip/inception',1,None,'Dvd','INCEPTION','/home/arm/media/completed/Inception (2010)',1,
+     12346,'def456',0,0,0,0,
+     100,100))
 cur.execute(config_sql, (
     2,
     0,1,0,0,0,1,1,1,1,1,
@@ -109,10 +112,11 @@ cur.execute(job_sql, (
     'tt0110912','tt0110912',None,
     'https://m.media-amazon.com/images/M/MV5BNGNhMDIzZTUtNTBlZi00MTRlLWFjM2ItYzViMjE3YzI5MjljXkEyXkFqcGc@._V1_SX300.jpg',
     'https://m.media-amazon.com/images/M/MV5BNGNhMDIzZTUtNTBlZi00MTRlLWFjM2ItYzViMjE3YzI5MjljXkEyXkFqcGc@._V1_SX300.jpg',None,
-    '/dev/sr1','/mnt/rip/pulp_fiction',1,
-    'MakeMKV failed: volume key not found, disc may be encrypted with unsupported protection.',
-    'Bluray','PULP_FICTION','/home/arm/media/completed/My Custom Movie Title (1994)',1,
-    None,None,0,1,1,1))
+     '/dev/sr1','/mnt/rip/pulp_fiction',1,
+     'MakeMKV failed: volume key not found, disc may be encrypted with unsupported protection.',
+     'Bluray','PULP_FICTION','/home/arm/media/completed/My Custom Movie Title (1994)',1,
+     None,None,0,1,1,1,
+     None,None))
 cur.execute(config_sql, (
     3,
     0,1,0,1,0,1,1,1,0,0,
@@ -141,8 +145,9 @@ cur.execute(job_sql, (
     'tt0816692','tt0816692',None,
     'https://m.media-amazon.com/images/M/MV5BZjdkOTU3MDktN2IxOS00OGEyLWFmMjktY2FiMmZkNWIyODZiXkEyXkFqcGc@._V1_SX300.jpg',
     'https://m.media-amazon.com/images/M/MV5BZjdkOTU3MDktN2IxOS00OGEyLWFmMjktY2FiMmZkNWIyODZiXkEyXkFqcGc@._V1_SX300.jpg',None,
-    '/dev/sr0','/mnt/rip/interstellar',1,None,'Bluray','INTERSTELLAR','/home/arm/media/completed/Interstellar (2014)',0,
-    12347,'ghi789',0,0,0,0))
+     '/dev/sr0','/mnt/rip/interstellar',1,None,'Bluray','INTERSTELLAR','/home/arm/media/completed/Interstellar (2014)',0,
+     12347,'ghi789',0,0,0,0,
+     100,60))
 cur.execute(config_sql, (
     4,
     0,0,0,0,1,1,1,1,1,0,
@@ -161,6 +166,18 @@ for t in [
     (4,'3',150,'16:9',23.976,0,'interstellar_t02.mkv','interstellar_t02.mkv',None,None,0,'Completed',None,'extra',1,1,83886080),
 ]:
     cur.execute(track_sql, t)
+
+notif_cols = ['Id','Timestamp','EventType','Message','Read']
+notif_sql = f"INSERT INTO notifications ({','.join(notif_cols)}) VALUES ({','.join(['?']*len(notif_cols))})"
+for n in [
+    (1,'2026-05-31 10:05:00','info','Rip started: The Matrix',1),
+    (2,'2026-05-31 10:15:00','success','Rip completed: The Matrix',1),
+    (3,'2026-05-30 14:05:00','info','Rip started: Inception',1),
+    (4,'2026-05-30 16:30:00','success','Transcode completed: Inception',0),
+    (5,'2026-05-29 08:10:00','error','Rip failed: My Custom Movie Title — MakeMKV key not found',0),
+    (6,'2026-05-31 12:05:00','info','Rip started: Interstellar',0),
+]:
+    cur.execute(notif_sql, n)
 
 conn.commit()
 

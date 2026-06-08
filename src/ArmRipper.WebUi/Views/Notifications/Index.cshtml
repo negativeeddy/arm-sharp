@@ -1,11 +1,24 @@
 @model IEnumerable<ArmRipper.Core.Models.Notification>
 @{
     ViewData["Title"] = "Notifications - ARM";
+    var current = ViewBag.CurrentFilter as string ?? "unread";
 }
 
 <h1>Notifications</h1>
 
-@if (Model.Any(n => !n.Read))
+<ul class="nav nav-pills mb-3">
+    <li class="nav-item">
+        <a class="nav-link @(current == "unread" ? "active" : "")" href="/notifications?filter=unread">Unread</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link @(current == "read" ? "active" : "")" href="/notifications?filter=read">Read</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link @(current == "all" ? "active" : "")" href="/notifications?filter=all">All</a>
+    </li>
+</ul>
+
+@if (current != "read" && Model.Any(n => !n.Read))
 {
     <form method="post" action="/notifications/markallread" class="mb-3">
         <button type="submit" class="btn btn-outline-danger btn-sm">Mark All Read</button>

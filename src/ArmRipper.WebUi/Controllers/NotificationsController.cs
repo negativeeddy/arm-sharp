@@ -10,13 +10,21 @@ namespace ArmRipper.WebUi.Controllers;
 public class NotificationsController(ArmDbContext db) : Controller
 {
     [HttpGet("")]
-    public async Task<IActionResult> Index()
+    public async Task<IActionResult> Index(string? filter = "unread")
     {
-        var notifications = await db.Notifications
+        var query = db.Notifications.AsQueryable();
+
+        if (filter == "unread")
+            query = query.Where(n => !n.Read);
+        else if (filter == "read")
+            query = query.Where(n => n.Read);
+
+        var notifications = await query
             .OrderByDescending(n => n.Timestamp)
             .Take(50)
             .ToListAsync();
 
+        ViewBag.CurrentFilter = filter;
         return View(notifications);
     }
 

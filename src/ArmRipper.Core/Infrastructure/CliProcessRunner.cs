@@ -99,4 +99,55 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
 
         process.Dispose();
     }
+
+    public async IAsyncEnumerable<(string Line, bool IsStdErr)> RunStreamingAllAsync(
+        string fileName,
+        string arguments,
+        string? workingDirectory = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        logger.LogInformation("Streaming both: {FileName} {Arguments}", fileName, arguments);
+
+        var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = fileName,
+                Arguments = arguments,
+                WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            }
+        };
+
+        process.Start();
+
+        var channel = System.Threading.Channels.Channel.CreateUnbounded<(string, bool)>();
+
+        var readerTask = Task.Run(async () =>
+        {
+            try
+            {
+                while (await process.StandardOutput.ReadLineAsync(ct) is { } line)
+                    channel.Writer.TryWrite((line, false));
+
+                while (await process.StandardError.ReadLineAsync(ct) is { } line)
+                    channel.Writer.TryWrite((line, true));
+            }
+            finally
+            {
+                channel.Writer.Complete();
+            }
+        }, ct);
+
+        await foreach (var item in channel.Reader.ReadAllAsync(ct))
+            yield return item;
+
+        await readerTask;
+        process.WaitForExit();
+        logger.LogInformation("Process exited ({Name}) code={Code}", fileName, process.ExitCode);
+        process.Dispose();
+    }
 }
