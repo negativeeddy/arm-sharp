@@ -151,6 +151,122 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
+    public async Task GetJobById_ExistingJob_ReturnsOk()
+    {
+        await EnsureSeedLoadedAsync();
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync($"/api/jobs/{_testJobId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ActiveJobs_ReturnsPartialView()
+    {
+        await EnsureSeedLoadedAsync();
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync("/api/jobs/active");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Test Movie", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ActiveJobs_WhenNoActiveJobs_ReturnsEmptyPartial()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            foreach (var j in db.Jobs)
+                db.Jobs.Remove(j);
+            db.SaveChanges();
+        }
+
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync("/api/jobs/active");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("Test Movie", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GetLog_MissingJob_ReturnsErrorJson()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync("/api/log?jobId=9999");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var json = await response.Content.ReadAsStringAsync();
+        var doc = JsonDocument.Parse(json);
+        Assert.False(doc.RootElement.GetProperty("success").GetBoolean());
+    }
+
+    [Fact]
+    public async Task GetLog_JobWithoutLogFile_ReturnsErrorJson()
+    {
+        await EnsureSeedLoadedAsync();
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync($"/api/log?jobId={_testJobId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var json = await response.Content.ReadAsStringAsync();
+        var doc = JsonDocument.Parse(json);
+        Assert.False(doc.RootElement.GetProperty("success").GetBoolean());
+    }
+
+    [Fact]
+    public async Task UnreadCount_ReturnsZero_WhenNoNotifications()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync("/api/notifications/unread");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var json = await response.Content.ReadAsStringAsync();
+        var doc = JsonDocument.Parse(json);
+        Assert.Equal(0, doc.RootElement.GetProperty("count").GetInt32());
+    }
+
+    [Fact]
+    public async Task UnreadCount_ReturnsCorrectCount()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            db.Notifications.Add(new Notification
+            {
+                EventType = "test",
+                Message = "Unread 1",
+                Timestamp = DateTime.UtcNow,
+                Read = false
+            });
+            db.Notifications.Add(new Notification
+            {
+                EventType = "test",
+                Message = "Unread 2",
+                Timestamp = DateTime.UtcNow,
+                Read = false
+            });
+            db.Notifications.Add(new Notification
+            {
+                EventType = "test",
+                Message = "Read",
+                Timestamp = DateTime.UtcNow,
+                Read = true
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync("/api/notifications/unread");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var json = await response.Content.ReadAsStringAsync();
+        var doc = JsonDocument.Parse(json);
+        Assert.Equal(2, doc.RootElement.GetProperty("count").GetInt32());
+    }
+
+    [Fact]
     public async Task Abandon_ExistingJob_ReturnsSuccess()
     {
         await EnsureSeedLoadedAsync();

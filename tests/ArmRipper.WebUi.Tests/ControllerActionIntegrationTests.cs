@@ -448,4 +448,127 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
             }));
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
+
+    [Fact]
+    public async Task MarkAllRead_MarksAllNotificationsAsRead()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            db.Notifications.Add(new Notification
+            {
+                EventType = "test",
+                Message = "N1",
+                Timestamp = DateTime.UtcNow,
+                Read = false
+            });
+            db.Notifications.Add(new Notification
+            {
+                EventType = "test",
+                Message = "N2",
+                Timestamp = DateTime.UtcNow,
+                Read = false
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.PostAsync("/notifications/markallread",
+            new FormUrlEncodedContent(new Dictionary<string, string>()));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            Assert.Equal(0, await db.Notifications.CountAsync(n => !n.Read));
+        }
+    }
+
+    [Fact]
+    public async Task JobDetail_ExistingJob_ReturnsPage()
+    {
+        int jobId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = new Job
+            {
+                Title = "Detail Test",
+                TitleAuto = "Detail Test",
+                Year = "2026",
+                VideoType = "movie",
+                DiscType = DiscType.Dvd,
+                Status = JobState.Active,
+                StartTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99",
+                Config = new ConfigSnapshot { MinLength = 300, MaxLength = 9999, RipMethod = "mkv", GetAudioTitle = "" }
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+        }
+
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync($"/jobs/jobdetail?jobId={jobId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Detail Test", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task JobDetail_MissingJob_ReturnsNotFound()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync("/jobs/jobdetail?jobId=9999");
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ActiveRips_ReturnsPageWithActiveJobs()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            db.Jobs.Add(new Job
+            {
+                Title = "Active Rip",
+                TitleAuto = "Active Rip",
+                Year = "2026",
+                VideoType = "movie",
+                DiscType = DiscType.Dvd,
+                Status = JobState.Active,
+                StartTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99",
+                Config = new ConfigSnapshot { MinLength = 300, MaxLength = 9999, RipMethod = "mkv", GetAudioTitle = "" }
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync("/jobs/activerips");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Active Rip", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ActiveRips_WhenNoActiveRips_ReturnsEmptyState()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync("/jobs/activerips");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DatabaseImport_ReturnsJson()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync("/database/import");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var json = await response.Content.ReadAsStringAsync();
+        Assert.Contains("added", json, StringComparison.OrdinalIgnoreCase);
+    }
 }
