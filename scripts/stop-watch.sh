@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Stop the disc watch script
-# Usage: ./stop-watch.sh
+set -euo pipefail
 
-PID_FILE="/home/arm/scripts/.watch.pid"
+PID_FILE="${ARM_STATE_DIR:-/opt/arm/scripts}/.watch.pid"
 
 if [ -f "$PID_FILE" ]; then
     pid=$(cat "$PID_FILE")

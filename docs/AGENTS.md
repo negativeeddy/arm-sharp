@@ -98,6 +98,38 @@ All 4 MusicBrainz issues fixed:
 - **8.3:** `int.TryParse`, `TryGetProperty`, XmlException guard
 - **8.4:** 15 unit tests (disc, cdstub, XML, HTTP, cover art)
 
-## All Phases Complete 🎉
+## Docker Image — Ready for Testing
 
-173 tests (114 Core + 59 WebUi), 0 warnings, 0 errors.
+- **Scripts** at `/opt/arm/scripts/` (not `/home/arm/scripts/` — avoids user volume conflict)
+- `watch-discs.sh` dynamically scans `/dev/sr*` devices, uses file-based state (no python3 dep)
+- `docker-entrypoint.sh` handles `ARM_UID`/`ARM_GID` via `usermod`; defaults to webui + supervise
+- `EXPOSE 8080`, `ASPNETCORE_URLS=http://+:8080`
+- Build: `docker build -t arm-sharp .` or `docker build --build-arg HW_ACCEL=nvidia -t arm-sharp .`
+- Run: `docker run --privileged -p 8080:8080 arm-sharp`
+- Compose service: see user's existing ARM definition — drop-in replacement (change image name)
+
+## Build
+```bash
+dotnet build      # 0 warnings, 0 errors across 5 projects
+dotnet test       # 173/173 passing
+```
+
+## Running
+```bash
+# CLI
+dotnet run --project src/ArmRipper.Cli -- --device /dev/sr0
+
+# Web UI
+dotnet run --project src/ArmRipper.WebUi
+
+# Docker (compose drop-in)
+docker build --build-arg HW_ACCEL=nvidia -t arm-sharp .
+docker run --privileged --rm -p 8080:8080 \
+  -v /mnt/data/docker/arm/home:/home/arm \
+  -v /mnt/data/docker/arm/logs:/home/arm/logs \
+  -v /mnt/data/docker/arm/media:/home/arm/media \
+  -v /mnt/data/docker/arm/config:/etc/arm/config \
+  -v /mnt/data/media:/home/arm/publish \
+  --device /dev/sr0 --device /dev/sr1 \
+  arm-sharp
+```

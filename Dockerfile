@@ -87,7 +87,10 @@ COPY --from=build /app/cli /app/cli
 COPY --from=build /app/webui /app/webui
 COPY --from=handbrake-${HW_ACCEL} /usr/local/bin/HandBrakeCLI /usr/local/bin/HandBrakeCLI
 
-RUN mkdir -p /home/arm/media/{raw,transcode,completed} /home/arm/logs /etc/arm/config
+RUN mkdir -p /home/arm/media/{raw,transcode,completed} /home/arm/logs /etc/arm/config /opt/arm/scripts
 
 COPY docker-entrypoint.sh /usr/local/bin/
+COPY scripts/ /opt/arm/scripts/
+RUN chmod +x /opt/arm/scripts/*.sh
+EXPOSE 8080
 ENTRYPOINT ["docker-entrypoint.sh"]

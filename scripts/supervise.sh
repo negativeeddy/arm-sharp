@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# Production supervisor: runs watch-discs.sh with auto-restart.
-# Drop this into a Docker ENTRYPOINT or run via s6/supervisord.
 set -euo pipefail
 
-SCRIPT="/home/arm/scripts/watch-discs.sh"
-LOG="/home/arm/logs/watch-discs.log"
+SCRIPT="${ARM_WATCH_SCRIPT:-/opt/arm/scripts/watch-discs.sh}"
+LOG="${ARM_LOG_FILE:-/home/arm/logs/watch-discs.log}"
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG"; }
 

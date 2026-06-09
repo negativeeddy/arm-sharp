@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DEVICES=("/dev/sr0" "/dev/sr1")
-POLL_SECONDS=5
-STATE_FILE="/home/arm/scripts/.disc-state.json"
-LOCK_FILE="/home/arm/scripts/.rip.lock"
-LOG_FILE="/home/arm/logs/watch-discs.log"
+POLL_SECONDS=${ARM_POLL_SECONDS:-5}
+STATE_DIR="${ARM_STATE_DIR:-/opt/arm/scripts/.disc-state}"
+LOCK_FILE="${ARM_RIP_LOCK:-/opt/arm/scripts/.rip.lock}"
+LOG_FILE="${ARM_LOG_FILE:-/home/arm/logs/watch-discs.log}"
+CLI_BIN="${ARM_CLI_PATH:-/app/cli/ArmRipper.Cli}"
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_FILE"; }
+
+get_devices() {
+    for dev in /dev/sr*; do
+        [ -e "$dev" ] && echo "$dev"
+    done
+}
 
 get_size() {
     local sysfs="${1//\/dev\//\/sys\/class\/block/}/size"
@@ -20,18 +26,6 @@ get_size() {
 
 get_label() {
     blkid -o value -s LABEL "$1" 2>/dev/null | tr -d '\n' || true
-}
-
-load_state() {
-    if [ -f "$STATE_FILE" ]; then
-        cat "$STATE_FILE" 2>/dev/null || echo "{}"
-    else
-        echo "{}"
-    fi
-}
-
-save_state() {
-    echo "$1" > "$STATE_FILE"
 }
 
 get_rip_lock() {
@@ -51,29 +45,12 @@ release_rip_lock() {
     rm -f "$LOCK_FILE"
 }
 
-cli_bin="${ARM_CLI_PATH:-}"
-if [ -z "$cli_bin" ]; then
-    for candidate in \
-        "/workspaces/arm-sharp/src/ArmRipper.Cli/bin/Release/net10.0/ArmRipper.Cli" \
-        "/usr/local/bin/ArmRipper.Cli" \
-        "/usr/bin/ArmRipper.Cli"; do
-        if [ -x "$candidate" ]; then
-            cli_bin="$candidate"
-            break
-        fi
-    done
-fi
-if [ -z "$cli_bin" ] || [ ! -x "$cli_bin" ]; then
-    log "FATAL: ArmRipper.Cli not found (set ARM_CLI_PATH or install to /usr/local/bin)"
-    exit 1
-fi
-
 start_rip() {
     local dev="$1"
     local label
     label=$(get_label "$dev")
     log "INFO: Starting rip for $dev (label=$label)"
-    if "$cli_bin" --device "$dev"; then
+    if "$CLI_BIN" --device "$dev"; then
         log "INFO: Rip for $dev completed successfully"
     else
         local rc=$?
@@ -81,21 +58,29 @@ start_rip() {
     fi
 }
 
-log "INFO: watch-discs.sh started, polling every ${POLL_SECONDS}s, devices: ${DEVICES[*]}, cli: $cli_bin"
+if [ ! -x "$CLI_BIN" ]; then
+    log "FATAL: ArmRipper.Cli not found at $CLI_BIN (set ARM_CLI_PATH)"
+    exit 1
+fi
 
+mkdir -p "$STATE_DIR" "$(dirname "$LOG_FILE")"
+
+devices=( $(get_devices) )
+log "INFO: watch-discs.sh started, polling every ${POLL_SECONDS}s, devices: ${devices[*]}, cli: $CLI_BIN"
+
+# Load previous sizes from individual state files
 declare -A prev
-local_state=$(load_state)
-for key in $(echo "$local_state" | python3 -c "import sys,json; d=json.load(sys.stdin); [print(k) for k in d]" 2>/dev/null || true); do
-    val=$(echo "$local_state" | python3 -c "import sys,json; print(json.load(sys.stdin).get('$key', 0))" 2>/dev/null || echo 0)
-    prev["$key"]=$val
+for dev in $(get_devices); do
+    name=$(basename "$dev")
+    sf="$STATE_DIR/$name"
+    [ -f "$sf" ] && prev[$name]=$(cat "$sf") || prev[$name]=0
 done
-log "INFO: Loaded previous state: $local_state"
+log "INFO: Loaded previous state: $(for k in "${!prev[@]}"; do echo "$k=${prev[$k]}"; done | tr '\n' ' ')"
 
 init=true
 
 while true; do
-    for dev in "${DEVICES[@]}"; do
-        [ -e "$dev" ] || continue
+    for dev in $(get_devices); do
         name=$(basename "$dev")
         size=$(get_size "$dev")
         [ "$size" = "-1" ] && continue
@@ -104,6 +89,7 @@ while true; do
 
         if $init; then
             prev[$name]=$size
+            echo "$size" > "$STATE_DIR/$name"
             if [ "$size" -gt 0 ]; then
                 log "INFO: $name initially has media (size=$size, label=$(get_label "$dev")) -- waiting for change"
             fi
@@ -124,15 +110,7 @@ while true; do
                 log "INFO: $name disc removed"
             fi
             prev[$name]=$size
-            state_json="{"
-            first=true
-            for k in "${!prev[@]}"; do
-                $first || state_json+=", "
-                state_json+="\"$k\": ${prev[$k]}"
-                first=false
-            done
-            state_json+="}"
-            save_state "$state_json"
+            echo "$size" > "$STATE_DIR/$name"
         fi
     done
     init=false
