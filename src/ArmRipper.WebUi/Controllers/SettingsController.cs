@@ -29,7 +29,36 @@ public class SettingsController(
         ViewBag.Drives = drives;
         ViewBag.SystemInfo = systemInfo;
         ViewBag.UiSettings = uiCfg;
-        ViewBag.ArmSettings = settings.Value;
+
+        // Merge DB-stored ripper settings on top of defaults
+        var mergedSettings = new ArmSettings();
+        foreach (var prop in typeof(ArmSettings).GetProperties())
+        {
+            if (prop.CanWrite)
+            {
+                var defaultValue = prop.GetValue(settings.Value);
+                prop.SetValue(mergedSettings, defaultValue);
+            }
+        }
+        var savedRipper = await db.RipperSettings.FirstOrDefaultAsync();
+        if (savedRipper is not null)
+        {
+            var saved = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(savedRipper.SettingsJson);
+            if (saved is not null)
+            {
+                foreach (var (key, value) in saved)
+                {
+                    var prop = typeof(ArmSettings).GetProperty(key);
+                    if (prop is not null && prop.CanWrite)
+                    {
+                        var converted = System.Text.Json.JsonSerializer.Deserialize(value.GetRawText(), prop.PropertyType);
+                        if (converted is not null)
+                            prop.SetValue(mergedSettings, converted);
+                    }
+                }
+            }
+        }
+        ViewBag.ArmSettings = mergedSettings;
         ViewBag.Hostname = Environment.MachineName;
         ViewBag.OsDesc = RuntimeInformation.OSDescription;
         ViewBag.ProcCount = Environment.ProcessorCount;
@@ -214,9 +243,19 @@ public class SettingsController(
     [HttpPost("save-ripper")]
     public async Task<IActionResult> SaveRipper(ArmSettings posted)
     {
-        // Update current ArmSettings in memory (persist to appsettings later)
-        // For now just display a success message
-        TempData["Message"] = "Ripper settings updated. (Runtime only — persist to appsettings.json for permanence)";
+        var json = System.Text.Json.JsonSerializer.Serialize(posted);
+        var existing = await db.RipperSettings.FirstOrDefaultAsync();
+        if (existing is null)
+        {
+            db.RipperSettings.Add(new RipperSettings { SettingsJson = json });
+        }
+        else
+        {
+            existing.SettingsJson = json;
+        }
+        await db.SaveChangesAsync();
+
+        TempData["Message"] = "Ripper settings saved to database.";
         return RedirectToAction("Index");
     }
 

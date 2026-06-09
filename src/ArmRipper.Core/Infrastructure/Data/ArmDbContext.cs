@@ -18,6 +18,7 @@ public class ArmDbContext : DbContext
     public DbSet<DiscMetadata> DiscMetadata => Set<DiscMetadata>();
     public DbSet<DiscTrack> DiscTracks => Set<DiscTrack>();
     public DbSet<DiscTrackStream> DiscTrackStreams => Set<DiscTrackStream>();
+    public DbSet<RipperSettings> RipperSettings => Set<RipperSettings>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -147,6 +148,13 @@ public class ArmDbContext : DbContext
             entity.Property(e => e.StreamType).HasMaxLength(10);
             entity.Property(e => e.LanguageCode).HasMaxLength(10);
             entity.Property(e => e.Codec).HasMaxLength(50);
+        });
+
+        modelBuilder.Entity<RipperSettings>(entity =>
+        {
+            entity.ToTable("ripper_settings");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.SettingsJson);
         });
     }
 }
