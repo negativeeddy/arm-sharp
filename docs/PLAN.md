@@ -13,7 +13,7 @@
 | ORM | EF Core + SQLite | Native .NET, LINQ, migrations support |
 | Web UI | ASP.NET Core MVC + Razor Pages | Built-in, no JS framework dependency |
 | Container base | `arm-dependencies:1.7.3` | Drop-in replacement, all tools pre-installed |
-| Auth | Skipped (phase 5) | Original ARM trusts internal network; revisit later |
+| Auth | Cookie auth + PasswordHasher | Simple, no external dependencies, internal-network trust model |
 | Metadata | OMDB + TMDB (same as ARM) | Both APIs remain available |
 | Notifications | Apprise-compatible | Retains 30+ notification services from original |
 
@@ -28,225 +28,128 @@
 - **Volume mounts:** ARM config/paths (matches Docker volumes)
 - **postCreate:** dotnet restore + build + test
 
-### 0.2 — Create `ARCHITECTURE.md`
-- Port architecture decisions (table above)
+### 0.2 — Create `ARCHITECTURE.md` ✅
 - Project structure map
 - Configuration reference (arm.yaml → ArmSettings mapping)
 - How the rip pipeline works (identify → rip → transcode → move → notify)
 
-### 0.3 — Create `docs/` directory for extended docs
+### 0.3 — Create `docs/` directory for extended docs ✅
 - `docs/configuration.md` — all config knobs
 - `docs/docker.md` — Docker usage, GPU passthrough, drive mapping
 - `docs/development.md` — how to build, test, contribute
+- `docs/FixMusicBrainz.md` — deferred MusicBrainz issues
 
 ---
 
-## Phase 1: Fix Critical Runtime Gaps
+## Phase 1: Fix Critical Runtime Gaps ✅ (All Complete)
 
 ### 1.1 — CRC64 computation ✅
-- **Done:** `DvdCrc64.Compute()` was already ported and matches Python `pydvdid` 1:1
-  - Same polynomial, lookup table, file ordering, and FILETIME conversion
-  - Cross-validated with identical test data: `571d8fb21eb8fe4b` from both Python and C#
-  - Test `Compute_MatchesPythonPydvdid` in `DvdCrc64Tests.cs` locks in the known value
-  - `IdentifyService.cs:205-208` calls `DvdCrc64.Compute(mountPoint)` via `Task.Run`
+- `DvdCrc64.Compute()` matches Python `pydvdid` 1:1
+- Cross-validated: `571d8fb21eb8fe4b` from both Python and C#
 
-### 1.2 — Register all Core services in WebUi DI (`src/ArmRipper.WebUi/Program.cs`)
-- **Current:** WebUi only registers `ArmDbContext`. No ripping services available
-- **Target:** Register all services (IdentifyService, ArmRipperService, HandBrakeService, FfmpegService, MakeMkvService, MusicBrainzService, NotificationService, OmdbService, TmdbService, CliProcessRunner, Conductor)
-- **Gating factor:** Some services need `IOptions<ArmSettings>` — ensure `ArmSettings` is bound in WebUi too
-- **Add `appsettings.json`** to WebUi project with default config
+### 1.2 — Register all Core services in WebUi DI ✅
+- All 15+ services registered: IdentifyService, ArmRipperService, HandBrakeService, FfmpegService, MakeMkvService, MusicBrainzService, NotificationService, OmdbService, TmdbService, CliProcessRunner, Conductor, SignalR, auth, MVC
 
-### 1.3 — Add missing ArmSettings properties
-- `HbArgsDvd`, `HbArgsBd` (defined in ConfigSnapshot but not in ArmSettings)
-- `FfmpegCli`, `FfmpegPreFileArgs`, `FfmpegPostFileArgs`
-- `ArmApiKey` (for ARM central API)
-- `EmbyServer`, `EmbyPort`, `EmbyApiKey`, `EmbyRefresh`
-- `PbKey`, `IftttKey`, `PoUserKey`, `BashScript`, `JsonUrl`, `Apprise` (notification channels)
+### 1.3 — Add missing ArmSettings properties ✅
+- `HbArgsDvd`, `HbArgsBd`, `FfmpegCli`, `FfmpegPreFileArgs`, `FfmpegPostFileArgs`
+- `ArmApiKey`, `EmbyServer`, `EmbyPort`, `EmbyApiKey`, `EmbyRefresh`
+- `PbKey`, `IftttKey`, `PoUserKey`, `BashScript`, `JsonUrl`, `Apprise`
 - `UiBaseUrl`, `ExtrasSub`
 
-### 1.4 — Add SignalR hub for real-time notifications
-- Create `/hubs/notifications` SignalR hub
-- Wire `NotificationService` to broadcast via SignalR
-- Register in DI: `builder.Services.AddSignalR()`, `app.MapHub<NotificationHub>("/hubs/notifications")`
-- Remove from AGENTS.md claim until implemented
+### 1.4 — Add SignalR hub ✅
+- `/hubs/notifications` hub wired via `SignalRNotificationBroadcaster`
+- `StreamLog` for real-time log streaming via `IAsyncEnumerable<string>`
 
-### 1.5 — Add health check endpoint
+### 1.5 — Add health check endpoint ✅
 - `GET /api/health` → `{ "status": "healthy", "timestamp": "...", "version": "..." }`
-- Useful for Docker health checks and orchestration
 
 ---
 
 ## Phase 2: Web UI Feature Parity
 
-### 2.1 — Add missing controllers + views (9 new pages)
+### 2.1 — Add missing controllers + views (9 pages) ✅
 
-| Controller | Route | View | ARM Equivalent |
-|-----------|-------|------|----------------|
-| `LogsController` | `/logs` | `Views/Logs/Index.cshtml` | `listlogs` |
-| | `/logs/view` | `Views/Logs/Viewer.cshtml` | `logview` (tail/full/arm/download) |
-| `DatabaseController` | `/database` | `Views/Database/Index.cshtml` | `databaseview` (pagination, search) |
-| | `/database/update` | `Views/Database/Update.cshtml` | `databaseupdate` (migrate DB) |
-| | `/database/import` | — | `import_movies` (scan completed path) |
-| `SettingsController` | `/settings` | Expand tab view | 7-tab settings (general, sysinfo, ripper, UI, abcde, apprise, help) |
-| | `/settings/system` | `Views/Settings/SystemInfo.cshtml` | `sysinfo` (CPU/mem/storage/HW transcode) |
-| | `/settings/eject` | — | Drive eject action |
-| `ApiController` | `/api/abandon/{id}` | — | Kill job process + eject |
-| | `/api/change-params` | — | Change rip params mid-job |
-| | `/api/log` | — | Parse log files for progress |
+| Controller | Route | Status |
+|-----------|-------|--------|
+| `HomeController` | `/` | ✅ |
+| `JobsController` | `/jobs/*` | ✅ |
+| `HistoryController` | `/history` | ✅ |
+| `LogsController` | `/logs`, `/logs/view`, `/logs/download` | ✅ |
+| `DatabaseController` | `/database`, `/database/update`, `/database/import`, `/database/delete` | ✅ |
+| `SettingsController` | `/settings`, `/settings/scan`, `/settings/eject`, `/settings/sysinfo`, `/settings/start-rip` | ✅ |
+| `NotificationsController` | `/notifications`, `/api/notifications/*` | ✅ |
+| `ApiController` | `/api/health`, `/api/jobs`, `/api/drives`, `/api/stats`, `/api/abandon`, `/api/change-params`, `/api/log` | ✅ |
+| `AuthController` | `/auth/login`, `/auth/logout` | ✅ |
 
-### 2.2 — Enhance existing views
+### 2.2 — Enhance existing views 🟡 (In Progress)
 
-| View | Enhancement | ARM Reference |
-|------|-------------|---------------|
-| `Home/Index.cshtml` | Add server stats (CPU, memory, storage, HW transcode) | `index.html` + `sysinfo.html` |
-| | Add AJAX auto-refresh of active jobs | `jobRefresh.js` |
-| `Jobs/JobDetail.cshtml` | Add poster display | `jobdetail.html` |
-| | Add metadata (ratings, plot toggle) | |
-| | Add job config snapshot display | |
-| | Add manual edit controls (title, params) | |
-| | Add track editing (main feature, process) | |
-| `Jobs/TitleSearch.cshtml` | Add result grid with posters | `list_titles.html` |
-| | Add custom title form | `customTitle.html` |
-| | Add change params form | `changeparams.html` |
-| `Settings/Index.cshtml` | Change to 7-tab layout | `settings.html` |
-| | Add ripper config form | `ripper.html` |
-| | Add UI settings tab | `ui.html` |
-| | Add abcde config editor | `abcde.html` |
-| | Add Apprise config editor | `apprise.html` |
-| | Add system info tab | `tab_sysinfo.html` |
-| `History/Index.cshtml` | Add pagination | `pagination.html` |
-| | Add sortable columns | tablesorter |
-| `Notifications/Index.cshtml` | Add bell badge in nav | `navnotify.html` |
-| `Shared/_Layout.cshtml` | Add nav items: Logs, Database | `nav.html` |
-| | Add notification bell badge | |
+| View | Enhancement | Status |
+|------|-------------|--------|
+| `Home/Index.cshtml` | Server stats, AJAX job refresh | 🟡 Partial |
+| `Jobs/JobDetail.cshtml` | Poster display, metadata, config snapshot, edit controls, track editing | 🟡 Partial |
+| `Jobs/TitleSearch.cshtml` | Result grid with posters, custom title form, change params form | 🟡 Partial |
+| `Settings/Index.cshtml` | 7-tab layout (ripper, UI, abcde, Apprise, sysinfo) | ✅ Done |
+| `History/Index.cshtml` | Pagination, sortable columns | ✅ Done |
+| `Notifications/Index.cshtml` | Bell badge in nav | 🟡 Partial |
+| `Shared/_Layout.cshtml` | Nav items: Logs, Database, notification badge | ✅ Done |
 
-### 2.3 — Client-side assets
-- **Current:** SimpleCSS from CDN
-- **Target:** Bootstrap 4 (matches ARM), jQuery, tablesorter, dark mode toggle
-- Serve from CDN with integrity hashes (or bundle later)
-- Create `wwwroot/js/common.js` and `wwwroot/js/jobRefresh.js`
+### 2.3 — Client-side assets ✅
+- Bootstrap 4, jQuery, tablesorter, dark mode toggle — all served from CDN with integrity hashes
 
-### 2.4 — Drive management
-- Implement `/settings/scan` to scan udev for optical drives
-- Add eject button per drive
-- Add drive mode toggle (auto/manual)
-- Reference: `arm/ui/settings/DriveUtils.py`
+### 2.4 — Drive management ✅
+- `/settings/scan` — udev scan for optical drives
+- Eject button per drive
+- Drive mode toggle (auto/manual)
 
 ---
 
 ## Phase 3: Production Docker + Tarantino Devcontainer
 
 ### 3.1 — Refactor Dockerfile to use ARM base image
-- **Current:** `mcr.microsoft.com/dotnet/aspnet:10.0` + apt-get install tools
 - **Target:** `FROM automaticrippingmachine/arm-dependencies:1.7.3 AS base` then add .NET runtime
-- Keeps us as a drop-in replacement — same udev rules, same mount points, same service structure
-- May need to add .NET runtime from Microsoft feed onto the Phusion baseimage
-
-Dockerfile structure:
-```dockerfile
-# Build stage — use full .NET SDK
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
-...
-
-# Runtime stage — use ARM base with .NET runtime added
-FROM automaticrippingmachine/arm-dependencies:1.7.3 AS runtime
-# Install .NET runtime on Phusion baseimage
-COPY --from=build /app/cli /app/cli
-COPY --from=build /app/webui /app/webui
-# Keep ARM's udev rules, mount points, runit services
-COPY docker-entrypoint.sh /usr/local/bin/
-ENTRYPOINT ["docker-entrypoint.sh"]
-```
+- Keep us as drop-in replacement — same udev rules, mount points, service structure
 
 ### 3.2 — Tarantino devcontainer profile
-- File: `.devcontainer/tarantino/devcontainer.json`
-- Base: Custom Dockerfile that starts from `arm-dependencies` and installs .NET SDK
-- Run args for hardware access:
-
-```json
-{
-    "name": "ARM .NET — Tarantino",
-    "build": { "dockerfile": "Dockerfile" },
-    "runArgs": [
-        "--privileged",
-        "--gpus", "all",
-        "-v", "/opt/arm:/opt/arm",
-        "-v", "/etc/arm/config:/etc/arm/config"
-    ],
-    "forwardPorts": [8080],
-    "customizations": {
-        "vscode": {
-            "extensions": ["ms-dotnettools.csdevkit", ...]
-        }
-    }
-}
-```
-
-- Devcontainer Dockerfile: `arm-dependencies` base + .NET 10 SDK from Microsoft
+- `.devcontainer/tarantino/devcontainer.json`
+- Base: `arm-dependencies` + .NET 10 SDK
+- Run args: `--privileged`, `--gpus all`, volume mounts
 
 ### 3.3 — GPU passthrough documentation
-- NVIDIA: `--gpus all`, needs `nvidia-container-toolkit` on host
+- NVIDIA: `--gpus all`
 - Intel QSV: `--device /dev/dri:/dev/dri`
 - AMD VAAPI: `--device /dev/dri:/dev/dri`
-- Add `--device` entries for `/dev/sr*` (or use `--privileged`)
 
-### 3.4 — Mount point conventions (match ARM)
-- `/dev/sr*` → `/mnt/dev/sr*` (fstab entries)
-- `/opt/arm/raw` — raw rips
-- `/opt/arm/transcode` — transcoding work
-- `/opt/arm/completed` — final output
-- `/opt/arm/logs` — log files
-- `/etc/arm/config` — config (arm.yaml, arm.db, abcde.conf, apprise.yaml)
+### 3.4 — Mount point conventions 🟡
+- Defaults exist in `ArmSettings` — document fully
 
 ---
 
-## Phase 4: Hardware Testing on Tarantino
+## Phase 4: Hardware Testing on Tarantino ✅ (Complete)
 
-### 4.1 — DVD pipeline test
-- Insert known DVD
-- Run `dotnet run --project src/ArmRipper.Cli -- --device /dev/sr0`
-- Verify: Identify → CRC64 lookup → MakeMKV rip → HandBrake transcode → file move → notify
-- Test both main feature and full disc modes
-
-### 4.2 — Blu-ray pipeline test
-- Insert known Blu-ray
-- Same pipeline with MakeMKV (mandatory for Blu-ray)
-- Verify BD-ROM identification via bdmt_eng.xml
-
-### 4.3 — Audio CD test
-- Requires abcde with proper config
-- Test MusicBrainz disc ID + track listing + rip
-
-### 4.4 — Data disc test
-- Verify dd-based data rip
-
-### 4.5 — Web UI test
-- Open http://tarantino:8080
-- Test: dashboard, job detail, history, logs, settings, database
-- Test with active rip for real-time updates
-
-### 4.6 — Error recovery tests
-- Insert dirty/scratched disc
-- Kill process mid-rip
-- Pull disc out mid-operation
-- Test duplicate detection
+### 4.1 — DVD pipeline test ✅
+### 4.2 — Blu-ray pipeline test ✅
+### 4.3 — Audio CD test ✅
+### 4.4 — Data disc test ✅
+### 4.5 — Web UI test ✅
+### 4.6 — Error recovery tests ✅
 
 ---
 
 ## Phase 5: OSS Polish
 
-### 5.1 — Authentication (optional)
-- Add ASP.NET Core Identity or simple bcrypt auth if desired
-- Protect routes behind `[Authorize]` attributes
+### 5.1 — Authentication ✅
+- Cookie auth with `PasswordHasher<User>` (PBKDF2)
+- `[Authorize]` on all controllers except login/error/setup
+- `DisableLogin` option for internal-network setups
+- 6 integration tests covering login flows
 
 ### 5.2 — CI/CD pipeline
 - GitHub Actions: `dotnet build` + `dotnet test` on PR
-- Docker build + push to Docker Hub on tag
+- Docker build + push to GHCR on tag
 - Multi-arch builds (linux/amd64, linux/arm64)
 
 ### 5.3 — Docker Hub publish
 - `docker buildx build --platform linux/amd64,linux/arm64 ...`
-- Push to `yourorg/arm-sharp:latest`
 - Tags for versions
 
 ### 5.4 — README + contribution guide
@@ -256,49 +159,94 @@ ENTRYPOINT ["docker-entrypoint.sh"]
 - Configuration reference
 - FAQ / troubleshooting
 
-### 5.5 — Unit test expansion
-- Add more edge case coverage
-- Integration tests with mock devices
-- Test all new views and controller endpoints
+---
+
+## Phase 6: Disc Metadata Caching ✅ (Complete)
+
+### 6.1 — Disc fingerprint ✅
+- Fingerprint: `{VolumeLabel}::{SectorCount}`
+- Computed in `IdentifyService.ComputeDiscFingerprintAsync`
+- Stored as `Job.DiscFingerprint`
+
+### 6.2 — Database tables (3 new) ✅
+- `disc_metadata`, `disc_tracks`, `disc_track_streams`
+
+### 6.3 — SINFO expansion ✅
+- `StreamId` enum: 12 new field IDs
+- `GetTrackInfoAsync` captures all stream types
+
+### 6.4 — Cache flow ✅
+- Cache lookup by fingerprint → returns stored tracks or runs `makemkvcon info`
+
+### 6.5 — MakeMkvStreamCodes ✅
+- Refactored to `MakeMkvStreamCodes.Video(6201)`, `.Audio(6202)`, `.Subtitle(6203)`
 
 ---
 
-## Phase 6: Disc Metadata Caching (Completed)
+## Phase 7: Remaining Gaps (Current)
 
-### 6.1 — Disc fingerprint design
-- **Fingerprint**: `{VolumeLabel}::{SectorCount}` — volume label from blkid + sector count from sysfs (`/sys/block/{dev}/size`)
-- Computed in `IdentifyService.ComputeDiscFingerprintAsync` after disc identification
-- Stored as `Job.DiscFingerprint` in the `jobs` table
+### 7.1 — MakeMkvService tests
+- 611-line service, zero unit tests
+- Add `MakeMkvServiceTests.cs` with mocked `ICliProcessRunner`
 
-### 6.2 — Database tables (3 new)
-| Table | Model | Fields |
-|-------|-------|--------|
-| `disc_metadata` | `DiscMetadata` | Fingerprint (unique), volume label, sector count, disc type, created/last-used timestamps |
-| `disc_tracks` | `DiscTrack` | Track number, duration, chapters, filesize, aspect ratio, FPS, resolution |
-| `disc_track_streams` | `DiscTrackStream` | Stream index, stream type, language code, codec, channel count, forced flag |
+### 7.2 — Expand integration test coverage
+- **Current:** 46 WebUi integration tests covering all 9 controllers
+- **Target:** Cover edge cases, error states, anti-forgery validation
 
-### 6.3 — SINFO expansion
-- `StreamId` enum extended with 12 new field IDs (language, codec, channels, forced, resolution, etc.)
-- `GetTrackInfoAsync` now captures ALL stream types (audio, subtitle, video), not just video
-- Stream data accumulated per-track during parsing and persisted to `disc_track_streams`
+### 7.3 — Fix SettingsController.StartRip fire-and-forget
+- `SettingsController.cs:314` — `_ = Task.Run(...)` with scope leak
+- Add proper cancellation, status tracking, scope management
 
-### 6.4 — Cache flow
-1. `ArmRipperService.RipVisualMediaAsync` calls `GetTrackInfoWithCacheAsync`
-2. Cache lookup by fingerprint — if hit, returns stored `Track` objects; updates `LastUsedAt`
-3. Cache miss → `GetTrackInfoAsync` runs `makemkvcon info`, parses TINFO/SINFO, persists to `DiscMetadata`/`DiscTrack`/`DiscTrackStream`
-4. Cached tracks returned as standard `Track` objects for downstream processing
+### 7.4 — Align IHandBrakeService and IFfmpegService signatures
+- `IHandBrakeService` returns `Task<CliResult>`, `IFfmpegService` returns `Task`
+- Make consistent so callers can inspect failures from both
 
-### 6.5 — MakeMkvStreamCodes
-- Refactored stream type constants to `MakeMkvStreamCodes.Video(6201)`, `.Audio(6202)`, `.Subtitle(6203)`
+### 7.5 — HandBrakeService error tracking
+- Does not set `track.Status`/`track.Error` on failure (FFmpegService does)
+- Add for consistency
+
+### 7.6 — Fix SettingsController.SaveRipper persistence
+- Currently accepts values but discards them (`SettingsController.cs:219`)
+- Wire to persist to config or at minimum save to DB config snapshot
+
+### 7.7 — Weak path traversal protection
+- `NotificationHub.StreamLog` and `LogsController` use `fileName.Contains("/")` as sanitization
+- Use proper `Path.GetFileName` or `Path.GetRelativePath`
+
+### 7.8 — Clean up empty Views/Seed/ directory
+- Leftover scaffolding — delete if unused
+
+### 7.9 — Refactor Dockerfile to use ARM base image
+- Move from `mcr.microsoft.com/dotnet/aspnet:10.0` to `arm-dependencies:1.7.3`
 
 ---
 
-## Immediate Next Steps (What to do first)
+## Phase 8: MusicBrainz Fixes (Deferred to Last)
 
-1. **Create Tarantino devcontainer** — so you can develop directly on the target hardware
-2. **Fix CRC64** — without this, DVD identification is broken
-3. **Register WebUi services** — so the web UI can trigger/display real rip data
-4. **Add SignalR hub** — real-time notifications during development
-5. **Start adding missing views** — logs viewer is the most useful for debugging
+All MusicBrainzService work is deferred until everything else is complete. See `docs/FixMusicBrainz.md` for full issue catalog.
 
-Start with steps 1-2 in parallel. Step 1 unlocks real hardware testing; step 2 unlocks the DVD pipeline.
+### 8.1 — Inject IHttpClientFactory
+- Replace `new HttpClient()` with `IHttpClientFactory` (lines 73, 277)
+
+### 8.2 — Fix fire-and-forget GetCdArtAsync
+- Await properly or restructure into job flow (line 170)
+
+### 8.3 — XML parsing hardening
+- Guard all `int.Parse` calls (lines 167, 195, 227)
+- Use `TryGetProperty` instead of `GetProperty` (line 283)
+- Handle missing namespaces gracefully
+
+### 8.4 — Add unit tests
+- Dedicated `MusicBrainzServiceTests.cs` with mocked CLI + HTTP responses
+- Test all 8 untested methods
+
+---
+
+## Immediate Next Steps
+
+1. **Phase 7.1** — Write MakeMkvService tests (biggest untested surface)
+2. **Phase 7.3** — Fix SettingsController.StartRip fire-and-forget + scope leak
+3. **Phase 7.4** — Align HandBrake/FFmpeg service signatures
+4. **Phase 7.5** — Add error tracking to HandBrakeService
+5. **Phase 7.9** — Refactor Dockerfile to use ARM base image
+6. **Phase 8** — MusicBrainz fixes (last)

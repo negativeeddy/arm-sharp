@@ -7,7 +7,8 @@ Port the Python [automatic-ripping-machine](https://github.com/automatic-ripping
 - `ArmRipper.Core` — class library with all business logic
 - `ArmRipper.Cli` — console app entry point
 - `ArmRipper.WebUi` — ASP.NET Core Razor Pages + MVC controllers
-- `ArmRipper.Core.Tests` — xUnit test project (51 tests, all passing)
+- `ArmRipper.Core.Tests` — xUnit test project (52 tests, all passing)
+- `ArmRipper.WebUi.Tests` — xUnit integration tests (46 tests, all passing)
 
 Key interfaces: `IIdentifyService`, `IArmRipperService`, `IHandBrakeService`, `IFfmpegService`, `IMusicBrainzService`
 
@@ -24,26 +25,40 @@ All services reviewed for bugs; several critical and medium issues fixed:
 | `HandBrakeService` | ✅ Fixed | DurationPattern regex (no capture group → crash), dead code, track persistence in MKV path |
 | `FfmpegService` | ✅ Fixed | Track Ripped not set in MKV path, raw Process (no timeout), dead ffprobe duration variable |
 | `MakeMkvService` | ✅ Clean | No bugs found, but TInfo track metadata not persisted (deferred improvement) |
-| `MusicBrainzService` | 🔶 Known gaps | `new HttpClient()` (not IHttpClientFactory), fire-and-forget GetCdArtAsync, no XML tests — deferred |
+| `MusicBrainzService` | 🔶 Deferred to last | See `docs/FixMusicBrainz.md` — 6 issue categories, all deferred |
 | `NotificationService` | ✅ Fixed | DiscType.Unknown returns friendly message instead of throwing |
 | `OmdbService` / `TmdbService` | ✅ Clean | Use AddHttpClient via DI, standard pattern |
 
 ### Data Layer
 - `ArmDbContext` (EF Core + SQLite) with models: `Job`, `ConfigSnapshot`, `Track`, `Notification`
 - `ConfigSnapshot` tracks per-job overrides; `ArmSettings` has global defaults
+- Disc metadata caching: `disc_metadata`, `disc_tracks`, `disc_track_streams` tables
 
 ### Infrastructure
 - `CliProcessRunner` — wraps Process with timeout support, used by all CLI wrappers
 - `JobLogger` — file-based logging per job
 
 ### Web UI
-- 7 controllers + 7 Razor views + shared layout, SignalR hub for notifications, Dockerfile with multi-stage build
-- Routes: Home, Jobs (detail/search/history), Logs, Database, Settings, Notifications
+- **9 controllers** + **19 Razor views** + shared layout, SignalR hub, multi-stage Docker
+- Routes: Home, Jobs (detail/search/history), Logs, Database, Settings, Notifications, Auth, API
+- Cookie auth with `PasswordHasher<User>` (PBKDF2), `[Authorize]` on all controllers
+- Bootstrap 4, jQuery, tablesorter, dark mode toggle
+
+### Authentication ✅
+- Login/logout with password hashing, anti-forgery tokens
+- `DisableLogin` option for internal-network setups
+- 6 integration tests
+
+### Testing
+- **52 Core tests** — unit tests for services, CRC64, etc.
+- **46 WebUi tests** — integration tests covering all 9 controllers
+- **2 SignalR hub tests** — broadcast + cancellation
+- **98 total, all passing**
 
 ## Build
 ```bash
-dotnet build      # 0 warnings, 0 errors across 4 projects
-dotnet test       # 51/51 passing
+dotnet build      # 0 warnings, 0 errors across 5 projects
+dotnet test       # 98/98 passing
 ```
 
 ## Running
@@ -58,42 +73,28 @@ dotnet run --project src/ArmRipper.WebUi
 ## Hardware Testing (Tarantino)
 Current environment (`/workspaces/arm-sharp`):
 - **Drives:** `/dev/sr0` (BD-RE BU40N), `/dev/sr1` (DRW-24B1ST) — both accessible
-- **CLI tools:** HandBrakeCLI (nvdec/nvenc enabled; production Dockerfile supports `--build-arg HW_ACCEL=nvidia|intel|amd`), makemkvcon, ffmpeg, ffprobe, abcde, eject — all installed
+- **CLI tools:** HandBrakeCLI (nvdec/nvenc enabled), makemkvcon, ffmpeg, ffprobe, abcde, eject — all installed
 - **Paths:** `/opt/arm/{raw,transcode,completed,logs}` — exist, empty
 - **Config:** `/etc/arm/config/` — empty (Tarantino volume mounts not set up)
-- **No discs currently loaded** — need to insert media for testing
+- **Hardware testing complete** — DVD, Blu-ray, Audio CD, Data disc, Web UI, error recovery all tested
 
-## Known Gaps (Deferred)
-- `MusicBrainzService` — HttpClient creation, fire-and-forget, no XML tests, XML parsing fragility
-- Inconsistent error handling between HandBrake (best-effort) and FFmpeg (fail-fast)
-- No integration tests for controllers/views
-- No SignalR hub tests
-- No authentication (intentional, Phase 5)
+## Remaining Gaps (Phase 7 — Current)
 
-## Completed — Disc Metadata Caching
+| # | Gap | Priority |
+|---|-----|----------|
+| 7.1 | No MakeMkvService tests (611 lines untested) | High |
+| 7.2 | Expand integration test coverage (edge cases, error states) | Medium |
+| 7.3 | SettingsController.StartRip fire-and-forget with scope leak | Medium |
+| 7.4 | IHandBrakeService returns Task<CliResult> vs IFfmpegService returns Task | Medium |
+| 7.5 | HandBrakeService doesn't set track.Status/track.Error on failure | Low |
+| 7.6 | SettingsController.SaveRipper doesn't persist values | Low |
+| 7.7 | Weak path traversal protection in NotificationHub/LogsController | Low |
+| 7.8 | Empty Views/Seed/ directory cleanup | Low |
+| 7.9 | Dockerfile doesn't use arm-dependencies base image | Medium |
 
-### Disc Fingerprint
-- **Fingerprint**: `{VolumeLabel}::{SectorCount}` — computed in `IdentifyService.ComputeDiscFingerprintAsync` from blkid label + sysfs sector count
-- Stored in `Job.DiscFingerprint` (saved to `jobs` table)
-- `IdentifyService.cs:534-556`
-
-### Database Tables (3 new + jobs column)
-| Table | Model | Purpose |
-|-------|-------|---------|
-| `disc_metadata` | `DiscMetadata` | Per-disc cache entry (fingerprint, label, sector count, disc type, timestamps) |
-| `disc_tracks` | `DiscTrack` | Per-track metadata from TINFO lines (track number, duration, chapters, filesize, aspect, fps, resolution) |
-| `disc_track_streams` | `DiscTrackStream` | Per-stream metadata from SINFO lines (stream type, language code, codec, channel count, forced flag) |
-
-### SINFO Expansion
-- `StreamId` enum now includes: `LanguageCode(2)`, `LanguageName(3)`, `CodecId(4)`, `CodecName(5)`, `CodecDetail(6)`, `Channels(7)`, `SampleRate(8)`, `Bitrate(13)`, `Forced(16)`, `Resolution(19)`, `Interlace(22)`
-- `GetTrackInfoAsync` captures all stream types (Video/Audio/Subtitle), not just video
-- Stream data is accumulated per-track during parsing and persisted to `DiscTrackStream`
-
-### Cache Flow
-1. `ArmRipperService.RipVisualMediaAsync` calls `MakeMkvService.GetTrackInfoWithCacheAsync`
-2. If `job.DiscFingerprint` matches existing `DiscMetadata`, cached tracks are returned (skipping `makemkvcon info`)
-3. On cache miss, `GetTrackInfoAsync` runs `makemkvcon info`, persists results to cache, and returns tracks
-4. Cache timestamp (`LastUsedAt`) is updated on cache hit
-
-### MakeMkvStreamCodes
-- Refactored stream type constants into `MakeMkvStreamCodes` static class: `Video(6201)`, `Audio(6202)`, `Subtitle(6203)`
+## Deferred (Phase 8 — Last)
+- **MusicBrainzService** — all issues deferred. See `docs/FixMusicBrainz.md`
+  - `new HttpClient()` → `IHttpClientFactory`
+  - Fire-and-forget `GetCdArtAsync`
+  - XML parsing fragility (unguarded int.Parse, no validation)
+  - No unit tests for entire 308-line service

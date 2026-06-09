@@ -17,7 +17,7 @@ public partial class MakeMkvService
     private const string Source = "MakeMKV";
     private const string BetaKeyApi = "https://cable.ayra.ch/MakeMKV/api.php?json";
     private const string BetaKeyForum = "https://forum.makemkv.com/forum/viewtopic.php?f=5&t=1053";
-    private static readonly string SettingsPath = Path.Combine(
+    internal static string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         ".MakeMKV", "settings.conf");
 
