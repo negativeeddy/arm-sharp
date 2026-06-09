@@ -16,15 +16,18 @@ public sealed partial class FfmpegService(
     ArmDbContext db,
     IOptions<ArmSettings> settings) : IFfmpegService
 {
-    public async Task TranscodeMkvAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
+    public async Task<CliResult> TranscodeMkvAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         await SleepCheckAsync(ct);
         logger.LogInformation("Starting FFmpeg for MKV files");
 
+        var allStdOut = new List<string>();
+        var allStdErr = new List<string>();
+
         if (!Directory.Exists(rawPath))
         {
             logger.LogWarning("Raw path does not exist: {RawPath}", rawPath);
-            return;
+            return new CliResult(-1, "", "Raw path not found", false);
         }
 
         EnsureDirectory(outputPath);
@@ -48,7 +51,7 @@ public sealed partial class FfmpegService(
             try
             {
                 var totalSec = track?.Length is int l && l > 0 ? l : (int?)null;
-                await RunTranscodeAsync(file, outFile, job, totalSec, progress, ct);
+                await RunTranscodeAsync(file, outFile, job, totalSec, allStdOut, allStdErr, progress, ct);
                 logger.LogInformation("FFmpeg call successful");
                 track ??= new Track
                 {
@@ -79,12 +82,17 @@ public sealed partial class FfmpegService(
                 throw;
             }
         }
+
+        return new CliResult(0, string.Join("\n", allStdOut), string.Join("\n", allStdErr), false);
     }
 
-    public async Task TranscodeMainFeatureAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
+    public async Task<CliResult> TranscodeMainFeatureAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         await SleepCheckAsync(ct);
         logger.LogInformation("Starting DVD/BluRay main feature transcoding");
+
+        var allStdOut = new List<string>();
+        var allStdErr = new List<string>();
 
         EnsureDirectory(outputPath);
 
@@ -111,7 +119,7 @@ public sealed partial class FfmpegService(
         {
             EnsureDirectory(outputPath);
             var totalSec = track.Length is int l && l > 0 ? l : (int?)null;
-            await RunTranscodeAsync(rawPath, outputFile, job, totalSec, progress, ct);
+            await RunTranscodeAsync(rawPath, outputFile, job, totalSec, allStdOut, allStdErr, progress, ct);
             logger.LogInformation("FFmpeg call successful");
             track.Ripped = true;
             track.Status = "success";
@@ -127,12 +135,17 @@ public sealed partial class FfmpegService(
             await db.SaveChangesAsync(ct);
             throw;
         }
+
+        return new CliResult(0, string.Join("\n", allStdOut), string.Join("\n", allStdErr), false);
     }
 
-    public async Task TranscodeAllAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
+    public async Task<CliResult> TranscodeAllAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         await SleepCheckAsync(ct);
         logger.LogInformation("Starting BluRay/DVD transcoding - All titles");
+
+        var allStdOut = new List<string>();
+        var allStdErr = new List<string>();
 
         await GetTrackInfoAsync(rawPath, job, ct);
 
@@ -172,7 +185,7 @@ public sealed partial class FfmpegService(
             try
             {
                 var totalSec = track.Length is int l && l > 0 ? l : (int?)null;
-                await RunTranscodeAsync(rawPath, outFilePath, job, totalSec, progress, ct);
+                await RunTranscodeAsync(rawPath, outFilePath, job, totalSec, allStdOut, allStdErr, progress, ct);
                 track.Status = "success";
             }
             catch (Exception ex)
@@ -188,6 +201,8 @@ public sealed partial class FfmpegService(
             track.Ripped = true;
             await db.SaveChangesAsync(ct);
         }
+
+        return new CliResult(0, string.Join("\n", allStdOut), string.Join("\n", allStdErr), false);
     }
 
     private async Task SleepCheckAsync(CancellationToken ct)
@@ -211,7 +226,7 @@ public sealed partial class FfmpegService(
         logger.LogInformation("Exiting sleep check of ffmpeg");
     }
 
-    private async Task RunTranscodeAsync(string inputFile, string outputFile, Job job, int? totalSeconds, IProgress<int>? progress, CancellationToken ct)
+    private async Task RunTranscodeAsync(string inputFile, string outputFile, Job job, int? totalSeconds, List<string> stdOut, List<string> stdErr, IProgress<int>? progress, CancellationToken ct)
     {
         var (ffPreArgs, ffPostArgs) = GetFfSettings(job);
 
@@ -220,11 +235,19 @@ public sealed partial class FfmpegService(
 
         await foreach (var (line, isStdErr) in runner.RunStreamingAllAsync("bash", $"-c \"{cmd.Replace("\"", "\\\"")}\"", ct: ct))
         {
-            if (isStdErr && progress is not null && totalSeconds.HasValue)
+            if (isStdErr)
             {
-                var pct = ParseFfProgress(line, totalSeconds.Value);
-                if (pct.HasValue)
-                    progress.Report(pct.Value);
+                stdErr.Add(line);
+                if (progress is not null && totalSeconds.HasValue)
+                {
+                    var pct = ParseFfProgress(line, totalSeconds.Value);
+                    if (pct.HasValue)
+                        progress.Report(pct.Value);
+                }
+            }
+            else
+            {
+                stdOut.Add(line);
             }
         }
     }
