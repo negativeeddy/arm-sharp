@@ -183,45 +183,25 @@
 
 ---
 
-## Phase 7: Remaining Gaps (Current)
+## Phase 7: Complete ✅
 
-### 7.1 — MakeMkvService tests
-- 611-line service, zero unit tests
-- Add `MakeMkvServiceTests.cs` with mocked `ICliProcessRunner`
+All 9 gaps resolved in order:
 
-### 7.2 — Expand integration test coverage
-- **Current:** 46 WebUi integration tests covering all 9 controllers
-- **Target:** Cover edge cases, error states, anti-forgery validation
-
-### 7.3 — Fix SettingsController.StartRip fire-and-forget
-- `SettingsController.cs:314` — `_ = Task.Run(...)` with scope leak
-- Add proper cancellation, status tracking, scope management
-
-### 7.4 — Align IHandBrakeService and IFfmpegService signatures
-- `IHandBrakeService` returns `Task<CliResult>`, `IFfmpegService` returns `Task`
-- Make consistent so callers can inspect failures from both
-
-### 7.5 — HandBrakeService error tracking
-- Does not set `track.Status`/`track.Error` on failure (FFmpegService does)
-- Add for consistency
-
-### 7.6 — Fix SettingsController.SaveRipper persistence
-- Currently accepts values but discards them (`SettingsController.cs:219`)
-- Wire to persist to config or at minimum save to DB config snapshot
-
-### 7.7 — Weak path traversal protection
-- `NotificationHub.StreamLog` and `LogsController` use `fileName.Contains("/")` as sanitization
-- Use proper `Path.GetFileName` or `Path.GetRelativePath`
-
-### 7.8 — Clean up empty Views/Seed/ directory
-- Leftover scaffolding — delete if unused
-
-### 7.9 — Refactor Dockerfile to use ARM base image
-- Move from `mcr.microsoft.com/dotnet/aspnet:10.0` to `arm-dependencies:1.7.3`
+| # | Gap | Solution |
+|---|-----|----------|
+| 7.1 | MakeMkvService tests | 44 tests covering ParseLine, GetTrackInfo*, RipTrackAsync, etc. |
+| 7.2 | Expand integration test coverage | 13 new WebUi tests (Jobs, Logs, Notifications, API) |
+| 7.3 | StartRip fire-and-forget + scope leak | `BackgroundRipService` singleton with per-request scope + `IConductor` |
+| 7.4 | Align HandBrake/FFmpeg signatures | `IFfmpegService` now returns `Task<CliResult>` (same as `IHandBrakeService`) |
+| 7.5 | HandBrakeService error tracking | `track.Status`/`track.Error` set on success and failure in all 3 methods |
+| 7.6 | SaveRipper persistence | `RipperSettings` entity stores `ArmSettings` as JSON blob in DB |
+| 7.7 | Path traversal protection | `Path.GetFileName()` replaces weak `Contains("/")` checks |
+| 7.8 | Empty Views/Seed/ cleanup | Deleted unused scaffolding directory |
+| 7.9 | Dockerfile ARM base image | Runtime already uses `arm-dependencies:1.7.3` (no change needed) |
 
 ---
 
-## Phase 8: MusicBrainz Fixes (Deferred to Last)
+## Phase 8: MusicBrainz Fixes (Current)
 
 All MusicBrainzService work is deferred until everything else is complete. See `docs/FixMusicBrainz.md` for full issue catalog.
 
@@ -244,9 +224,4 @@ All MusicBrainzService work is deferred until everything else is complete. See `
 
 ## Immediate Next Steps
 
-1. **Phase 7.1** — Write MakeMkvService tests (biggest untested surface)
-2. **Phase 7.3** — Fix SettingsController.StartRip fire-and-forget + scope leak
-3. **Phase 7.4** — Align HandBrake/FFmpeg service signatures
-4. **Phase 7.5** — Add error tracking to HandBrakeService
-5. **Phase 7.9** — Refactor Dockerfile to use ARM base image
-6. **Phase 8** — MusicBrainz fixes (last)
+1. **Phase 8** — MusicBrainz fixes (last remaining gap)

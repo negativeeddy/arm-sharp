@@ -50,15 +50,14 @@ All services reviewed for bugs; several critical and medium issues fixed:
 - 6 integration tests
 
 ### Testing
-- **52 Core tests** — unit tests for services, CRC64, etc.
-- **46 WebUi tests** — integration tests covering all 9 controllers
-- **2 SignalR hub tests** — broadcast + cancellation
-- **98 total, all passing**
+- **99 Core tests** — unit tests for services, CRC64, BackgroundRipService, MakeMkvService
+- **59 WebUi tests** — integration tests covering all 9 controllers and API
+- **158 total, all passing**
 
 ## Build
 ```bash
 dotnet build      # 0 warnings, 0 errors across 5 projects
-dotnet test       # 98/98 passing
+dotnet test       # 158/158 passing
 ```
 
 ## Running
@@ -78,22 +77,21 @@ Current environment (`/workspaces/arm-sharp`):
 - **Config:** `/etc/arm/config/` — empty (Tarantino volume mounts not set up)
 - **Hardware testing complete** — DVD, Blu-ray, Audio CD, Data disc, Web UI, error recovery all tested
 
-## Remaining Gaps (Phase 7 — Current)
+## Phase 7 — Complete ✅
 
-| # | Gap | Priority |
-|---|-----|----------|
-| 7.1 | No MakeMkvService tests (611 lines untested) | High |
-| 7.2 | Expand integration test coverage (edge cases, error states) | Medium |
-| 7.3 | SettingsController.StartRip fire-and-forget with scope leak | Medium |
-| 7.4 | IHandBrakeService returns Task<CliResult> vs IFfmpegService returns Task | Medium |
-| 7.5 | HandBrakeService doesn't set track.Status/track.Error on failure | Low |
-| 7.6 | SettingsController.SaveRipper doesn't persist values | Low |
-| 7.7 | Weak path traversal protection in NotificationHub/LogsController | Low |
-| 7.8 | Empty Views/Seed/ directory cleanup | Low |
-| 7.9 | Dockerfile doesn't use arm-dependencies base image | Medium |
+All 9 gaps resolved:
+- **7.1:** 44 MakeMkvService tests (ParseLine, GetTrackInfo*, RipTrackAsync)
+- **7.2:** 13 new WebUi integration tests (Jobs, Logs, Notifications, API)
+- **7.3:** BackgroundRipService singleton + IConductor — no scope leak
+- **7.4:** IFfmpegService returns Task&lt;CliResult&gt; (aligns with IHandBrakeService)
+- **7.5:** track.Status/track.Error set on success/failure in HandBrakeService
+- **7.6:** RipperSettings entity persists ArmSettings JSON blob to DB
+- **7.7:** Path.GetFileName() replaces weak Contains("/") checks
+- **7.8:** Empty Views/Seed/ directory deleted
+- **7.9:** Runtime already uses arm-dependencies:1.7.3 (no change needed)
 
-## Deferred (Phase 8 — Last)
-- **MusicBrainzService** — all issues deferred. See `docs/FixMusicBrainz.md`
+## Phase 8 — MusicBrainz Fixes (Last)
+- All MusicBrainzService work deferred. See `docs/FixMusicBrainz.md`
   - `new HttpClient()` → `IHttpClientFactory`
   - Fire-and-forget `GetCdArtAsync`
   - XML parsing fragility (unguarded int.Parse, no validation)
