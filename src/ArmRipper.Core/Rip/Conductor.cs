@@ -17,7 +17,7 @@ public sealed class Conductor(
     IIdentifyService identifyService,
     IArmRipperService armRipperService,
     IMusicBrainzService musicBrainzService,
-    NotificationService notificationService)
+    NotificationService notificationService) : IConductor
 {
     public async Task<int> RunAsync(string devicePath, CancellationToken ct = default)
     {

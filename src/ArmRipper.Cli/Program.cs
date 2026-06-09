@@ -28,8 +28,9 @@ builder.Services.AddScoped<IArmRipperService, ArmRipperService>();
 builder.Services.AddScoped<MakeMkvService>();
 builder.Services.AddScoped<IMusicBrainzService, MusicBrainzService>();
 builder.Services.AddScoped<NotificationService>();
-builder.Services.AddScoped<Conductor>();
+builder.Services.AddScoped<IConductor, Conductor>();
 builder.Services.AddSingleton<INotificationBroadcaster, NullNotificationBroadcaster>();
+builder.Services.AddSingleton<IBackgroundRipService, BackgroundRipService>();
 
 builder.Services.AddLogging(logging => logging.AddConsole());
 

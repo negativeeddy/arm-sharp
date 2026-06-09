@@ -17,7 +17,7 @@ public class SettingsController(
     ArmDbContext db,
     ICliProcessRunner runner,
     IOptions<ArmSettings> settings,
-    IServiceScopeFactory scopeFactory) : Controller
+    IBackgroundRipService backgroundRip) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index()
@@ -311,22 +311,7 @@ public class SettingsController(
     [HttpPost("start-rip")]
     public IActionResult StartRip(string devPath)
     {
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                using var scope = scopeFactory.CreateScope();
-                var conductor = scope.ServiceProvider.GetRequiredService<Conductor>();
-                await conductor.RunAsync(devPath);
-            }
-            catch (Exception ex)
-            {
-                var logger = scopeFactory.CreateScope().ServiceProvider
-                    .GetRequiredService<ILogger<SettingsController>>();
-                logger.LogError(ex, "Background rip failed for {DevPath}", devPath);
-            }
-        });
-
+        backgroundRip.StartRip(devPath);
         TempData["Message"] = $"Rip started for {devPath} in the background.";
         return RedirectToAction("Index");
     }

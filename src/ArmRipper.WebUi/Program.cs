@@ -46,10 +46,11 @@ builder.Services.AddScoped<IArmRipperService, ArmRipperService>();
 builder.Services.AddScoped<MakeMkvService>();
 builder.Services.AddScoped<IMusicBrainzService, MusicBrainzService>();
 builder.Services.AddScoped<NotificationService>();
-builder.Services.AddScoped<Conductor>();
+builder.Services.AddScoped<IConductor, Conductor>();
 builder.Services.AddHttpClient<OmdbService>();
 builder.Services.AddHttpClient<TmdbService>();
 builder.Services.AddSingleton<INotificationBroadcaster, SignalRNotificationBroadcaster>();
+builder.Services.AddSingleton<IBackgroundRipService, BackgroundRipService>();
 
 var app = builder.Build();
 
