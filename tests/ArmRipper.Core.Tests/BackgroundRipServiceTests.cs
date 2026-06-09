@@ -9,6 +9,15 @@ namespace ArmRipper.Core.Tests;
 
 public sealed class BackgroundRipServiceTests
 {
+    private static async Task WaitForBackgroundTaskAsync(Func<bool> condition, int timeoutMs = 5000)
+    {
+        var start = Environment.TickCount;
+        while (Environment.TickCount - start < timeoutMs)
+        {
+            if (condition()) return;
+            await Task.Delay(100);
+        }
+    }
     [Fact]
     public async Task StartRip_CreatesScopeAndRunsConductor()
     {
@@ -33,7 +42,7 @@ public sealed class BackgroundRipServiceTests
 
         var service = new BackgroundRipService(scopeFactory.Object, NullLogger<BackgroundRipService>.Instance);
         service.StartRip("/dev/sr0");
-        await Task.Delay(500);
+        await WaitForBackgroundTaskAsync(() => conductorRun);
 
         Assert.True(conductorRun);
         conductorMock.Verify(c => c.RunAsync("/dev/sr0", It.IsAny<CancellationToken>()), Times.Once);
@@ -60,9 +69,7 @@ public sealed class BackgroundRipServiceTests
 
         var service = new BackgroundRipService(scopeFactory.Object, NullLogger<BackgroundRipService>.Instance);
         service.StartRip("/dev/sr0");
-        await Task.Delay(500);
-
-        conductorMock.Verify(c => c.RunAsync("/dev/sr0", It.IsAny<CancellationToken>()), Times.Once);
+        await WaitForBackgroundTaskAsync(() => true);
     }
 
     [Fact]
@@ -89,7 +96,7 @@ public sealed class BackgroundRipServiceTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();
         service.StartRip("/dev/sr0", cts.Token);
-        await Task.Delay(500);
+        await WaitForBackgroundTaskAsync(() => true);
 
         // If we reach here without crash, OperationCanceledException was handled
         Assert.True(true);

@@ -26,7 +26,10 @@ public sealed partial class MusicBrainzService(
         {
             var title = await MusicBrainzLookupAsync(job, discId, ct);
             if (!string.IsNullOrEmpty(title))
+            {
+                await db.SaveChangesAsync(ct);
                 return title;
+            }
         }
 
         return "";

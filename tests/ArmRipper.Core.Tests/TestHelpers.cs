@@ -5,6 +5,7 @@ using ArmRipper.Core.Models;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Moq;
 
 namespace ArmRipper.Core.Tests;
 
@@ -54,21 +55,27 @@ public static class TestHelpers
         return job;
     }
 
-    public static HttpClient CreateMockHttpClient(string responseJson, HttpStatusCode statusCode = HttpStatusCode.OK)
+    public static HttpClient CreateMockHttpClient(string response, HttpStatusCode statusCode = HttpStatusCode.OK)
     {
-        var handler = new FakeHttpMessageHandler(responseJson, statusCode);
+        var handler = new FakeHttpMessageHandler(_ => new HttpResponseMessage
+        {
+            StatusCode = statusCode,
+            Content = new StringContent(response)
+        });
         return new HttpClient(handler);
     }
 
-    private sealed class FakeHttpMessageHandler(string responseJson, HttpStatusCode statusCode) : HttpMessageHandler
+    public static HttpClient CreateMockHttpClient(Func<HttpRequestMessage, HttpResponseMessage> handlerFunc)
+    {
+        var handler = new FakeHttpMessageHandler(handlerFunc);
+        return new HttpClient(handler);
+    }
+
+    private sealed class FakeHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> handlerFunc) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
-            return Task.FromResult(new HttpResponseMessage
-            {
-                StatusCode = statusCode,
-                Content = new StringContent(responseJson)
-            });
+            return Task.FromResult(handlerFunc(request));
         }
     }
 }
