@@ -34,10 +34,11 @@ public class LogsController(IOptions<ArmSettings> settings) : Controller
     [HttpGet("view")]
     public IActionResult Viewer(string file, string mode = "full")
     {
-        if (string.IsNullOrEmpty(file) || file.Contains("..") || file.Contains("/"))
+        var safeFileName = Path.GetFileName(file);
+        if (string.IsNullOrEmpty(safeFileName))
             return BadRequest("Invalid log file");
 
-        var fullPath = Path.Combine(LogPath, file);
+        var fullPath = Path.Combine(LogPath, safeFileName);
         if (!System.IO.File.Exists(fullPath))
             return NotFound("Log file not found");
 
@@ -49,10 +50,11 @@ public class LogsController(IOptions<ArmSettings> settings) : Controller
     [HttpGet("reader")]
     public IActionResult Reader(string file, string mode = "full")
     {
-        if (string.IsNullOrEmpty(file) || file.Contains("..") || file.Contains("/"))
+        var safeFileName = Path.GetFileName(file);
+        if (string.IsNullOrEmpty(safeFileName))
             return BadRequest("Invalid log file");
 
-        var fullPath = Path.Combine(LogPath, file);
+        var fullPath = Path.Combine(LogPath, safeFileName);
         if (!System.IO.File.Exists(fullPath))
             return NotFound();
 
@@ -82,10 +84,11 @@ public class LogsController(IOptions<ArmSettings> settings) : Controller
     [HttpGet("download")]
     public IActionResult Download(string file)
     {
-        if (string.IsNullOrEmpty(file) || file.Contains("..") || file.Contains("/"))
+        var safeFileName = Path.GetFileName(file);
+        if (string.IsNullOrEmpty(safeFileName))
             return BadRequest("Invalid log file");
 
-        var fullPath = Path.Combine(LogPath, file);
+        var fullPath = Path.Combine(LogPath, safeFileName);
         if (!System.IO.File.Exists(fullPath))
             return NotFound();
 

@@ -14,10 +14,11 @@ public class NotificationHub(IOptions<ArmSettings> settings) : Hub
         string mode,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        if (string.IsNullOrEmpty(fileName) || fileName.Contains("..") || fileName.Contains("/"))
+        var safeFileName = Path.GetFileName(fileName);
+        if (string.IsNullOrEmpty(safeFileName))
             yield break;
 
-        var fullPath = Path.Combine(LogPath, fileName);
+        var fullPath = Path.Combine(LogPath, safeFileName);
         if (!System.IO.File.Exists(fullPath))
             yield break;
 
