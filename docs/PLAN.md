@@ -214,6 +214,70 @@ All 4 MusicBrainz issues resolved:
 
 ---
 
-## All Phases Complete 🎉
+---
 
-The ARM .NET port is feature-complete. 173 tests (114 Core + 59 WebUi), 0 warnings, 0 errors.
+## Phase 9: Production Docker Container ✅ (Complete)
+
+Docker image built, verified, and ready for drop-in testing.
+
+### 9.1 — `docker-entrypoint.sh` ✅
+- `ARM_UID`/`ARM_GID` → `usermod` to match host permissions
+- Default mode: web UI (foreground) + `supervise.sh` (background)
+- Subcommands: `cli`, `webui`, `supervise`
+
+### 9.2 — `watch-discs.sh` ✅
+- Dynamically scans `/dev/sr*` devices
+- File-based state per device (no python3 dependency)
+- Lock file prevents concurrent rips
+- Env config: `ARM_POLL_SECONDS`, `ARM_CLI_PATH`, `ARM_LOG_FILE`
+
+### 9.3 — Dockerfile ✅
+- Removed HandBrake build stages (base image `arm-dependencies:1.7.3`
+  already has HandBrakeCLI 1.11.1 with NVENC compiled in)
+- Scripts at `/opt/arm/scripts/` (avoids user's `/home/arm/scripts/` mount)
+- `EXPOSE 8080`, `ASPNETCORE_URLS=http://+:8080`
+
+### 9.4 — Image built and verified ✅
+- `arm-sharp:latest` built on Tarantino
+- CLI, WebUI, HandBrakeCLI all functional
+- Ready for compose drop-in testing
+
+---
+
+## Next Session: Production Testing
+
+Test `arm-sharp` as drop-in replacement:
+
+1. Stop original ARM container
+2. Point compose `image: arm-sharp` (or `build: .`)
+3. Set `command: supervise` in compose (since original ARM uses runit/udev, we just need disc polling)
+4. Test with DVD/BD inserted
+5. Monitor logs + web UI
+
+### Key compose config from existing arm service:
+```yaml
+environment:
+  ARM_UID: "1001"
+  ARM_GID: "1001"
+  TZ: "America/Chicago"
+devices:
+  - "/dev/sr0:/dev/sr0"
+  - "/dev/sg3:/dev/sg3"
+  - "/dev/sr1:/dev/sr1"
+  - "/dev/sg4:/dev/sg4"
+volumes:
+  - /mnt/data/docker/arm/home:/home/arm
+  - /mnt/data/docker/arm/logs:/home/arm/logs   # watch-discs.log goes here
+  - /mnt/data/docker/arm/media:/home/arm/media
+  - /mnt/data/docker/arm/config:/etc/arm/config
+  - /mnt/data/media:/home/arm/publish
+privileged: true
+gpus: all
+```
+
+### Potential issues to watch for:
+- `watch-discs.sh` needs Blinuxt/udev access inside `--privileged` container — should work
+- Web UI first-run sets up admin user — test login flow
+- MakeMKV key handling — `EnsureKeyAsync` runs automatically
+- Volume mount permissions — `ARM_UID`/`ARM_GID` entrypoint handles this
+- No `/dev/sg*` needed for our app (unlike original ARM which uses `discid`)
