@@ -43,6 +43,13 @@ public sealed partial class HandBrakeService(
             {
                 var msg = $"HandBrake failed on {file} with code {lastResult.ExitCode}: {lastResult.StdErr}";
                 logger.LogError(msg);
+                var failTrack = job.Tracks.FirstOrDefault(t => t.FileName == $"{destFile}.mkv");
+                if (failTrack is not null)
+                {
+                    failTrack.Status = "fail";
+                    failTrack.Error = msg;
+                    await db.SaveChangesAsync(ct);
+                }
                 throw new InvalidOperationException(msg);
             }
 
@@ -65,6 +72,7 @@ public sealed partial class HandBrakeService(
                 track.FileName = $"{destFile}.{ext}";
             }
             track.Ripped = true;
+            track.Status = "success";
             await db.SaveChangesAsync(ct);
         }
 
@@ -101,12 +109,17 @@ public sealed partial class HandBrakeService(
             var result = await RunHandBrakeCommandAsync(cmd, ct, progress);
             logger.LogInformation("HandBrake call successful");
             track.Ripped = true;
+            track.Status = "success";
             await db.SaveChangesAsync(ct);
             return result;
         }
-        catch
+        catch (Exception ex)
         {
-            job.Errors = track.Error;
+            var err = $"HandBrake main feature transcoding failed: {ex.Message}";
+            logger.LogError(err);
+            track.Status = "fail";
+            track.Error = err;
+            job.Errors = err;
             job.Status = JobState.Failure;
             await db.SaveChangesAsync(ct);
             throw;
@@ -158,10 +171,17 @@ public sealed partial class HandBrakeService(
             {
                 lastResult = await RunHandBrakeCommandAsync(cmd, ct, progress);
                 track.Ripped = true;
+                track.Status = "success";
                 await db.SaveChangesAsync(ct);
             }
-            catch
+            catch (Exception ex)
             {
+                var err = $"HandBrake encoding of title {trackNo} failed: {ex.Message}";
+                logger.LogError(err);
+                track.Status = "fail";
+                track.Error = err;
+                job.Errors = err;
+                job.Status = JobState.Failure;
                 await db.SaveChangesAsync(ct);
                 throw;
             }
