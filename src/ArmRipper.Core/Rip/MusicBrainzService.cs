@@ -1,4 +1,3 @@
-using System.Net.Http.Headers;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using ArmRipper.Core.Configuration;
@@ -14,11 +13,9 @@ public sealed partial class MusicBrainzService(
     ICliProcessRunner runner,
     ILogger<MusicBrainzService> logger,
     ArmDbContext db,
-    IOptions<ArmSettings> settings) : IMusicBrainzService
+    IOptions<ArmSettings> settings,
+    HttpClient httpClient) : IMusicBrainzService
 {
-    private static readonly ProductInfoHeaderValue UserAgent =
-        new("arm", "1.0");
-
     public async Task<string> IdentifyAsync(Job job, CancellationToken ct = default)
     {
         var discId = await GetDiscIdAsync(job.DevPath!, ct);
@@ -61,7 +58,7 @@ public sealed partial class MusicBrainzService(
         if (string.IsNullOrEmpty(xml))
             return "";
 
-        var artistTitle = CheckMusicBrainzData(job, xml, ct);
+        var artistTitle = await CheckMusicBrainzData(job, xml, ct);
         return artistTitle;
     }
 
@@ -70,11 +67,7 @@ public sealed partial class MusicBrainzService(
         try
         {
             var url = $"https://musicbrainz.org/ws/2/discid/{discId}?inc=artist-credits+recordings&fmt=xml";
-            using var client = new HttpClient();
-            client.DefaultRequestHeaders.UserAgent.Add(UserAgent);
-            client.Timeout = TimeSpan.FromSeconds(15);
-
-            var response = await client.GetStringAsync(url, ct);
+            var response = await httpClient.GetStringAsync(url, ct);
             return response;
         }
         catch (Exception ex)
@@ -84,9 +77,18 @@ public sealed partial class MusicBrainzService(
         }
     }
 
-    private string CheckMusicBrainzData(Job job, string xml, CancellationToken ct)
+    private async Task<string> CheckMusicBrainzData(Job job, string xml, CancellationToken ct)
     {
-        var doc = XDocument.Parse(xml);
+        XDocument doc;
+        try
+        {
+            doc = XDocument.Parse(xml);
+        }
+        catch (System.Xml.XmlException ex)
+        {
+            logger.LogError(ex, "Malformed XML from MusicBrainz");
+            return "";
+        }
         var root = doc.Root;
         if (root is null) return "";
 
@@ -107,7 +109,7 @@ public sealed partial class MusicBrainzService(
         if (disc is not null)
         {
             logger.LogInformation("Processing as a disc");
-            musicData = ProcessDiscRelease(job, disc, ns, ct);
+            musicData = await ProcessDiscRelease(job, disc, ns, ct);
         }
         else
         {
@@ -118,7 +120,7 @@ public sealed partial class MusicBrainzService(
         return musicData;
     }
 
-    private string ProcessDiscRelease(Job job, XElement disc, XNamespace ns, CancellationToken ct)
+    private async Task<string> ProcessDiscRelease(Job job, XElement disc, XNamespace ns, CancellationToken ct)
     {
         var releaseList = disc.Element(ns + "release-list");
         if (releaseList is null)
@@ -164,10 +166,11 @@ public sealed partial class MusicBrainzService(
             job.HasNiceTitle = true;
             job.Year = job.YearAuto = newYear;
             job.Title = job.TitleAuto = artistTitle;
-            job.NoOfTitles = offsetCount is not null ? int.Parse(offsetCount) : null;
+            if (offsetCount is not null && int.TryParse(offsetCount, out var offsetVal))
+                job.NoOfTitles = offsetVal;
 
             // Get CD artwork
-            _ = GetCdArtAsync(job, disc, ns, ct);
+            _ = await GetCdArtAsync(job, disc, ns, ct);
 
             return artistTitle;
         }
@@ -192,7 +195,8 @@ public sealed partial class MusicBrainzService(
         job.HasNiceTitle = true;
         job.Year = job.YearAuto = "";
         job.Title = job.TitleAuto = artistTitle;
-        job.NoOfTitles = trackCount is not null ? int.Parse(trackCount) : null;
+        if (trackCount is not null && int.TryParse(trackCount, out var tcVal))
+            job.NoOfTitles = tcVal;
 
         logger.LogInformation("cdstub args: job_id={JobId} crc_id={CrcId} title={Title}", job.Id, stubId, artistTitle);
 
@@ -215,19 +219,12 @@ public sealed partial class MusicBrainzService(
         foreach (var (track, idx) in tracks.Select((t, i) => (t, i)))
         {
             var trackLeng = 0;
-            try
-            {
-                var lengthStr = isStub
-                    ? track.Element(ns + "length")?.Value
-                    : track.Element(ns + "recording")?.Element(ns + "length")?.Value;
+            var lengthStr = isStub
+                ? track.Element(ns + "length")?.Value
+                : track.Element(ns + "recording")?.Element(ns + "length")?.Value;
 
-                if (lengthStr is not null)
-                    trackLeng = int.Parse(lengthStr) / 1000; // MusicBrainz returns ms
-            }
-            catch (FormatException)
-            {
-                logger.LogError("Failed to find track length");
-            }
+            if (lengthStr is not null && int.TryParse(lengthStr, out var parsedLen))
+                trackLeng = parsedLen / 1000; // MusicBrainz returns ms
 
             var trackNo = track.Element(ns + "number")?.Value ?? (idx + 1).ToString();
             var title = isStub
@@ -274,14 +271,12 @@ public sealed partial class MusicBrainzService(
                 if (releaseId is null) continue;
 
                 var artUrl = $"https://coverartarchive.org/release/{releaseId}";
-                using var client = new HttpClient();
-                client.Timeout = TimeSpan.FromSeconds(10);
-                var response = await client.GetAsync(artUrl, ct);
+                var response = await httpClient.GetAsync(artUrl, ct);
                 if (!response.IsSuccessStatusCode) continue;
 
                 var json = await response.Content.ReadAsStringAsync(ct);
                 var doc = System.Text.Json.JsonDocument.Parse(json);
-                var images = doc.RootElement.GetProperty("images");
+                if (!doc.RootElement.TryGetProperty("images", out var images)) continue;
 
                 foreach (var image in images.EnumerateArray())
                 {

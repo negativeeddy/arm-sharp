@@ -27,6 +27,12 @@ builder.Services.AddScoped<IFfmpegService, FfmpegService>();
 builder.Services.AddScoped<IArmRipperService, ArmRipperService>();
 builder.Services.AddScoped<MakeMkvService>();
 builder.Services.AddScoped<IMusicBrainzService, MusicBrainzService>();
+builder.Services.AddTransient(_ =>
+{
+    var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("arm/1.0");
+    return client;
+});
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<IConductor, Conductor>();
 builder.Services.AddSingleton<INotificationBroadcaster, NullNotificationBroadcaster>();
@@ -67,7 +73,7 @@ var logger = host.Services.GetRequiredService<ILogger<Program>>();
 logger.LogInformation("ARM .NET Ripper starting for device {Device}", deviceArg);
 
 using var scope = host.Services.CreateScope();
-var conductor = scope.ServiceProvider.GetRequiredService<Conductor>();
+var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
 
 var exitCode = await conductor.RunAsync(deviceArg);
 logger.LogInformation("ARM ripper exiting with code {ExitCode}", exitCode);
