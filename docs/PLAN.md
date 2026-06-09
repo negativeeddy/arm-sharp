@@ -201,27 +201,19 @@ All 9 gaps resolved in order:
 
 ---
 
-## Phase 8: MusicBrainz Fixes (Current)
+## Phase 8: Complete ✅
 
-All MusicBrainzService work is deferred until everything else is complete. See `docs/FixMusicBrainz.md` for full issue catalog.
+All 4 MusicBrainz issues resolved:
 
-### 8.1 — Inject IHttpClientFactory
-- Replace `new HttpClient()` with `IHttpClientFactory` (lines 73, 277)
-
-### 8.2 — Fix fire-and-forget GetCdArtAsync
-- Await properly or restructure into job flow (line 170)
-
-### 8.3 — XML parsing hardening
-- Guard all `int.Parse` calls (lines 167, 195, 227)
-- Use `TryGetProperty` instead of `GetProperty` (line 283)
-- Handle missing namespaces gracefully
-
-### 8.4 — Add unit tests
-- Dedicated `MusicBrainzServiceTests.cs` with mocked CLI + HTTP responses
-- Test all 8 untested methods
+| # | Issue | Fix |
+|---|-------|-----|
+| 8.1 | `new HttpClient()` | Typed `HttpClient` via DI (`AddHttpClient` in WebUi, manual registration in CLI) |
+| 8.2 | Fire-and-forget `GetCdArtAsync` | Made `CheckMusicBrainzData`/`ProcessDiscRelease` async; `await GetCdArtAsync` |
+| 8.3 | XML parsing fragility | `XDocument.Parse` wrapped in try/catch; `int.TryParse` for all numeric fields; `TryGetProperty("images")` for Cover Art API |
+| 8.4 | No unit tests | 15 tests covering disc/cdstub, malformed XML, HTTP errors, cover art, track persistence |
 
 ---
 
-## Immediate Next Steps
+## All Phases Complete 🎉
 
-1. **Phase 8** — MusicBrainz fixes (last remaining gap)
+The ARM .NET port is feature-complete. 173 tests (114 Core + 59 WebUi), 0 warnings, 0 errors.

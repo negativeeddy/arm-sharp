@@ -90,9 +90,14 @@ All 9 gaps resolved:
 - **7.8:** Empty Views/Seed/ directory deleted
 - **7.9:** Runtime already uses arm-dependencies:1.7.3 (no change needed)
 
-## Phase 8 — MusicBrainz Fixes (Last)
-- All MusicBrainzService work deferred. See `docs/FixMusicBrainz.md`
-  - `new HttpClient()` → `IHttpClientFactory`
-  - Fire-and-forget `GetCdArtAsync`
-  - XML parsing fragility (unguarded int.Parse, no validation)
-  - No unit tests for entire 308-line service
+## Phase 8 — Complete ✅
+
+All 4 MusicBrainz issues fixed:
+- **8.1:** Typed `HttpClient` via DI (replaces `new HttpClient()`)
+- **8.2:** `async` call chain — `GetCdArtAsync` now awaited
+- **8.3:** `int.TryParse`, `TryGetProperty`, XmlException guard
+- **8.4:** 15 unit tests (disc, cdstub, XML, HTTP, cover art)
+
+## All Phases Complete 🎉
+
+173 tests (114 Core + 59 WebUi), 0 warnings, 0 errors.
