@@ -8,15 +8,15 @@ public class ArmSettings
     public string? TranscodePath { get; set; } = "/home/arm/media/transcode";
     public string? CompletedPath { get; set; } = "/home/arm/media";
     public string? LogPath { get; set; } = "/home/arm/logs";
-    public string? DbFile { get; set; } = "/etc/arm/config/arm.db";
+    public string? DbFile { get; set; } = "/etc/arm/config/arm-sharp.db";
     public string? InstallPath { get; set; } = "/opt/arm";
 
     public bool SkipTranscode { get; set; }
-    public bool MainFeature { get; set; }
+    public bool MainFeature { get; set; } = true;
     public bool UseFfmpeg { get; set; }
-    public bool ManualWait { get; set; }
-    public bool AllowDuplicates { get; set; }
-    public bool Prevent99 { get; set; }
+    public bool ManualWait { get; set; } = true;
+    public bool AllowDuplicates { get; set; } = true;
+    public bool Prevent99 { get; set; } = true;
     public bool GetVideoTitle { get; set; } = true;
     public string? GetAudioTitle { get; set; } = "musicbrainz";
     public bool AutoEject { get; set; } = true;
@@ -27,15 +27,15 @@ public class ArmSettings
     public int MinLength { get; set; } = 600;
     public int MaxLength { get; set; } = 99999;
 
-    public string? HbPresetDvd { get; set; } = "Very Fast 1080p30";
-    public string? HbPresetBd { get; set; } = "Very Fast 1080p30";
-    public string? HbArgsDvd { get; set; }
-    public string? HbArgsBd { get; set; }
-    public string? DestExt { get; set; } = "mp4";
+    public string? HbPresetDvd { get; set; } = "HQ 480p30";
+    public string? HbPresetBd { get; set; }
+    public string? HbArgsDvd { get; set; } = "-e nvenc_h264 --encoder-preset slower --quality 18 --enable-hw-decoding nvdec --encopts spatial-aq=1:aq-strength=10:bf=4:cabac=1:g=50:keyint-min=23 --all-audio --all-subtitles --subtitle-burned=none --aencoder ac3 --ab 640";
+    public string? HbArgsBd { get; set; } = "-e nvenc_h265 --encoder-preset slow --quality 22 --enable-hw-decoding nvdec --encopts spatial-aq=1:aq-strength=10:g=50:keyint-min=23 --audio-lang-list eng --first-audio --all-subtitles --subtitle-burned=none --aencoder ac3 --ab 640 --mixdown 5point1";
+    public string? DestExt { get; set; } = "mkv";
 
     public string? FfmpegCli { get; set; } = "ffmpeg";
     public string? FfmpegPreFileArgs { get; set; }
-    public string? FfmpegPostFileArgs { get; set; }
+    public string? FfmpegPostFileArgs { get; set; } = "-fflags +genpts -c:v copy -c:a ac3 -b:a 640k -c:s copy -map 0";
 
     public string? ExtrasSub { get; set; }
 
@@ -62,10 +62,10 @@ public class ArmSettings
     public int? EmbyPort { get; set; }
     public string? EmbyApiKey { get; set; }
 
-    public int MaxConcurrentTranscodes { get; set; } = 2;
-    public int MaxConcurrentMakemkvInfo { get; set; } = 1;
+    public int MaxConcurrentTranscodes { get; set; }
+    public int MaxConcurrentMakemkvInfo { get; set; }
 
     public string? MakeMkvPermaKey { get; set; }
     public bool TestMode { get; set; }
-    public bool DisableLogin { get; set; }
+    public bool DisableLogin { get; set; } = true;
 }
