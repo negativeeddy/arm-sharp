@@ -24,7 +24,7 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 - Log viewer polls every 2s with no backoff or error handling on disconnect. Use SignalR for live log streaming instead of polling. Also: tail logs view should auto-scroll to end on load.
 - Dark mode exists (`arm.toggleDarkMode` + CSS class) but visual polish incomplete — some elements (tables, cards, nav) don't fully invert or remain unreadable.
 - Nav has no active-tab highlighting.
-- No favicon or branding assets. ARM .NET Port needs proper name, link to GitHub repo, and eventually commit ID/version displayed in the UI.
+- No favicon or branding assets. ARM .NET Port needs proper name, link to GitHub repo, and eventually commit ID/version displayed in the UI. Current footer links to the old ARM repo not to the new ARM# repo
 - Error pages are plain ASP.NET Core default — should add custom error views.
 - ~~No dark mode. ARM has one.~~ ✅ Implemented via CSS class toggle + localStorage.
 - **Link log files** — everywhere a log file path is displayed, make it a clickable link to view/download the log.
@@ -32,7 +32,7 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 - **Notifications "mark all read"** — add a button to mark all notifications as read.
 - **Settings tooltips** — all settings on the settings page should have an (i) indicator for tooltip/popup descriptions of the field.
 - **Progress bar in WebUI** — MakeMKV outputs `PRGV:title,current,total` progress lines during rip. The C# `RunStreamingAsync` already yields these lines — pipe them via SignalR so users see a % progress bar in the UI.
-
+- Memory and Storage indicators for full/free should show a bar graph showing the % full.
 ### Polish Items (not yet started)
 
 ## SignalR
@@ -111,6 +111,11 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 - **HandBrake nvdec support** — current `arm-dependencies:1.7.3` base image compiles HandBrake without `--enable-nvdec`. The devcontainer has a custom rebuild with nvdec working, but the production Dockerfile still uses the base image's build (no hw-decoding). Need to either:
   - Fork and rebuild `arm-dependencies` with `--enable-nvdec --enable-nvdec` (requires `nv-codec-headers`), or
   - Add a multi-stage HandBrake build step to the production Dockerfile (~30+ min build time)
+  - investigate buildx support from docker build warning
+    DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+      Install the buildx component to build images with BuildKit:
+      https://docs.docker.com/go/buildx/
+
 
 ## Disc Databases (Track Identification)
 

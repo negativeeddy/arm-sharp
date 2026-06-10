@@ -288,7 +288,7 @@ afterMakeMkv:
                 logger.LogDebug("ffmpeg_mkv: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
                 await ffmpeg.TranscodeMkvAsync(job, rawInPath, transcodeOutPath, tcProgress, ct);
             }
-            else if (job.VideoType == "movie" && (job.Config?.MainFeature ?? settings.Value.MainFeature) && job.HasNiceTitle)
+            else if (job.VideoType == "movie" && (job.Config?.MainFeature ?? settings.Value.MainFeature))
             {
                 logger.LogDebug("ffmpeg_main_feature: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
                 await ffmpeg.TranscodeMainFeatureAsync(job, rawInPath, transcodeOutPath, tcProgress, ct);
@@ -311,7 +311,7 @@ afterMakeMkv:
                 logger.LogDebug("handbrake_mkv: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
                 await handBrake.TranscodeMkvAsync(job, rawInPath, transcodeOutPath, tcProgress, ct);
             }
-            else if (job.VideoType == "movie" && (job.Config?.MainFeature ?? settings.Value.MainFeature) && job.HasNiceTitle)
+            else if (job.VideoType == "movie" && (job.Config?.MainFeature ?? settings.Value.MainFeature))
             {
                 logger.LogDebug("handbrake_main_feature: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
                 await handBrake.TranscodeMainFeatureAsync(job, rawInPath, transcodeOutPath, tcProgress, ct);
