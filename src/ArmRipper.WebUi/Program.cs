@@ -66,8 +66,19 @@ if (!string.IsNullOrEmpty(dbDir) && !Directory.Exists(dbDir))
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-    db.Database.EnsureCreated();
-    try { db.Database.ExecuteSqlRaw("ALTER TABLE jobs ADD COLUMN Warnings TEXT NULL;"); } catch { }
+    try
+    {
+        db.Database.Migrate();
+    }
+    catch
+    {
+        db.Database.EnsureCreated();
+        db.Database.ExecuteSqlRaw(
+            "CREATE TABLE IF NOT EXISTS \"__EFMigrationsHistory\" (\"MigrationId\" TEXT NOT NULL, \"ProductVersion\" TEXT NOT NULL);");
+        try { db.Database.ExecuteSqlRaw("ALTER TABLE jobs ADD COLUMN Warnings TEXT NULL;"); } catch { }
+        db.Database.ExecuteSqlRaw(
+            "INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('20260610044322_Initial', '10.0.0');");
+    }
 }
 
 var armSettings = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<ArmSettings>>().Value;
