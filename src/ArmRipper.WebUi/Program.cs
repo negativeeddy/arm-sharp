@@ -14,7 +14,7 @@ var builder = WebApplication.CreateBuilder(args);
 var yamlValues = ArmYamlConfigLoader.LoadYamlValues("/etc/arm/config/arm.yaml");
 builder.Configuration.AddInMemoryCollection(yamlValues);
 
-var connectionString = builder.Configuration.GetConnectionString("ArmDb") ?? "Data Source=/etc/arm/config/arm.db";
+var connectionString = builder.Configuration.GetConnectionString("ArmDb") ?? "Data Source=/etc/arm/config/arm-sharp.db";
 builder.Services.AddDbContext<ArmDbContext>(options =>
     options.UseSqlite(connectionString));
 

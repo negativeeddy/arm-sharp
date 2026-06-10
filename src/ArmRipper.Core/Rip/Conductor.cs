@@ -191,7 +191,18 @@ public sealed class Conductor(
                 return 1;
         }
 
-        // Success (don't overwrite if internal handler already marked as Failure)
+        // Verify output files exist before marking Success
+        if (job.Status is not JobState.Failure && job.Path is not null && Directory.Exists(job.Path))
+        {
+            if (!Directory.EnumerateFileSystemEntries(job.Path).Any())
+            {
+                var msg = $"Job completed but no output files found in {job.Path}";
+                logger.LogError(msg);
+                job.Status = JobState.Failure;
+                job.Errors = msg;
+            }
+        }
+
         if (job.Status is not JobState.Failure)
             job.Status = JobState.Success;
         job.StopTime = DateTime.UtcNow;

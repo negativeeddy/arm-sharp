@@ -17,7 +17,7 @@ public interface ICliProcessRunner
         string? workingDirectory = null,
         CancellationToken ct = default);
 
-    IAsyncEnumerable<(string Line, bool IsStdErr)> RunStreamingAllAsync(
+    IAsyncEnumerable<(string? Line, bool IsStdErr, int? ExitCode)> RunStreamingAllAsync(
         string fileName,
         string arguments,
         string? workingDirectory = null,

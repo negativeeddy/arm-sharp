@@ -233,22 +233,43 @@ public sealed partial class FfmpegService(
         var cmd = $"ffmpeg {ffPreArgs} -i \"{inputFile}\" {ffPostArgs} \"{outputFile}\"";
         logger.LogDebug("FFmpeg command: {Command}", cmd);
 
-        await foreach (var (line, isStdErr) in runner.RunStreamingAllAsync("bash", $"-c \"{cmd.Replace("\"", "\\\"")}\"", ct: ct))
+        var exitCode = -1;
+        await foreach (var (line, isStdErr, code) in runner.RunStreamingAllAsync("bash", $"-c \"{cmd.Replace("\"", "\\\"")}\"", ct: ct))
         {
+            if (code.HasValue)
+            {
+                exitCode = code.Value;
+                break;
+            }
+
             if (isStdErr)
             {
-                stdErr.Add(line);
+                stdErr.Add(line!);
                 if (progress is not null && totalSeconds.HasValue)
                 {
-                    var pct = ParseFfProgress(line, totalSeconds.Value);
+                    var pct = ParseFfProgress(line!, totalSeconds.Value);
                     if (pct.HasValue)
                         progress.Report(pct.Value);
                 }
             }
             else
             {
-                stdOut.Add(line);
+                stdOut.Add(line!);
             }
+        }
+
+        if (exitCode != 0)
+        {
+            var err = $"FFmpeg exited with code {exitCode}";
+            logger.LogError(err);
+            throw new InvalidOperationException(err);
+        }
+
+        if (!File.Exists(outputFile))
+        {
+            var err = $"FFmpeg did not produce output file: {outputFile}";
+            logger.LogError(err);
+            throw new InvalidOperationException(err);
         }
     }
 

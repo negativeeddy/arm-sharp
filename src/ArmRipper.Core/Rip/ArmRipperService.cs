@@ -188,6 +188,13 @@ public sealed class ArmRipperService(
                             }
                         }
                         await db.SaveChangesAsync(ct);
+
+                        if (dbTracks.Count > 0 && !dbTracks.Any(t => t.Ripped))
+                        {
+                            var msg = "MakeMKV rip produced no ripped tracks";
+                            logger.LogError(msg);
+                            throw new InvalidOperationException(msg);
+                        }
                     }
                 }
                 catch (Exception mkvError)

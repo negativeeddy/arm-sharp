@@ -28,11 +28,11 @@ public sealed partial class HandBrakeService(
         }
 
         CliResult? lastResult = null;
+        var ext = settings.Value.DestExt ?? "mp4";
 
         foreach (var file in Directory.EnumerateFiles(rawPath, "*.mkv"))
         {
             var destFile = Path.GetFileNameWithoutExtension(file);
-            var ext = settings.Value.DestExt ?? "mp4";
             var outputFile = Path.Combine(outputPath, $"{destFile}.{ext}");
 
             logger.LogInformation("Transcoding {File} to {Output}", file, outputFile);
@@ -76,6 +76,13 @@ public sealed partial class HandBrakeService(
             await db.SaveChangesAsync(ct);
         }
 
+        if (!Directory.EnumerateFiles(outputPath, $"*.{ext}").Any())
+        {
+            var msg = $"HandBrake produced no output files in {outputPath}";
+            logger.LogError(msg);
+            throw new InvalidOperationException(msg);
+        }
+
         return lastResult ?? new CliResult(0, "", "", false);
     }
 
@@ -107,6 +114,20 @@ public sealed partial class HandBrakeService(
         try
         {
             var result = await RunHandBrakeCommandAsync(cmd, ct, progress);
+            if (result.ExitCode != 0)
+            {
+                var err = $"HandBrake main feature transcoding failed with code {result.ExitCode}: {result.StdErr}";
+                logger.LogError(err);
+                throw new InvalidOperationException(err);
+            }
+
+            if (!File.Exists(outputFile))
+            {
+                var err = $"HandBrake main feature did not produce output file: {outputFile}";
+                logger.LogError(err);
+                throw new InvalidOperationException(err);
+            }
+
             logger.LogInformation("HandBrake call successful");
             track.Ripped = true;
             track.Status = "success";
@@ -170,6 +191,20 @@ public sealed partial class HandBrakeService(
             try
             {
                 lastResult = await RunHandBrakeCommandAsync(cmd, ct, progress);
+                if (lastResult.ExitCode != 0)
+                {
+                    var err = $"HandBrake encoding of title {trackNo} failed with code {lastResult.ExitCode}: {lastResult.StdErr}";
+                    logger.LogError(err);
+                    throw new InvalidOperationException(err);
+                }
+
+                if (!File.Exists(outputFile))
+                {
+                    var err = $"HandBrake did not produce output file for title {trackNo}: {outputFile}";
+                    logger.LogError(err);
+                    throw new InvalidOperationException(err);
+                }
+
                 track.Ripped = true;
                 track.Status = "success";
                 await db.SaveChangesAsync(ct);
@@ -253,21 +288,28 @@ public sealed partial class HandBrakeService(
         var lines = new List<string>();
         var stderrLines = new List<string>();
         var escaped = $"-c \"{cmd.Replace("\"", "\\\"")}\"";
+        var exitCode = -1;
 
-        await foreach (var (line, isErr) in runner.RunStreamingAllAsync("bash", escaped, ct: ct))
+        await foreach (var (line, isErr, code) in runner.RunStreamingAllAsync("bash", escaped, ct: ct))
         {
+            if (code.HasValue)
+            {
+                exitCode = code.Value;
+                break;
+            }
+
             if (isErr)
             {
-                stderrLines.Add(line);
-                ParseHandBrakeProgress(line, progress);
+                stderrLines.Add(line!);
+                ParseHandBrakeProgress(line!, progress);
             }
             else
             {
-                lines.Add(line);
+                lines.Add(line!);
             }
         }
 
-        var result = new CliResult(0, string.Join("\n", lines), string.Join("\n", stderrLines), false);
+        var result = new CliResult(exitCode, string.Join("\n", lines), string.Join("\n", stderrLines), exitCode != 0);
         if (result.ExitCode != 0)
             logger.LogError("HandBrake failed with code {Code}: {Error}", result.ExitCode, result.StdErr);
 

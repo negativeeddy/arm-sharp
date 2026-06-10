@@ -100,7 +100,7 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         process.Dispose();
     }
 
-    public async IAsyncEnumerable<(string Line, bool IsStdErr)> RunStreamingAllAsync(
+    public async IAsyncEnumerable<(string? Line, bool IsStdErr, int? ExitCode)> RunStreamingAllAsync(
         string fileName,
         string arguments,
         string? workingDirectory = null,
@@ -124,7 +124,7 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
 
         process.Start();
 
-        var channel = System.Threading.Channels.Channel.CreateUnbounded<(string, bool)>();
+        var channel = System.Threading.Channels.Channel.CreateUnbounded<(string?, bool)>();
 
         var readerTask = Task.Run(async () =>
         {
@@ -142,12 +142,14 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
             }
         }, ct);
 
-        await foreach (var item in channel.Reader.ReadAllAsync(ct))
-            yield return item;
+        await foreach (var (line, isErr) in channel.Reader.ReadAllAsync(ct))
+            yield return (line, isErr, null);
 
         await readerTask;
         process.WaitForExit();
-        logger.LogInformation("Process exited ({Name}) code={Code}", fileName, process.ExitCode);
+        var exitCode = process.ExitCode;
+        logger.LogInformation("Process exited ({Name}) code={Code}", fileName, exitCode);
         process.Dispose();
+        yield return (null, false, exitCode);
     }
 }
