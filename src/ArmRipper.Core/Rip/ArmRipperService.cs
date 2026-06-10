@@ -300,8 +300,11 @@ afterMakeMkv:
             }
             logger.LogInformation("************* Finished Transcode With FFMPEG *************");
 
-            job.Status = JobState.Active;
-            await db.SaveChangesAsync(ct);
+            if (job.Status != JobState.Failure)
+            {
+                job.Status = JobState.Active;
+                await db.SaveChangesAsync(ct);
+            }
         }
         else
         {
@@ -323,8 +326,11 @@ afterMakeMkv:
             }
             logger.LogInformation("************* Finished Transcode With HandBrake *************");
 
-            job.Status = JobState.Active;
-            await db.SaveChangesAsync(ct);
+            if (job.Status != JobState.Failure)
+            {
+                job.Status = JobState.Active;
+                await db.SaveChangesAsync(ct);
+            }
         }
     }
 
@@ -398,7 +404,7 @@ afterMakeMkv:
         var mainFeature = config?.MainFeature ?? true;
 
         if (currentJob.DiscType == DiscType.Bluray) return true;
-        if (currentJob.DiscType == DiscType.Dvd && !mainFeature && ripMethod == "mkv") return true;
+        if (currentJob.DiscType == DiscType.Dvd && ripMethod == "mkv") return true;
         if (currentJob.DiscType == DiscType.Dvd && skipTranscode) return true;
         if (protection && currentJob.DiscType == DiscType.Dvd) return true;
         if (ripMethod == "backup_dvd") return true;

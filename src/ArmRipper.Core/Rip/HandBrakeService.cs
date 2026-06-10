@@ -30,6 +30,7 @@ public sealed partial class HandBrakeService(
         CliResult? lastResult = null;
         var ext = settings.Value.DestExt ?? "mp4";
 
+        var anySuccess = false;
         foreach (var file in Directory.EnumerateFiles(rawPath, "*.mkv"))
         {
             var destFile = Path.GetFileNameWithoutExtension(file);
@@ -50,7 +51,7 @@ public sealed partial class HandBrakeService(
                     failTrack.Error = msg;
                     await db.SaveChangesAsync(ct);
                 }
-                throw new InvalidOperationException(msg);
+                continue;
             }
 
             var track = job.Tracks.FirstOrDefault(t => t.FileName == $"{destFile}.mkv");
@@ -74,13 +75,15 @@ public sealed partial class HandBrakeService(
             track.Ripped = true;
             track.Status = "success";
             await db.SaveChangesAsync(ct);
+            anySuccess = true;
         }
 
-        if (!Directory.EnumerateFiles(outputPath, $"*.{ext}").Any())
+        if (!anySuccess)
         {
-            var msg = $"HandBrake produced no output files in {outputPath}";
-            logger.LogError(msg);
-            throw new InvalidOperationException(msg);
+            job.Status = JobState.Failure;
+            job.Errors = "All tracks failed to transcode";
+            await db.SaveChangesAsync(ct);
+            return lastResult ?? new CliResult(-1, "", "All tracks failed to transcode", true);
         }
 
         return lastResult ?? new CliResult(0, "", "", false);
