@@ -158,6 +158,7 @@ public sealed partial class HandBrakeService(
         var maxLength = settings.Value.MaxLength;
         var ext = settings.Value.DestExt ?? "mp4";
 
+        var anySuccess = false;
         foreach (var track in job.Tracks)
         {
             if (!int.TryParse(track.TrackNumber, out var trackNo))
@@ -194,19 +195,26 @@ public sealed partial class HandBrakeService(
                 {
                     var err = $"HandBrake encoding of title {trackNo} failed with code {lastResult.ExitCode}: {lastResult.StdErr}";
                     logger.LogError(err);
-                    throw new InvalidOperationException(err);
+                    track.Status = "fail";
+                    track.Error = err;
+                    await db.SaveChangesAsync(ct);
+                    continue;
                 }
 
                 if (!File.Exists(outputFile))
                 {
                     var err = $"HandBrake did not produce output file for title {trackNo}: {outputFile}";
                     logger.LogError(err);
-                    throw new InvalidOperationException(err);
+                    track.Status = "fail";
+                    track.Error = err;
+                    await db.SaveChangesAsync(ct);
+                    continue;
                 }
 
                 track.Ripped = true;
                 track.Status = "success";
                 await db.SaveChangesAsync(ct);
+                anySuccess = true;
             }
             catch (Exception ex)
             {
@@ -214,11 +222,15 @@ public sealed partial class HandBrakeService(
                 logger.LogError(err);
                 track.Status = "fail";
                 track.Error = err;
-                job.Errors = err;
-                job.Status = JobState.Failure;
                 await db.SaveChangesAsync(ct);
-                throw;
             }
+        }
+
+        if (!anySuccess)
+        {
+            job.Status = JobState.Failure;
+            job.Errors = "All tracks failed to transcode";
+            await db.SaveChangesAsync(ct);
         }
 
         return lastResult ?? new CliResult(0, "", "", false);

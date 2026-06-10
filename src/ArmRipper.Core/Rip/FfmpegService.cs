@@ -153,6 +153,7 @@ public sealed partial class FfmpegService(
         var maxLength = settings.Value.MaxLength;
         var ext = settings.Value.DestExt ?? "mp4";
 
+        var anySuccess = false;
         foreach (var track in job.Tracks)
         {
             if (!int.TryParse(track.TrackNumber, out var trackNo))
@@ -186,6 +187,9 @@ public sealed partial class FfmpegService(
                 var totalSec = track.Length is int l && l > 0 ? l : (int?)null;
                 await RunTranscodeAsync(rawPath, outFilePath, job, totalSec, allStdOut, allStdErr, progress, ct);
                 track.Status = "success";
+                track.Ripped = true;
+                await db.SaveChangesAsync(ct);
+                anySuccess = true;
             }
             catch (Exception ex)
             {
@@ -194,10 +198,13 @@ public sealed partial class FfmpegService(
                 track.Status = "fail";
                 track.Error = err;
                 await db.SaveChangesAsync(ct);
-                throw;
             }
+        }
 
-            track.Ripped = true;
+        if (!anySuccess)
+        {
+            job.Status = JobState.Failure;
+            job.Errors = "All tracks failed to transcode";
             await db.SaveChangesAsync(ct);
         }
 
