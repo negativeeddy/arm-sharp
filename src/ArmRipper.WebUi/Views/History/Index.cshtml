@@ -35,7 +35,16 @@ else
                     <td>@job.Id</td>
                     <td>@(job.TitleManual ?? job.Title ?? "Untitled")</td>
                     <td>@job.DiscType</td>
-                    <td>@job.Status</td>
+                    <td>
+                        @if (!string.IsNullOrEmpty(job.Warnings))
+                        {
+                            <span class="badge bg-warning text-dark" title="@job.Warnings">Warning</span>
+                        }
+                        else
+                        {
+                            @job.Status
+                        }
+                    </td>
                     <td>@job.StartTime.ToString("g")</td>
                     <td>@(job.JobLength ?? "—")</td>
                     <td><a href="/jobs/jobdetail?jobId=@job.Id" class="btn btn-sm btn-outline-primary">View</a></td>

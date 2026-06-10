@@ -17,7 +17,16 @@
                 <dt class="col-sm-3">Disc Type</dt>
                 <dd class="col-sm-9">@Model.DiscType</dd>
                 <dt class="col-sm-3">Status</dt>
-                <dd class="col-sm-9">@Model.Status</dd>
+                <dd class="col-sm-9">
+                    @if (!string.IsNullOrEmpty(Model.Warnings))
+                    {
+                        <span class="badge bg-warning text-dark" title="@Model.Warnings">Warning</span>
+                    }
+                    else
+                    {
+                        @Model.Status
+                    }
+                </dd>
                 @if (Model.MakeMkvProgress.HasValue)
                 {
                     <dt class="col-sm-3">Rip Progress</dt>
@@ -50,7 +59,16 @@
                 <dt class="col-sm-2">Disc Type</dt>
                 <dd class="col-sm-10">@Model.DiscType</dd>
                 <dt class="col-sm-2">Status</dt>
-                <dd class="col-sm-10">@Model.Status</dd>
+                <dd class="col-sm-10">
+                    @if (!string.IsNullOrEmpty(Model.Warnings))
+                    {
+                        <span class="badge bg-warning text-dark" title="@Model.Warnings">Warning</span>
+                    }
+                    else
+                    {
+                        @Model.Status
+                    }
+                </dd>
                 @if (Model.MakeMkvProgress.HasValue)
                 {
                     <dt class="col-sm-2">Rip Progress</dt>

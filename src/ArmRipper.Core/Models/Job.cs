@@ -31,6 +31,7 @@ public class Job
     public string? MountPoint { get; set; }
     public bool HasNiceTitle { get; set; }
     public string? Errors { get; set; }
+    public string? Warnings { get; set; }
     public DiscType DiscType { get; set; } = DiscType.Unknown;
     public string? Label { get; set; }
     public string? Path { get; set; }

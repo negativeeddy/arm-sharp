@@ -58,7 +58,8 @@ public sealed partial class IdentifyService(
                 if (string.IsNullOrEmpty(job.Title) && !string.IsNullOrEmpty(job.Label))
                 {
                     job.Title = job.TitleAuto = job.Label;
-                    logger.LogInformation("Fell back to disc label as title: {Title}", job.Title);
+                    job.Warnings = "Disc not identified. Using label as title.";
+                    logger.LogWarning("{Warning}", job.Warnings);
                 }
             }
         }

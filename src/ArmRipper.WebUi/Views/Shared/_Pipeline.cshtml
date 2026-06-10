@@ -3,13 +3,14 @@
 @{
     var hasRipProgress = Model.MakeMkvProgress.HasValue;
     var hasTranscodeProgress = Model.TranscodeProgress.HasValue;
+    var hasWarning = !string.IsNullOrEmpty(Model.Warnings);
     var pipelineStages = new[]
     {
-        ("setup", "Setup", true, Model.Status != JobState.Active),
-        ("identify", "Identify", Model.Status is JobState.Active or JobState.VideoInfo, Model.Status is not JobState.Active and not JobState.VideoInfo),
-        ("rip", "Rip", Model.Status is JobState.VideoRipping, Model.Status is JobState.TranscodeActive or JobState.Success or JobState.Failure),
-        ("transcode", "Transcode", Model.Status is JobState.TranscodeActive, Model.Status is JobState.Success or JobState.Failure),
-        ("done", "Done", false, Model.Status is JobState.Success or JobState.Failure),
+        ("setup", "Setup", true, Model.Status != JobState.Active, false),
+        ("identify", "Identify", Model.Status is JobState.Active or JobState.VideoInfo, Model.Status is not JobState.Active and not JobState.VideoInfo, hasWarning),
+        ("rip", "Rip", Model.Status is JobState.VideoRipping, Model.Status is JobState.TranscodeActive or JobState.Success or JobState.Failure, false),
+        ("transcode", "Transcode", Model.Status is JobState.TranscodeActive, Model.Status is JobState.Success or JobState.Failure, false),
+        ("done", "Done", false, Model.Status is JobState.Success or JobState.Failure, false),
     };
 
     string? FailedStage()
@@ -29,10 +30,17 @@
         "transcode" => Model.TranscodeProgress,
         _ => null
     };
+
+    string StageClass(bool isFailed, bool isDone, bool isActive, bool isWarning) =>
+        isFailed ? "bg-danger text-white"
+        : isWarning && isDone ? "bg-warning text-dark"
+        : isDone ? "bg-success text-white"
+        : isActive ? "bg-primary text-white"
+        : "bg-light text-muted";
 }
 
 <div class="d-flex justify-content-between align-items-center">
-    @foreach (var (name, label, active, done) in pipelineStages)
+    @foreach (var (name, label, active, done, warning) in pipelineStages)
     {
         var pct = StageProgress(name);
         var failedIdx = failed is null ? -1 : Array.IndexOf(stageOrder, failed);
@@ -41,8 +49,9 @@
         var isDone = inFailure ? thisIdx < failedIdx : done;
         var isFailed = name == failed;
         var isActive = inFailure ? false : active;
-        var cls = isFailed ? "bg-danger text-white" : isDone ? "bg-success text-white" : isActive ? "bg-primary text-white" : "bg-light text-muted";
-        var tip = isFailed ? $"Failed at {label}" : pct.HasValue ? $"{label}: {pct}%" : label;
+        var isWarning = warning && isDone && !inFailure;
+        var cls = StageClass(isFailed, isDone, isActive, isWarning);
+        var tip = isFailed ? $"Failed at {label}" : isWarning ? Model.Warnings : pct.HasValue ? $"{label}: {pct}%" : label;
         <div class="text-center flex-fill mx-1" style="min-width:0;">
             <div class="rounded py-1 px-1 small @cls text-nowrap" title="@tip">@label</div>
             @if (isActive && pct.HasValue)
