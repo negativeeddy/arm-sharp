@@ -67,6 +67,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
     db.Database.EnsureCreated();
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE jobs ADD COLUMN Warnings TEXT NULL;"); } catch { }
 }
 
 var armSettings = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<ArmSettings>>().Value;

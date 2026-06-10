@@ -52,6 +52,7 @@ using (var initScope = host.Services.CreateScope())
 {
     var db = initScope.ServiceProvider.GetRequiredService<ArmDbContext>();
     db.Database.EnsureCreated();
+    try { db.Database.ExecuteSqlRaw("ALTER TABLE jobs ADD COLUMN Warnings TEXT NULL;"); } catch { }
 }
 
 var testMode = args.Any(a => a is "--test" or "-t");
