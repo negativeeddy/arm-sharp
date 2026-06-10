@@ -1,7 +1,14 @@
 # ==========================================================
+# Build args
+# ==========================================================
+ARG CONFIG=Release
+ARG DEBUG_TOOLS=false
+
+# ==========================================================
 # .NET build stage
 # ==========================================================
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+ARG CONFIG
 WORKDIR /src
 
 COPY ArmRipper.slnx .
@@ -13,13 +20,14 @@ COPY tests/ArmRipper.WebUi.Tests/ArmRipper.WebUi.Tests.csproj tests/ArmRipper.We
 RUN dotnet restore
 
 COPY . .
-RUN dotnet publish src/ArmRipper.Cli/ArmRipper.Cli.csproj -c Release -o /app/cli
-RUN dotnet publish src/ArmRipper.WebUi/ArmRipper.WebUi.csproj -c Release -o /app/webui
+RUN dotnet publish src/ArmRipper.Cli/ArmRipper.Cli.csproj -c $CONFIG -o /app/cli
+RUN dotnet publish src/ArmRipper.WebUi/ArmRipper.WebUi.csproj -c $CONFIG -o /app/webui
 
 # ==========================================================
 # Runtime stage
 # ==========================================================
 FROM automaticrippingmachine/arm-dependencies:1.7.3 AS runtime
+ARG DEBUG_TOOLS
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -28,6 +36,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Install diagnostic tools when DEBUG_TOOLS=true
+RUN if [ "$DEBUG_TOOLS" = "true" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends \
+            sqlite3 \
+            procps \
+            lsof \
+            vim \
+            strace \
+            && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 RUN curl -fsSL https://dotnet.microsoft.com/download/dotnet/scripts/v1/dotnet-install.sh \
     | bash /dev/stdin --channel 10.0 --runtime aspnetcore --install-dir /usr/share/dotnet \
