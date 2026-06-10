@@ -54,6 +54,12 @@ public sealed partial class IdentifyService(
 
                 logger.LogInformation("Disc title post-ident: title={Title} year={Year} video_type={VideoType} disctype={DiscType}",
                     job.Title, job.Year, job.VideoType, job.DiscType);
+
+                if (string.IsNullOrEmpty(job.Title) && !string.IsNullOrEmpty(job.Label))
+                {
+                    job.Title = job.TitleAuto = job.Label;
+                    logger.LogInformation("Fell back to disc label as title: {Title}", job.Title);
+                }
             }
         }
 
