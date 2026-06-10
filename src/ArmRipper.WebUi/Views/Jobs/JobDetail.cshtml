@@ -248,6 +248,26 @@
     </div>
 </div>
 
+@if (!string.IsNullOrEmpty(Model.Warnings))
+{
+    <div class="card border-warning mb-4">
+        <div class="card-header text-warning fw-bold">Warnings</div>
+        <div class="card-body">
+            <pre class="mb-0 small">@Model.Warnings</pre>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(Model.Errors))
+{
+    <div class="card border-danger mb-4">
+        <div class="card-header text-danger fw-bold">Errors</div>
+        <div class="card-body">
+            <pre class="mb-0 small">@Model.Errors</pre>
+        </div>
+    </div>
+}
+
 <div class="card mb-4">
     <div class="card-header">
         <a class="text-decoration-none" data-bs-toggle="collapse" href="#configCollapse" role="button">
@@ -395,16 +415,6 @@ else
                 }
             </tbody>
         </table>
-    </div>
-}
-
-@if (!string.IsNullOrEmpty(Model.Errors))
-{
-    <div class="card border-danger mt-3">
-        <div class="card-header text-danger fw-bold">Errors</div>
-        <div class="card-body">
-            <pre class="mb-0 small">@Model.Errors</pre>
-        </div>
     </div>
 }
 
