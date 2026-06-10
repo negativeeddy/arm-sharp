@@ -105,9 +105,8 @@ public sealed partial class FfmpegService(
         var track = job.Tracks.FirstOrDefault(t => t.MainFeature);
         if (track is null)
         {
-            var msg = "No main feature found by FFmpeg";
-            logger.LogError(msg);
-            throw new InvalidOperationException(msg);
+            logger.LogWarning("No main feature found by FFmpeg, falling back to all titles");
+            return await TranscodeAllAsync(job, rawPath, outputPath, progress, ct);
         }
 
         track.FileName = track.OrigFileName = filename;
