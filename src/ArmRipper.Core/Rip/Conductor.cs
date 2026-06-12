@@ -87,6 +87,7 @@ public sealed class Conductor(
             MainFeature = armSettings.MainFeature,
             UseFfmpeg = armSettings.UseFfmpeg,
             ManualWait = armSettings.ManualWait,
+            ManualWaitTime = armSettings.ManualWaitTime,
             AllowDuplicates = armSettings.AllowDuplicates,
             Prevent99 = armSettings.Prevent99,
             GetVideoTitle = armSettings.GetVideoTitle,
@@ -153,9 +154,47 @@ public sealed class Conductor(
         // Identify the disc
         await identifyService.IdentifyAsync(job, ct);
 
+        if (await IsCancelledAsync(job, ct))
+            return 1;
+
         // Check for duplicates
         var haveDupes = await JobDupeCheckAsync(job, ct);
         logger.LogDebug("Value of have_dupes: {HaveDupes}", haveDupes);
+
+        // Manual wait for title identification
+        var cfg = job.Config ?? db.ConfigSnapshots.FirstOrDefault(c => c.JobId == job.Id);
+        if (cfg is { ManualWait: true } && string.IsNullOrEmpty(job.TitleManual) && !string.IsNullOrEmpty(job.Label))
+        {
+            var waitTime = cfg.ManualWaitTime > 0 ? cfg.ManualWaitTime : 60;
+            logger.LogInformation("Waiting {Time}s for manual title override", waitTime);
+            job.Status = JobState.ManualWaitStarted;
+            await db.SaveChangesAsync(ct);
+
+            var waited = 0;
+            while (waited < waitTime)
+            {
+                await Task.Delay(5000, ct);
+                waited += 5;
+
+                // Refresh job to check for changes
+                await db.Entry(job).ReloadAsync(ct);
+
+                if (job.Status == JobState.Cancelled)
+                {
+                    logger.LogInformation("Job cancelled during manual wait");
+                    return 1;
+                }
+
+                if (!string.IsNullOrEmpty(job.TitleManual))
+                {
+                    logger.LogInformation("Manual title override found: {Title}", job.TitleManual);
+                    break;
+                }
+            }
+
+            if (string.IsNullOrEmpty(job.TitleManual))
+                logger.LogInformation("Manual wait expired, continuing with auto-identified title");
+        }
 
         // Notify entry
         await notificationService.NotifyEntryAsync(job, ct);
@@ -165,6 +204,8 @@ public sealed class Conductor(
         {
             case DiscType.Dvd:
             case DiscType.Bluray:
+                if (await IsCancelledAsync(job, ct))
+                    return 1;
                 logger.LogInformation("Disc identified as video. Starting rip.");
                 var directory = await armRipperService.RipVisualMediaAsync(job, job.LogFile ?? "", haveDupes, job.HasTrack99, ct);
                 job.Path = directory;
@@ -303,6 +344,17 @@ public sealed class Conductor(
                 Directory.Delete(rawPath, recursive: true);
         }
         catch { }
+    }
+
+    private async Task<bool> IsCancelledAsync(Job job, CancellationToken ct)
+    {
+        await db.Entry(job).ReloadAsync(ct);
+        if (job.Status == JobState.Cancelled)
+        {
+            logger.LogInformation("Job was cancelled, aborting");
+            return true;
+        }
+        return false;
     }
 
     private async Task<bool> JobDupeCheckAsync(Job job, CancellationToken ct)

@@ -32,8 +32,13 @@ public sealed partial class FfmpegService(
 
         EnsureDirectory(outputPath);
 
-        foreach (var file in Directory.EnumerateFiles(rawPath, "*.mkv"))
+        var mkvFiles = Directory.EnumerateFiles(rawPath, "*.mkv").ToList();
+        var fileNum = 0;
+        foreach (var file in mkvFiles)
         {
+            fileNum++;
+            job.ProgressMessage = $"Transcoding file {fileNum} of {mkvFiles.Count}";
+            await db.SaveChangesAsync(ct);
             var destFile = Path.GetFileNameWithoutExtension(file);
             var ext = settings.Value.DestExt ?? "mp4";
             var outFile = Path.Combine(outputPath, $"{destFile}.{ext}");
@@ -112,6 +117,9 @@ public sealed partial class FfmpegService(
         track.FileName = track.OrigFileName = filename;
         await db.SaveChangesAsync(ct);
 
+        job.ProgressMessage = "Transcoding main feature";
+        await db.SaveChangesAsync(ct);
+
         logger.LogInformation("Ripping main feature to {Output}", outputFile);
 
         try
@@ -154,26 +162,20 @@ public sealed partial class FfmpegService(
         var ext = settings.Value.DestExt ?? "mp4";
 
         var anySuccess = false;
-        foreach (var track in job.Tracks)
+        var eligibleTracks = job.Tracks.Where(t =>
+            int.TryParse(t.TrackNumber, out var trackNo) &&
+            trackNo <= (job.NoOfTitles ?? 0) &&
+            (t.Length ?? 0) >= minLength &&
+            (t.Length ?? 0) <= maxLength).ToList();
+        var processedCount = 0;
+        foreach (var track in eligibleTracks)
         {
             if (!int.TryParse(track.TrackNumber, out var trackNo))
                 continue;
 
-            if (trackNo > (job.NoOfTitles ?? 0))
-                continue;
-
-            if ((track.Length ?? 0) < minLength)
-            {
-                logger.LogInformation("Track #{TrackNo}: length {Length}s < min {MinLength}s, skipping", trackNo, track.Length, minLength);
-                continue;
-            }
-
-            if ((track.Length ?? 0) > maxLength)
-            {
-                logger.LogInformation("Track #{TrackNo}: length {Length}s > max {MaxLength}s, skipping", trackNo, track.Length, maxLength);
-                continue;
-            }
-
+            processedCount++;
+            job.ProgressMessage = $"Transcoding track {trackNo} ({processedCount} of {eligibleTracks.Count})";
+            await db.SaveChangesAsync(ct);
             logger.LogInformation("Processing track #{TrackNo} of {Total}", trackNo, job.NoOfTitles);
 
             var outFileName = $"title_{trackNo}.{ext}";

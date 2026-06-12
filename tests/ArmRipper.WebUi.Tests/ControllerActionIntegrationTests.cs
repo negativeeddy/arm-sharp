@@ -140,32 +140,25 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
     }
 
     [Fact]
-    public async Task TitleSearch_ByTitle_ReturnsMatchingResult()
+    public async Task TitleSearch_NoQuery_ShowsSearchForm()
     {
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-            db.Jobs.Add(new Job
-            {
-                Title = "SearchTest Unique Title",
-                TitleAuto = "SearchTest Unique Title",
-                Year = "2026",
-                VideoType = "movie",
-                DiscType = DiscType.Dvd,
-                Status = JobState.Success,
-                StartTime = DateTime.UtcNow,
-                DevPath = "/dev/sr99",
-                Config = new ConfigSnapshot { MinLength = 300, MaxLength = 9999, RipMethod = "mkv", GetAudioTitle = "" }
-            });
-            await db.SaveChangesAsync();
-        }
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync("/jobs/titlesearch");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Search Movies", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TitleSearch_WithQuery_ShowsNoResultsWhenNoApiKey()
+    {
         var client = await CreateAuthenticatedClientAsync();
         var response = await client.GetAsync("/jobs/titlesearch?query=SearchTest");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var html = await response.Content.ReadAsStringAsync();
-        Assert.Contains("SearchTest Unique Title", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("No results found", html, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

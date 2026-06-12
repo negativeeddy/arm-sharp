@@ -11,7 +11,8 @@ public enum JobState
     AudioRipping,
     TranscodeActive,
     TranscodeWaiting,
-    ManualWaitStarted
+    ManualWaitStarted,
+    Cancelled
 }
 
 public static class JobStateExtensions
@@ -28,8 +29,12 @@ public static class JobStateExtensions
         JobState.TranscodeActive => "transcoding",
         JobState.TranscodeWaiting => "waiting_transcode",
         JobState.ManualWaitStarted => "waiting",
+        JobState.Cancelled => "cancelled",
         _ => "active"
     };
+
+    public static bool IsTerminal(this JobState state) =>
+        state is JobState.Success or JobState.Failure or JobState.Cancelled;
 
     public static JobState FromDbString(string value) => value switch
     {
@@ -41,6 +46,7 @@ public static class JobStateExtensions
         "info" => JobState.VideoInfo,
         "transcoding" => JobState.TranscodeActive,
         "waiting_transcode" => JobState.TranscodeWaiting,
+        "cancelled" => JobState.Cancelled,
         _ => JobState.Active
     };
 }

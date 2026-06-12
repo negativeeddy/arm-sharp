@@ -36,6 +36,7 @@ public static partial class ArmYamlConfigLoader
         ["FFMPEG_PRE_FILE_ARGS"] = "Arm:FfmpegPreFileArgs",
         ["FFMPEG_POST_FILE_ARGS"] = "Arm:FfmpegPostFileArgs",
         ["MANUAL_WAIT"] = "Arm:ManualWait",
+        ["MANUAL_WAIT_TIME"] = "Arm:ManualWaitTime",
         ["NOTIFY_RIP"] = "Arm:NotifyRip",
         ["NOTIFY_TRANSCODE"] = "Arm:NotifyTranscode",
         ["PB_KEY"] = "Arm:PbKey",

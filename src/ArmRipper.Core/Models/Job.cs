@@ -45,6 +45,7 @@ public class Job
     public string? DiscFingerprint { get; set; }
     public int? MakeMkvProgress { get; set; }
     public int? TranscodeProgress { get; set; }
+    public string? ProgressMessage { get; set; }
 
     public ICollection<Track> Tracks { get; init; } = new List<Track>();
     public ConfigSnapshot? Config { get; set; }

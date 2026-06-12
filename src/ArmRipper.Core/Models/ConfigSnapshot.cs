@@ -11,6 +11,7 @@ public class ConfigSnapshot
     public bool MainFeature { get; set; }
     public bool UseFfmpeg { get; set; }
     public bool ManualWait { get; set; }
+    public int ManualWaitTime { get; set; } = 60;
     public bool AllowDuplicates { get; set; }
     public bool Prevent99 { get; set; }
     public bool GetVideoTitle { get; set; }

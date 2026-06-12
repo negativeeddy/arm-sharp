@@ -54,7 +54,7 @@ public sealed class ArmRipperService(
 
                 var mkvArgs = job.Config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
                 var minLength = job.Config?.MinLength ?? settings.Value.MinLength;
-                await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, minLength, MkvProgress(job, ct), ct);
+                await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, minLength, MkvProgress(job, "Ripping track 0", ct), ct);
                 logger.LogInformation("Ripped track 0 in test mode");
 
                 transcodeInPath = makeMkvOutPath;
@@ -80,7 +80,7 @@ public sealed class ArmRipperService(
                         Directory.CreateDirectory(makeMkvOutPath);
 
                     var mkvArgs = config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
-                        await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLength, MkvProgress(job, ct), ct);
+                        await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLength, MkvProgress(job, "Ripping all titles", ct), ct);
                     logger.LogInformation("Ripped all titles from encrypted BD");
 
                     if (!Directory.EnumerateFileSystemEntries(makeMkvOutPath).Any())
@@ -131,34 +131,35 @@ public sealed class ArmRipperService(
                     var mkvArgs = config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
                     var ripCount = 0;
 
-                    var mkvProgress = MkvProgress(job, ct);
                     if (settings.Value.TestMode)
                     {
                         var firstTrack = eligibleTracks.FirstOrDefault();
                         if (firstTrack is not null)
-                            await makeMkv.RipTrackAsync(job, firstTrack.TrackNumber!, makeMkvOutPath, mkvArgs, minLength, mkvProgress, ct);
+                            await makeMkv.RipTrackAsync(job, firstTrack.TrackNumber!, makeMkvOutPath, mkvArgs, minLength, MkvProgress(job, "Ripping track 0", ct), ct);
                         else
-                            await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, minLength, mkvProgress, ct);
+                            await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, minLength, MkvProgress(job, "Ripping track 0", ct), ct);
                     }
                     else if (config?.MainFeature ?? settings.Value.MainFeature)
                     {
                         var main = tracks.FirstOrDefault(t => t.MainFeature);
                         if (main is not null)
                         {
-                            await makeMkv.RipTrackAsync(job, main.TrackNumber!, makeMkvOutPath, mkvArgs, minLength, mkvProgress, ct);
+                            await makeMkv.RipTrackAsync(job, main.TrackNumber!, makeMkvOutPath, mkvArgs, minLength, MkvProgress(job, "Ripping main feature", ct), ct);
                             ripCount = 1;
                         }
                     }
                     else if (maxLength > 99998)
                     {
-                    await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLength, mkvProgress, ct);
+                        await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLength, MkvProgress(job, "Ripping all titles", ct), ct);
                         ripCount = eligibleTracks.Count;
                     }
                     else
                     {
+                        var trackNum = 0;
                         foreach (var track in eligibleTracks)
                         {
-                            await makeMkv.RipTrackAsync(job, track.TrackNumber!, makeMkvOutPath, mkvArgs, minLength, mkvProgress, ct);
+                            trackNum++;
+                            await makeMkv.RipTrackAsync(job, track.TrackNumber!, makeMkvOutPath, mkvArgs, minLength, MkvProgress(job, $"Ripping track {trackNum} of {eligibleTracks.Count}", ct), ct);
                             ripCount++;
                         }
                     }
@@ -278,25 +279,23 @@ afterMakeMkv:
         job.Status = JobState.TranscodeActive;
         await db.SaveChangesAsync(ct);
 
-        var tcProgress = TranscodeProgress(job, ct);
-
         if (job.Config?.UseFfmpeg ?? settings.Value.UseFfmpeg)
         {
             logger.LogInformation("************* Starting Transcode With FFMPEG *************");
             if (RipWithMkv(job, protection) && (job.Config?.RipMethod ?? settings.Value.RipMethod) == "mkv")
             {
                 logger.LogDebug("ffmpeg_mkv: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
-                await ffmpeg.TranscodeMkvAsync(job, rawInPath, transcodeOutPath, tcProgress, ct);
+                await ffmpeg.TranscodeMkvAsync(job, rawInPath, transcodeOutPath, TranscodeProgress(job, "Transcoding MKV files", ct), ct);
             }
             else if ((job.VideoType == "movie" || job.VideoType is null) && (job.Config?.MainFeature ?? settings.Value.MainFeature))
             {
                 logger.LogDebug("ffmpeg_main_feature: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
-                await ffmpeg.TranscodeMainFeatureAsync(job, rawInPath, transcodeOutPath, tcProgress, ct);
+                await ffmpeg.TranscodeMainFeatureAsync(job, rawInPath, transcodeOutPath, TranscodeProgress(job, "Transcoding main feature", ct), ct);
             }
             else
             {
                 logger.LogDebug("ffmpeg_all: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
-                await ffmpeg.TranscodeAllAsync(job, rawInPath, transcodeOutPath, tcProgress, ct);
+                await ffmpeg.TranscodeAllAsync(job, rawInPath, transcodeOutPath, TranscodeProgress(job, "Transcoding all tracks", ct), ct);
             }
             logger.LogInformation("************* Finished Transcode With FFMPEG *************");
 
@@ -312,17 +311,17 @@ afterMakeMkv:
             if (RipWithMkv(job, protection) && (job.Config?.RipMethod ?? settings.Value.RipMethod) == "mkv")
             {
                 logger.LogDebug("handbrake_mkv: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
-                await handBrake.TranscodeMkvAsync(job, rawInPath, transcodeOutPath, tcProgress, ct);
+                await handBrake.TranscodeMkvAsync(job, rawInPath, transcodeOutPath, TranscodeProgress(job, "Transcoding MKV files", ct), ct);
             }
             else if ((job.VideoType == "movie" || job.VideoType is null) && (job.Config?.MainFeature ?? settings.Value.MainFeature))
             {
                 logger.LogDebug("handbrake_main_feature: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
-                await handBrake.TranscodeMainFeatureAsync(job, rawInPath, transcodeOutPath, tcProgress, ct);
+                await handBrake.TranscodeMainFeatureAsync(job, rawInPath, transcodeOutPath, TranscodeProgress(job, "Transcoding main feature", ct), ct);
             }
             else
             {
                 logger.LogDebug("handbrake_all: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
-                await handBrake.TranscodeAllAsync(job, rawInPath, transcodeOutPath, tcProgress, ct);
+                await handBrake.TranscodeAllAsync(job, rawInPath, transcodeOutPath, TranscodeProgress(job, "Transcoding all tracks", ct), ct);
             }
             logger.LogInformation("************* Finished Transcode With HandBrake *************");
 
@@ -334,17 +333,19 @@ afterMakeMkv:
         }
     }
 
-    private IProgress<int> MkvProgress(Job job, CancellationToken ct) =>
+    private IProgress<int> MkvProgress(Job job, string message, CancellationToken ct) =>
         new Progress<int>(async pct =>
         {
             job.MakeMkvProgress = pct;
+            job.ProgressMessage = message;
             await db.SaveChangesAsync(ct);
         });
 
-    private IProgress<int> TranscodeProgress(Job job, CancellationToken ct) =>
+    private IProgress<int> TranscodeProgress(Job job, string message, CancellationToken ct) =>
         new Progress<int>(async pct =>
         {
             job.TranscodeProgress = pct;
+            job.ProgressMessage = message;
             await db.SaveChangesAsync(ct);
         });
 

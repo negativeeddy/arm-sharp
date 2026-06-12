@@ -15,6 +15,7 @@ public class ArmSettings
     public bool MainFeature { get; set; } = true;
     public bool UseFfmpeg { get; set; }
     public bool ManualWait { get; set; } = true;
+    public int ManualWaitTime { get; set; } = 60;
     public bool AllowDuplicates { get; set; } = true;
     public bool Prevent99 { get; set; } = true;
     public bool GetVideoTitle { get; set; } = true;

@@ -76,8 +76,10 @@ using (var scope = app.Services.CreateScope())
         db.Database.ExecuteSqlRaw(
             "CREATE TABLE IF NOT EXISTS \"__EFMigrationsHistory\" (\"MigrationId\" TEXT NOT NULL, \"ProductVersion\" TEXT NOT NULL);");
         try { db.Database.ExecuteSqlRaw("ALTER TABLE jobs ADD COLUMN Warnings TEXT NULL;"); } catch { }
+        try { db.Database.ExecuteSqlRaw("ALTER TABLE jobs ADD COLUMN ProgressMessage TEXT NULL;"); } catch { }
         db.Database.ExecuteSqlRaw(
             "INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('20260610044322_Initial', '10.0.0');");
+        try { db.Database.ExecuteSqlRaw("INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('20260610053400_AddProgressMessage', '10.0.0');"); } catch { }
     }
 }
 

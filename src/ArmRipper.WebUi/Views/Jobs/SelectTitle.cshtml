@@ -1,0 +1,64 @@
+@model ArmRipper.Core.Metadata.OmdbTitleResult
+@{
+    ViewData["Title"] = "Select Title - ARM";
+    var jobId = ViewBag.JobId as int?;
+}
+
+<h1>Movie Details</h1>
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card text-center">
+            <div class="card-header">
+                @if (!string.IsNullOrEmpty(Model.Poster) && Model.Poster != "N/A")
+                {
+                    <img src="@Model.Poster" class="img-thumbnail" alt="@Model.Title poster"
+                         style="max-height:360px;object-fit:contain" />
+                }
+            </div>
+            <div class="card-body">
+                <h5 class="card-title"><strong>@Model.Title</strong></h5>
+                <p class="card-text">
+                    <span class="badge badge-info">@(Model.Type ?? "movie")</span>
+                    <span class="badge badge-secondary">@Model.Year</span>
+                    @if (!string.IsNullOrEmpty(Model.Rated))
+                    {
+                        <span class="badge badge-primary">@Model.Rated</span>
+                    }
+                </p>
+                @if (!string.IsNullOrEmpty(Model.Runtime))
+                {
+                    <p class="card-text"><strong>Runtime:</strong> @Model.Runtime</p>
+                }
+                @if (!string.IsNullOrEmpty(Model.Genre))
+                {
+                    <p class="card-text"><strong>Genre:</strong> @Model.Genre</p>
+                }
+                @if (!string.IsNullOrEmpty(Model.Plot))
+                {
+                    <p class="card-text text-justify">@Model.Plot</p>
+                }
+                @if (!string.IsNullOrEmpty(Model.Director) && Model.Director != "N/A")
+                {
+                    <p class="card-text"><strong>Director:</strong> @Model.Director</p>
+                }
+                @if (!string.IsNullOrEmpty(Model.Actors) && Model.Actors != "N/A")
+                {
+                    <p class="card-text"><strong>Actors:</strong> @Model.Actors</p>
+                }
+            </div>
+            <div class="card-footer">
+                <a href="/jobs/titlesearch?jobId=@jobId" class="btn btn-primary">New Search</a>
+                <form method="post" action="/jobs/assign-movie" style="display:inline">
+                    <input type="hidden" name="jobId" value="@jobId" />
+                    <input type="hidden" name="title" value="@Model.Title" />
+                    <input type="hidden" name="year" value="@Model.Year" />
+                    <input type="hidden" name="imdbId" value="@Model.ImdbID" />
+                    <input type="hidden" name="posterUrl" value="@Model.Poster" />
+                    <input type="hidden" name="videoType" value="@Model.Type" />
+                    <button type="submit" class="btn btn-success">Update Title</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

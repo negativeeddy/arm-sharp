@@ -27,18 +27,32 @@
                         @Model.Status
                     }
                 </dd>
-                @if (Model.MakeMkvProgress.HasValue)
-                {
-                    <dt class="col-sm-3">Rip Progress</dt>
-                    <dd class="col-sm-9">
-                        <div class="progress" style="height:20px;">
+                <dt class="col-sm-3">Rip Progress</dt>
+                <dd class="col-sm-9">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="progress flex-grow-1" style="height:20px;">
                             <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
-                                 style="width:@(Model.MakeMkvProgress)%" aria-valuenow="@Model.MakeMkvProgress" aria-valuemin="0" aria-valuemax="100">
-                                @Model.MakeMkvProgress%
+                                 style="width:@(Model.MakeMkvProgress ?? 0)%" aria-valuenow="@(Model.MakeMkvProgress ?? 0)" aria-valuemin="0" aria-valuemax="100">
+                                @(Model.MakeMkvProgress.HasValue ? $"{Model.MakeMkvProgress}%" : "0%")
                             </div>
                         </div>
-                    </dd>
-                }
+                        @if (Model.Status is JobState.VideoRipping or JobState.TranscodeActive or JobState.Active)
+                        {
+                            <span class="spinner-border spinner-border-sm text-secondary" role="status"></span>
+                        }
+                    </div>
+                </dd>
+                <dt class="col-sm-3">Transcode Progress</dt>
+                <dd class="col-sm-9">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="progress flex-grow-1" style="height:20px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar"
+                                 style="width:@(Model.TranscodeProgress ?? 0)%" aria-valuenow="@(Model.TranscodeProgress ?? 0)" aria-valuemin="0" aria-valuemax="100">
+                                @(Model.TranscodeProgress.HasValue ? $"{Model.TranscodeProgress}%" : "0%")
+                            </div>
+                        </div>
+                    </div>
+                </dd>
                 <dt class="col-sm-3">Stage</dt>
                 <dd class="col-sm-9">@(Model.Stage ?? "—")</dd>
                 <dt class="col-sm-3">Started</dt>
@@ -49,6 +63,21 @@
                 <dd class="col-sm-9">@Model.JobLength</dd>
                 <dt class="col-sm-3">Titles</dt>
                 <dd class="col-sm-9">@Model.NoOfTitles</dd>
+                @if (!string.IsNullOrEmpty(Model.ProgressMessage))
+                {
+                    <dt class="col-sm-3">Progress</dt>
+                    <dd class="col-sm-9">@Model.ProgressMessage</dd>
+                }
+                @if (!Model.Status.IsTerminal())
+                {
+                    <dt class="col-sm-3"></dt>
+                    <dd class="col-sm-9">
+                        <form method="post" action="/jobs/cancel" onsubmit="return confirm('Cancel this job?')">
+                            <input type="hidden" name="jobId" value="@Model.Id" />
+                            <button type="submit" class="btn btn-danger btn-sm">Cancel Job</button>
+                        </form>
+                    </dd>
+                }
             </dl>
         </div>
     }
@@ -69,18 +98,32 @@
                         @Model.Status
                     }
                 </dd>
-                @if (Model.MakeMkvProgress.HasValue)
-                {
-                    <dt class="col-sm-2">Rip Progress</dt>
-                    <dd class="col-sm-10">
-                        <div class="progress" style="height:20px;">
+                <dt class="col-sm-2">Rip Progress</dt>
+                <dd class="col-sm-10">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="progress flex-grow-1" style="height:20px;">
                             <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
-                                 style="width:@(Model.MakeMkvProgress)%" aria-valuenow="@Model.MakeMkvProgress" aria-valuemin="0" aria-valuemax="100">
-                                @Model.MakeMkvProgress%
+                                 style="width:@(Model.MakeMkvProgress ?? 0)%" aria-valuenow="@(Model.MakeMkvProgress ?? 0)" aria-valuemin="0" aria-valuemax="100">
+                                @(Model.MakeMkvProgress.HasValue ? $"{Model.MakeMkvProgress}%" : "0%")
                             </div>
                         </div>
-                    </dd>
-                }
+                        @if (Model.Status is JobState.VideoRipping or JobState.TranscodeActive or JobState.Active)
+                        {
+                            <span class="spinner-border spinner-border-sm text-secondary" role="status"></span>
+                        }
+                    </div>
+                </dd>
+                <dt class="col-sm-2">Transcode Progress</dt>
+                <dd class="col-sm-10">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="progress flex-grow-1" style="height:20px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar"
+                                 style="width:@(Model.TranscodeProgress ?? 0)%" aria-valuenow="@(Model.TranscodeProgress ?? 0)" aria-valuemin="0" aria-valuemax="100">
+                                @(Model.TranscodeProgress.HasValue ? $"{Model.TranscodeProgress}%" : "0%")
+                            </div>
+                        </div>
+                    </div>
+                </dd>
                 <dt class="col-sm-2">Stage</dt>
                 <dd class="col-sm-10">@(Model.Stage ?? "—")</dd>
                 <dt class="col-sm-2">Started</dt>
@@ -91,6 +134,21 @@
                 <dd class="col-sm-10">@Model.JobLength</dd>
                 <dt class="col-sm-2">Titles</dt>
                 <dd class="col-sm-10">@Model.NoOfTitles</dd>
+                @if (!string.IsNullOrEmpty(Model.ProgressMessage))
+                {
+                    <dt class="col-sm-2">Progress</dt>
+                    <dd class="col-sm-10">@Model.ProgressMessage</dd>
+                }
+                @if (!Model.Status.IsTerminal())
+                {
+                    <dt class="col-sm-2"></dt>
+                    <dd class="col-sm-10">
+                        <form method="post" action="/jobs/cancel" onsubmit="return confirm('Cancel this job?')">
+                            <input type="hidden" name="jobId" value="@Model.Id" />
+                            <button type="submit" class="btn btn-danger btn-sm">Cancel Job</button>
+                        </form>
+                    </dd>
+                }
             </dl>
         </div>
     }

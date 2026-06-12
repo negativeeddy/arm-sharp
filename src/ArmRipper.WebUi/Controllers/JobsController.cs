@@ -1,15 +1,17 @@
+using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Metadata;
 using ArmRipper.Core.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("jobs")]
-public class JobsController(ArmDbContext db, OmdbService omdb) : Controller
+public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSettings> settings) : Controller
 {
     [HttpGet("jobdetail")]
     public async Task<IActionResult> JobDetail(int jobId)
@@ -40,7 +42,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb) : Controller
     {
         var jobs = await db.Jobs
             .Include(j => j.Config)
-            .Where(j => j.Status != JobState.Success && j.Status != JobState.Failure)
+            .Where(j => j.Status != JobState.Success && j.Status != JobState.Failure && j.Status != JobState.Cancelled)
             .OrderByDescending(j => j.StartTime)
             .ToListAsync();
 
@@ -78,25 +80,94 @@ public class JobsController(ArmDbContext db, OmdbService omdb) : Controller
         return Redirect(returnUrl ?? Url.Action("TitleSearch")!);
     }
 
-    [HttpGet("titlesearch")]
-    public async Task<IActionResult> TitleSearch(string query)
+    [HttpPost("cancel")]
+    public async Task<IActionResult> Cancel(int jobId)
     {
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            var recent = await db.Jobs
-                .OrderByDescending(j => j.StartTime)
-                .Take(20)
-                .ToListAsync();
+        var job = await db.Jobs.FindAsync(jobId);
+        if (job is null)
+            return NotFound();
 
-            return View(recent);
+        if (!job.Status.IsTerminal())
+        {
+            job.Status = JobState.Cancelled;
+            job.Errors = "Cancelled by user";
+            await db.SaveChangesAsync();
         }
 
-        var results = await db.Jobs
-            .Where(j => j.Title != null && j.Title.Contains(query))
-            .OrderByDescending(j => j.StartTime)
-            .Take(50)
-            .ToListAsync();
+        return RedirectToAction("JobDetail", new { jobId });
+    }
 
-        return View(results);
+    [HttpGet("titlesearch")]
+    public async Task<IActionResult> TitleSearch(string query, int? jobId)
+    {
+        ViewBag.Jobs = await db.Jobs
+            .OrderByDescending(j => j.StartTime)
+            .Take(20)
+            .ToListAsync();
+        ViewBag.SelectedJobId = jobId;
+
+        if (string.IsNullOrWhiteSpace(query))
+            return View(Array.Empty<OmdbSearchItem>());
+
+        var apiKey = settings.Value.OmdbApiKey;
+        if (!string.IsNullOrEmpty(apiKey))
+        {
+            var result = await omdb.SearchAsync(apiKey, query);
+            if (result?.Search is { Count: > 0 })
+                return View(result.Search);
+        }
+
+        return View(Array.Empty<OmdbSearchItem>());
+    }
+
+    [HttpGet("select-title")]
+    public async Task<IActionResult> SelectTitle(string imdbId, int jobId)
+    {
+        var job = await db.Jobs.FindAsync(jobId);
+        if (job is null)
+            return NotFound();
+
+        var apiKey = settings.Value.OmdbApiKey;
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            TempData["Error"] = "OMDB API key not configured";
+            return RedirectToAction("TitleSearch", new { jobId });
+        }
+
+        var result = await omdb.LookupByImdbAsync(imdbId, apiKey, plot: "full");
+        if (result is null || result.Response != "True")
+        {
+            TempData["Error"] = "Could not fetch movie details";
+            return RedirectToAction("TitleSearch", new { jobId });
+        }
+
+        ViewBag.JobId = jobId;
+        return View(result);
+    }
+
+    [HttpPost("assign-movie")]
+    public async Task<IActionResult> AssignMovie(int jobId, string title, string? year, string? imdbId, string? posterUrl, string? videoType)
+    {
+        var job = await db.Jobs.FindAsync(jobId);
+        if (job is null)
+            return NotFound();
+
+        job.TitleManual = title;
+        job.Title = title;
+        job.YearManual = year;
+        job.Year = year;
+        job.ImdbIdManual = imdbId;
+        job.ImdbId = imdbId;
+        job.PosterUrlManual = posterUrl;
+        job.PosterUrl = posterUrl;
+        if (!string.IsNullOrEmpty(videoType))
+        {
+            job.VideoTypeManual = videoType;
+            job.VideoType = videoType;
+        }
+
+        await db.SaveChangesAsync();
+
+        return RedirectToAction("JobDetail", new { jobId });
     }
 }
