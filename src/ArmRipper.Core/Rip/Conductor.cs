@@ -197,6 +197,14 @@ public sealed class Conductor(
                     logger.LogInformation("Manual title override found: {Title}", job.TitleManual);
                     break;
                 }
+
+                if (job.ManualWaitResume)
+                {
+                    logger.LogInformation("Manual wait resumed by user");
+                    job.ManualWaitResume = false;
+                    await db.SaveChangesAsync(ct);
+                    break;
+                }
             }
 
             if (string.IsNullOrEmpty(job.TitleManual))

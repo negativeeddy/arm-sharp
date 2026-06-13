@@ -174,4 +174,20 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
 
         return RedirectToAction("JobDetail", new { jobId });
     }
+
+    [HttpPost("continue-wait")]
+    public async Task<IActionResult> ContinueWait(int jobId)
+    {
+        var job = await db.Jobs.FindAsync(jobId);
+        if (job is null)
+            return NotFound();
+
+        if (job.Status == JobState.ManualWaitStarted)
+        {
+            job.ManualWaitResume = true;
+            await db.SaveChangesAsync();
+        }
+
+        return RedirectToAction("JobDetail", new { jobId });
+    }
 }

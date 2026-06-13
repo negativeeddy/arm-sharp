@@ -41,6 +41,8 @@ public class Job
     public bool IsIso { get; set; }
     public bool ManualStart { get; set; }
     public bool ManualMode { get; set; }
+    /// <summary>Set to true by the UI to signal the Conductor to exit the manual wait loop early.</summary>
+    public bool ManualWaitResume { get; set; }
     public bool HasTrack99 { get; set; }
     public string? DiscFingerprint { get; set; }
     public int? MakeMkvProgress { get; set; }

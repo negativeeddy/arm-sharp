@@ -191,4 +191,31 @@ public partial class ApiController(
         var logContent = await System.IO.File.ReadAllTextAsync(fullPath);
         return Json(new { success = true, job = jobId, log = logContent });
     }
+
+    /// <summary>
+    /// Signal the Conductor to exit the manual wait loop early.
+    /// If 'title' is provided, also set TitleManual.
+    /// </summary>
+    [HttpPost("jobs/{id}/continue")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ContinueManualWait(int id, string? title = null)
+    {
+        var job = await db.Jobs.FindAsync(id);
+        if (job is null)
+            return NotFound(new { success = false, error = "Job not found" });
+
+        if (job.Status != JobState.ManualWaitStarted)
+            return Json(new { success = false, error = "Job is not in manual wait state" });
+
+        if (title is not null)
+        {
+            job.TitleManual = title;
+            job.Title = title;
+        }
+
+        job.ManualWaitResume = true;
+        await db.SaveChangesAsync();
+
+        return Json(new { success = true, job = id, message = "Manual wait will resume" });
+    }
 }

@@ -72,7 +72,17 @@
                 {
                     <dt class="col-sm-3"></dt>
                     <dd class="col-sm-9">
-                        <form method="post" action="/jobs/cancel" onsubmit="return confirm('Cancel this job?')">
+                        @if (Model.Status is JobState.ManualWaitStarted)
+                        {
+                            <form method="post" action="/jobs/continue-wait" style="display:inline">
+                                <input type="hidden" name="jobId" value="@Model.Id" />
+                                <button type="submit" class="btn btn-success btn-sm">
+                                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                    Continue with Auto Title
+                                </button>
+                            </form>
+                        }
+                        <form method="post" action="/jobs/cancel" onsubmit="return confirm('Cancel this job?')" style="display:inline">
                             <input type="hidden" name="jobId" value="@Model.Id" />
                             <button type="submit" class="btn btn-danger btn-sm">Cancel Job</button>
                         </form>
