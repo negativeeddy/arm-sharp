@@ -4,12 +4,26 @@
     var hasRipProgress = Model.MakeMkvProgress.HasValue;
     var hasTranscodeProgress = Model.TranscodeProgress.HasValue;
     var hasWarning = !string.IsNullOrEmpty(Model.Warnings);
+
+    var stageErrors = new Dictionary<string, string>();
+    if (!string.IsNullOrEmpty(Model.StageErrors))
+    {
+        foreach (var entry in Model.StageErrors.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var colon = entry.IndexOf(':');
+            if (colon > 0)
+                stageErrors[entry[..colon]] = entry[(colon + 1)..];
+        }
+    }
+
+    string? StageError(string name) => stageErrors.TryGetValue(name, out var msg) ? msg : null;
+
     var pipelineStages = new[]
     {
-        ("setup", "Setup", true, Model.Status != JobState.Active, false),
-        ("identify", "Identify", Model.Status is JobState.Active or JobState.VideoInfo, Model.Status is not JobState.Active and not JobState.VideoInfo, hasWarning),
-        ("rip", "Rip", Model.Status is JobState.VideoRipping, Model.Status is JobState.TranscodeActive or JobState.Success or JobState.Failure, false),
-        ("transcode", "Transcode", Model.Status is JobState.TranscodeActive, Model.Status is JobState.Success or JobState.Failure, false),
+        ("setup", "Setup", true, Model.Status != JobState.Active, StageError("setup") is not null),
+        ("identify", "Identify", Model.Status is JobState.Active or JobState.VideoInfo, Model.Status is not JobState.Active and not JobState.VideoInfo, StageError("identify") is not null || hasWarning),
+        ("rip", "Rip", Model.Status is JobState.VideoRipping, Model.Status is JobState.TranscodeActive or JobState.Success or JobState.Failure, StageError("rip") is not null),
+        ("transcode", "Transcode", Model.Status is JobState.TranscodeActive, Model.Status is JobState.Success or JobState.Failure, StageError("transcode") is not null),
         ("done", "Done", false, Model.Status is JobState.Success or JobState.Failure, false),
     };
 
@@ -51,7 +65,8 @@
         var isActive = inFailure ? false : active;
         var isWarning = warning && isDone && !inFailure;
         var cls = StageClass(isFailed, isDone, isActive, isWarning);
-        var tip = isFailed ? $"Failed at {label}" : isWarning ? Model.Warnings : pct.HasValue ? $"{label}: {pct}%" : label;
+        var stageErr = StageError(name);
+        var tip = isFailed ? $"Failed at {label}" : stageErr is not null ? $"{label}: {stageErr}" : isWarning ? Model.Warnings : pct.HasValue ? $"{label}: {pct}%" : label;
         <div class="text-center flex-fill mx-1" style="min-width:0;">
             <div class="rounded py-1 px-1 small @cls text-nowrap" title="@tip">@label</div>
             @if (isActive && pct.HasValue)

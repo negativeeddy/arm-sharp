@@ -249,6 +249,7 @@ public partial class MakeMkvService
                 {
                     JobId = job.Id,
                     TrackNumber = t.TrackNumber,
+                    FileName = t.FileName,
                     Length = t.Length,
                     AspectRatio = t.AspectRatio,
                     Fps = t.Fps,
@@ -285,6 +286,7 @@ public partial class MakeMkvService
         var discTrack = new DiscTrack
         {
             TrackNumber = currentTid.ToString(),
+            FileName = string.IsNullOrEmpty(filename) ? null : filename,
             Length = seconds > 0 ? seconds : null,
             Chapters = chapters > 0 ? chapters : null,
             FileSize = filesize > 0 ? filesize : null,
@@ -375,9 +377,9 @@ public partial class MakeMkvService
 
     public async Task RipTrackAsync(Job job, string trackNumber, string outputPath, string mkvArgs, int minLength, IProgress<int>? progress = null, CancellationToken ct = default)
     {
-        var args = $"mkv --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
+        var args = $"--robot --messages=-stdout mkv --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
         if (!string.IsNullOrEmpty(mkvArgs))
-            args = $"mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
+            args = $"--robot --messages=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
 
         await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
             ParseAndReportProgress(line, progress);
@@ -385,9 +387,9 @@ public partial class MakeMkvService
 
     public async Task RipAllTitlesAsync(Job job, string outputPath, string mkvArgs, int minLength, IProgress<int>? progress = null, CancellationToken ct = default)
     {
-        var args = $"mkv --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
+        var args = $"--robot --messages=-stdout mkv --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
         if (!string.IsNullOrEmpty(mkvArgs))
-            args = $"mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
+            args = $"--robot --messages=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
 
         await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
             ParseAndReportProgress(line, progress);

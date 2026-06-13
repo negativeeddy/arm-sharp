@@ -46,6 +46,7 @@ public class Job
     public int? MakeMkvProgress { get; set; }
     public int? TranscodeProgress { get; set; }
     public string? ProgressMessage { get; set; }
+    public string? StageErrors { get; set; }
 
     public ICollection<Track> Tracks { get; init; } = new List<Track>();
     public ConfigSnapshot? Config { get; set; }

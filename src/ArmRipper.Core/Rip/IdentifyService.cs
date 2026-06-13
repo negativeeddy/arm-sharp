@@ -48,19 +48,20 @@ public sealed partial class IdentifyService(
                 if (identified)
                     await GetVideoDetailsAsync(job, ct);
                 else
+                {
                     job.HasNiceTitle = false;
+                    if (!string.IsNullOrEmpty(job.Label))
+                    {
+                        job.Title = job.TitleAuto = job.Label;
+                        job.Warnings = "Disc not identified. Using label as title.";
+                        logger.LogWarning("{Warning}", job.Warnings);
+                    }
+                }
 
                 await db.SaveChangesAsync(ct);
 
                 logger.LogInformation("Disc title post-ident: title={Title} year={Year} video_type={VideoType} disctype={DiscType}",
                     job.Title, job.Year, job.VideoType, job.DiscType);
-
-                if (string.IsNullOrEmpty(job.Title) && !string.IsNullOrEmpty(job.Label))
-                {
-                    job.Title = job.TitleAuto = job.Label;
-                    job.Warnings = "Disc not identified. Using label as title.";
-                    logger.LogWarning("{Warning}", job.Warnings);
-                }
             }
         }
 
@@ -221,31 +222,46 @@ public sealed partial class IdentifyService(
 
         try
         {
-            var crc64 = await ComputeDvdCrc64Async(job.MountPoint!, ct);
-            logger.LogInformation("DVD CRC64 hash is: {Crc64}", crc64);
-            job.CrcId = crc64;
-
-            var url = $"https://1337server.pythonanywhere.com/api/v1/?mode=s&crc64={crc64}";
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-            var response = await httpClient.GetStringAsync(url, ct);
-            var armApiResult = JsonSerializer.Deserialize<ArmApiResponse>(response);
-
-            if (armApiResult?.Success == true && armApiResult.Results?.Count > 0)
+            var crc64 = (string?)null;
+            if (string.IsNullOrEmpty(job.MountPoint))
             {
-                var first = armApiResult.Results["0"];
-                logger.LogInformation("Found CRC64 id from online API: title={Title}", first.Title);
-                job.Title = job.TitleAuto = first.Title;
-                job.Year = job.YearAuto = first.Year;
-                job.ImdbId = job.ImdbIdAuto = first.ImdbId;
-                job.VideoType = job.VideoTypeAuto = first.VideoType;
-                job.PosterUrl = job.PosterUrlAuto = first.PosterUrl;
-                job.HasNiceTitle = true;
+                logger.LogWarning("Disc not mounted, skipping CRC64 identification");
+            }
+            else
+            {
+                crc64 = await ComputeDvdCrc64Async(job.MountPoint, ct);
+                logger.LogInformation("DVD CRC64 hash is: {Crc64}", crc64);
+                job.CrcId = crc64;
+            }
+
+            if (crc64 is not null)
+            {
+                var url = $"https://1337server.pythonanywhere.com/api/v1/?mode=s&crc64={crc64}";
+                using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                var response = await httpClient.GetStringAsync(url, ct);
+                var armApiResult = JsonSerializer.Deserialize<ArmApiResponse>(response);
+
+                if (armApiResult?.Success == true && armApiResult.Results?.Count > 0)
+                {
+                    var first = armApiResult.Results["0"];
+                    logger.LogInformation("Found CRC64 id from online API: title={Title}", first.Title);
+                    job.Title = job.TitleAuto = first.Title;
+                    job.Year = job.YearAuto = first.Year;
+                    job.ImdbId = job.ImdbIdAuto = first.ImdbId;
+                    job.VideoType = job.VideoTypeAuto = first.VideoType;
+                    job.PosterUrl = job.PosterUrlAuto = first.PosterUrl;
+                    job.HasNiceTitle = true;
+                }
             }
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "DVD identification failed");
         }
+
+        // Fallback: use label as title when CRC64 lookup didn't find a match
+        if (string.IsNullOrEmpty(job.Title) && !string.IsNullOrEmpty(job.Label))
+            job.Title = job.TitleAuto = job.Label;
 
         // Extract poster from disc while it's still mounted
         await SaveDiscPosterAsync(job, ct);

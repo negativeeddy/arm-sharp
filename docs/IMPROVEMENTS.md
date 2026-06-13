@@ -75,6 +75,10 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 - WebUi now has full DI wiring. However many services are registered as `Scoped` when they're effectively stateless. `CliProcessRunner` is singleton. Review lifetime choices — some could be singletons or transient.
 - `OmdbService` and `TmdbService` use `AddHttpClient<T>()` — requires `Microsoft.Extensions.Http` which is implicitly available in ASP.NET Core but not declared in the project file. Should add explicit package reference.
 
+## Startup & Recovery
+
+- **Resume in-progress rips on restart** — currently, if the app is restarted while a job is ripping (VideoRipping, TranscodeActive, etc.), the background task is lost and the job stays stuck. On startup, scan for jobs in non-terminal states (Active, VideoRipping, TranscodeActive, etc.) and resume them: re-attach the MakeMKV/HandBrake process if still running, or restart the rip/transcode stage from where it left off. Requires stage-level checkpointing (which stage completed, which files were produced) so the system can pick up without re-doing completed work.
+
 ## Testing
 
 - **Audio CD test (Phase 4.3):** Deferred — low priority. Needs abcde conf and audio disc in drive.

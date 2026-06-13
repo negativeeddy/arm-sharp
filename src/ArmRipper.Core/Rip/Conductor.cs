@@ -151,6 +151,13 @@ public sealed class Conductor(
     {
         logger.LogInformation("Starting Disc identification");
 
+        if (job.Status != JobState.Active)
+        {
+            var msg = $"Setup stage: expected status Active, was {job.Status}";
+            logger.LogWarning(msg);
+            job.Warnings = string.IsNullOrEmpty(job.Warnings) ? msg : $"{job.Warnings}; {msg}";
+        }
+
         // Identify the disc
         await identifyService.IdentifyAsync(job, ct);
 
@@ -194,6 +201,9 @@ public sealed class Conductor(
 
             if (string.IsNullOrEmpty(job.TitleManual))
                 logger.LogInformation("Manual wait expired, continuing with auto-identified title");
+
+            job.Status = JobState.Active;
+            await db.SaveChangesAsync(ct);
         }
 
         // Notify entry

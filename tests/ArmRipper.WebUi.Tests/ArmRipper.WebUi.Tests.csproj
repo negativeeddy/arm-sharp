@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\ArmRipper.WebUi\ArmRipper.WebUi.csproj" />
+    <ProjectReference Include="../../src/ArmRipper.WebUi/ArmRipper.WebUi.csproj" />
   </ItemGroup>
 
 </Project>

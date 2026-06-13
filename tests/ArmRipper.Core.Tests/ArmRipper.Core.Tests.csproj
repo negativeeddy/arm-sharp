@@ -20,7 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\ArmRipper.Core\ArmRipper.Core.csproj" />
+    <ProjectReference Include="../../src/ArmRipper.Core/ArmRipper.Core.csproj" />
   </ItemGroup>
 
 </Project>

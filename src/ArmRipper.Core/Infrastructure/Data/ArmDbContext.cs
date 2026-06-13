@@ -53,6 +53,7 @@ public class ArmDbContext : DbContext
             entity.Property(e => e.MountPoint).HasMaxLength(20);
             entity.Property(e => e.Label).HasMaxLength(256);
             entity.Property(e => e.Path).HasMaxLength(256);
+            entity.Property(e => e.StageErrors);
             entity.Property(e => e.JobLength).HasMaxLength(12);
             entity.Property(e => e.DiscType).HasConversion<string>().HasMaxLength(20);
             entity.HasMany(e => e.Tracks).WithOne(t => t.Job).HasForeignKey(t => t.JobId);
@@ -136,6 +137,7 @@ public class ArmDbContext : DbContext
             entity.ToTable("disc_tracks");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.TrackNumber).HasMaxLength(4);
+            entity.Property(e => e.FileName).HasMaxLength(256);
             entity.Property(e => e.AspectRatio).HasMaxLength(20);
             entity.Property(e => e.Resolution).HasMaxLength(20);
             entity.HasMany(e => e.Streams).WithOne(s => s.DiscTrack).HasForeignKey(s => s.DiscTrackId);

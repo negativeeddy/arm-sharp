@@ -1,4 +1,5 @@
 using ArmRipper.Core.Configuration;
+using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Metadata;
 using ArmRipper.Core.Models;
@@ -11,7 +12,7 @@ namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("jobs")]
-public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSettings> settings) : Controller
+public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSettings> settings, IBackgroundRipService backgroundRip) : Controller
 {
     [HttpGet("jobdetail")]
     public async Task<IActionResult> JobDetail(int jobId)
@@ -93,6 +94,9 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
             job.Errors = "Cancelled by user";
             await db.SaveChangesAsync();
         }
+
+        if (!string.IsNullOrEmpty(job.DevPath))
+            backgroundRip.CancelRip(job.DevPath);
 
         return RedirectToAction("JobDetail", new { jobId });
     }

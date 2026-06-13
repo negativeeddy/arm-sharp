@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
-    <ProjectReference Include="..\ArmRipper.Core\ArmRipper.Core.csproj" />
+    <ProjectReference Include="../ArmRipper.Core/ArmRipper.Core.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

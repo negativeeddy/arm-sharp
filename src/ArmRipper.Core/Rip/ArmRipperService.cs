@@ -71,8 +71,9 @@ public sealed class ArmRipperService(
                 var tracks = await makeMkv.GetTrackInfoWithCacheAsync(job, jobTitle, ct);
 
                 // Encrypted BDs often return 0 tracks from info; rip all titles directly
-                if (tracks.Count == 0 && job.DiscType == DiscType.Bluray)
+                if (tracks.Count == 0 && job.DiscType is DiscType.Bluray or DiscType.Dvd)
                 {
+                    GuardStage(job, "identify", "Active/VideoInfo", () => job.Status is JobState.Active or JobState.VideoInfo);
                     job.Status = JobState.VideoRipping;
                     await db.SaveChangesAsync(ct);
 
@@ -81,11 +82,11 @@ public sealed class ArmRipperService(
 
                     var mkvArgs = config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
                         await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLength, MkvProgress(job, "Ripping all titles", ct), ct);
-                    logger.LogInformation("Ripped all titles from encrypted BD");
+                    logger.LogInformation("Ripped all titles from disc (0-track fallback)");
 
                     if (!Directory.EnumerateFileSystemEntries(makeMkvOutPath).Any())
                     {
-                        var msg = "MakeMKV rip produced no output files for encrypted BD";
+                        var msg = "MakeMKV rip produced no output files";
                         logger.LogError(msg);
                         throw new InvalidOperationException(msg);
                     }
@@ -119,6 +120,7 @@ public sealed class ArmRipperService(
                 await db.SaveChangesAsync(ct);
 
                 logger.LogInformation("************* Ripping disc with MakeMKV *************");
+                GuardStage(job, "identify", "Active/VideoInfo", () => job.Status is JobState.Active or JobState.VideoInfo);
                 job.Status = JobState.VideoRipping;
                 await db.SaveChangesAsync(ct);
 
@@ -276,6 +278,7 @@ afterMakeMkv:
             return;
         }
 
+        GuardStage(job, "rip", "VideoRipping", () => job.Status is JobState.VideoRipping);
         job.Status = JobState.TranscodeActive;
         await db.SaveChangesAsync(ct);
 
@@ -333,20 +336,33 @@ afterMakeMkv:
         }
     }
 
+    private void RecordStageError(Job job, string stage, string message)
+    {
+        logger.LogWarning("Stage '{Stage}' error: {Message}", stage, message);
+        var entry = $"{stage}:{message}";
+        job.StageErrors = job.StageErrors is { } existing ? $"{existing};{entry}" : entry;
+    }
+
+    private void GuardStage(Job job, string stage, string expectedStatus, Func<bool> condition)
+    {
+        if (condition()) return;
+        RecordStageError(job, stage, $"Expected status {expectedStatus}, was {job.Status}");
+    }
+
     private IProgress<int> MkvProgress(Job job, string message, CancellationToken ct) =>
-        new Progress<int>(async pct =>
+        new Progress<int>(pct =>
         {
             job.MakeMkvProgress = pct;
             job.ProgressMessage = message;
-            await db.SaveChangesAsync(ct);
+            db.SaveChanges();
         });
 
     private IProgress<int> TranscodeProgress(Job job, string message, CancellationToken ct) =>
-        new Progress<int>(async pct =>
+        new Progress<int>(pct =>
         {
             job.TranscodeProgress = pct;
             job.ProgressMessage = message;
-            await db.SaveChangesAsync(ct);
+            db.SaveChanges();
         });
 
     private async Task NotifyExitAsync(Job job, CancellationToken ct)
