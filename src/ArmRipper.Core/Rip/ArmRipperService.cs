@@ -28,8 +28,8 @@ public sealed class ArmRipperService(
         var transcodeOutPath = Path.Combine(job.Config?.TranscodePath ?? settings.Value.TranscodePath!, typeSubFolder, jobTitle);
         var finalDirectory = Path.Combine(job.Config?.CompletedPath ?? settings.Value.CompletedPath!, typeSubFolder, jobTitle);
 
-        job.Stage ??= "setup";
-        job.Stage = "identify";  // transition stage
+        job.Stage ??= RipStage.Setup;
+        job.Stage = RipStage.Identify;  // transition stage
         job.ProgressMessage ??= "Preparing to rip...";
         await db.SaveChangesAsync(ct);
         BroadcastJobUpdate(job);
@@ -50,6 +50,13 @@ public sealed class ArmRipperService(
 
         if (useMakeMkv)
         {
+            if (job.IsStageComplete(RipStage.Rip))
+            {
+                logger.LogInformation("Stage 'rip' already completed — skipping MakeMKV rip");
+                transcodeInPath = makeMkvOutPath;
+                goto afterMakeMkv;
+            }
+
             if (settings.Value.TestMode)
             {
                 logger.LogInformation("Test mode: ripping track 0 directly");
@@ -78,9 +85,9 @@ public sealed class ArmRipperService(
                 // Encrypted BDs often return 0 tracks from info; rip all titles directly
                 if (tracks.Count == 0 && job.DiscType is DiscType.Bluray or DiscType.Dvd)
                 {
-                    job.Stage = "identify";
+                    job.Stage = RipStage.Identify;
                     GuardStage(job, "identify", "Active/VideoInfo", () => job.Status is JobState.Active or JobState.VideoInfo);
-                    job.Stage = "rip";
+                    job.Stage = RipStage.Rip;
                     job.Status = JobState.VideoRipping;
                     job.ProgressMessage = "Starting rip...";
                     await db.SaveChangesAsync(ct);
@@ -129,9 +136,9 @@ public sealed class ArmRipperService(
                 await db.SaveChangesAsync(ct);
 
                 logger.LogInformation("************* Ripping disc with MakeMKV *************");
-                job.Stage = "identify";
+                job.Stage = RipStage.Identify;
                 GuardStage(job, "identify", "Active/VideoInfo", () => job.Status is JobState.Active or JobState.VideoInfo);
-                job.Stage = "rip";
+                job.Stage = RipStage.Rip;
                 job.Status = JobState.VideoRipping;
                 job.ProgressMessage = "Starting rip...";
                 await db.SaveChangesAsync(ct);
@@ -227,6 +234,10 @@ public sealed class ArmRipperService(
 
                 logger.LogInformation("************* Ripping with MakeMKV completed *************");
                 transcodeInPath = makeMkvOutPath;
+
+                job.MarkStageComplete(RipStage.Rip);
+                await db.SaveChangesAsync(ct);
+                BroadcastJobUpdate(job);
                 }
             }
 
@@ -247,9 +258,19 @@ afterMakeMkv:
             }
         }
 
-        await StartTranscodeAsync(job, logFile, transcodeInPath!, transcodeOutPath, protection, ct);
+        if (job.IsStageComplete(RipStage.Transcode))
+        {
+            logger.LogInformation("Stage 'transcode' already completed — skipping transcode");
+        }
+        else
+        {
+            await StartTranscodeAsync(job, logFile, transcodeInPath!, transcodeOutPath, protection, ct);
+            job.MarkStageComplete(RipStage.Transcode);
+            await db.SaveChangesAsync(ct);
+            BroadcastJobUpdate(job);
+        }
 
-        job.Stage = "finalize";
+        job.Stage = RipStage.Finalize;
         job.ProgressMessage = "Finalizing...";
         await db.SaveChangesAsync(ct);
         BroadcastJobUpdate(job);
@@ -284,7 +305,8 @@ afterMakeMkv:
 
         await NotifyExitAsync(job, ct);
 
-        job.Stage = "done";
+        job.Stage = RipStage.Done;
+        job.MarkStageComplete(RipStage.Finalize);
         job.ProgressMessage = null;
         await db.SaveChangesAsync(ct);
         BroadcastJobUpdate(job);
@@ -302,7 +324,7 @@ afterMakeMkv:
         }
 
         GuardStage(job, "rip", "VideoRipping", () => job.Status is JobState.VideoRipping);
-        job.Stage = "transcode";
+        job.Stage = RipStage.Transcode;
         job.Status = JobState.TranscodeActive;
         job.ProgressMessage = "Starting transcode...";
         await db.SaveChangesAsync(ct);
@@ -388,7 +410,8 @@ afterMakeMkv:
         {
             job.MakeMkvProgress = pct;
             job.ProgressMessage = message;
-            try { lock (db) { db.SaveChanges(); } } catch (Exception ex) { logger.LogDebug(ex, "Failed to save MKV progress"); }
+            // Progress percent flows over SignalR only — NOT persisted to DB.
+            // Stage completions are written atomically by the Conductor on stage transitions.
             BroadcastJobUpdate(job);
         });
 
@@ -397,7 +420,8 @@ afterMakeMkv:
         {
             job.TranscodeProgress = pct;
             job.ProgressMessage = message;
-            try { lock (db) { db.SaveChanges(); } } catch (Exception ex) { logger.LogDebug(ex, "Failed to save transcode progress"); }
+            // Progress percent flows over SignalR only — NOT persisted to DB.
+            // Stage completions are written atomically by the Conductor on stage transitions.
             BroadcastJobUpdate(job);
         });
 

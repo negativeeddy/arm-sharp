@@ -26,12 +26,20 @@ builder.Services.AddScoped<IHandBrakeService, HandBrakeService>();
 builder.Services.AddScoped<IFfmpegService, FfmpegService>();
 builder.Services.AddScoped<IArmRipperService, ArmRipperService>();
 builder.Services.AddScoped<MakeMkvService>();
-builder.Services.AddScoped<IMusicBrainzService, MusicBrainzService>();
-builder.Services.AddTransient(_ =>
+builder.Services.AddHttpClient<IMusicBrainzService, MusicBrainzService>(client =>
 {
-    var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+    client.Timeout = TimeSpan.FromSeconds(15);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("arm/1.0");
-    return client;
+});
+builder.Services.AddHttpClient("Notifications", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("arm/1.0");
+});
+builder.Services.AddHttpClient("MakeMkv", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 });
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<IConductor, Conductor>();

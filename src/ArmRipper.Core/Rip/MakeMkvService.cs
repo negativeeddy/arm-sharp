@@ -25,13 +25,15 @@ public partial class MakeMkvService
     private readonly ILogger<MakeMkvService> _logger;
     private readonly IOptions<ArmSettings> _settings;
     private readonly ArmDbContext _db;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    public MakeMkvService(ICliProcessRunner runner, ILogger<MakeMkvService> logger, IOptions<ArmSettings> settings, ArmDbContext db)
+    public MakeMkvService(ICliProcessRunner runner, ILogger<MakeMkvService> logger, IOptions<ArmSettings> settings, ArmDbContext db, IHttpClientFactory httpClientFactory)
     {
         _runner = runner;
         _logger = logger;
         _settings = settings;
         _db = db;
+        _httpClientFactory = httpClientFactory;
     }
 
     public async Task EnsureKeyAsync(CancellationToken ct = default)
@@ -51,12 +53,11 @@ public partial class MakeMkvService
         }
     }
 
-    private static async Task<string?> FetchBetaKeyAsync(CancellationToken ct)
+    private async Task<string?> FetchBetaKeyAsync(CancellationToken ct)
     {
         try
         {
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-            httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            using var httpClient = _httpClientFactory.CreateClient("MakeMkv");
 
             // Primary: Ayra JSON API
             try

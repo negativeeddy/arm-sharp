@@ -30,7 +30,7 @@ public class ArmDbContext : DbContext
             entity.Property(e => e.CrcId).HasMaxLength(63);
             entity.Property(e => e.LogFile).HasMaxLength(256);
             entity.Property(e => e.Status).HasConversion<string>().HasMaxLength(32);
-            entity.Property(e => e.Stage).HasMaxLength(63);
+            entity.Property(e => e.Stage).HasConversion<string>().HasMaxLength(32);
             entity.Property(e => e.Title).HasMaxLength(256);
             entity.Property(e => e.TitleAuto).HasMaxLength(256);
             entity.Property(e => e.TitleManual).HasMaxLength(256);
@@ -48,8 +48,10 @@ public class ArmDbContext : DbContext
             entity.Property(e => e.PosterUrlManual).HasMaxLength(256);
             entity.Property(e => e.DevPath).HasMaxLength(15);
             entity.Property(e => e.DiscFingerprint).HasMaxLength(128);
-            entity.Property(e => e.MakeMkvProgress);
-            entity.Property(e => e.TranscodeProgress);
+            entity.Property(e => e.CompletedStages).HasMaxLength(256);
+            entity.Ignore(e => e.MakeMkvProgress);
+            entity.Ignore(e => e.TranscodeProgress);
+            entity.Ignore(e => e.ProgressMessage);
             entity.Property(e => e.MountPoint).HasMaxLength(20);
             entity.Property(e => e.Label).HasMaxLength(256);
             entity.Property(e => e.Path).HasMaxLength(256);

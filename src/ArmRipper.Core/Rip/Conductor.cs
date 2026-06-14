@@ -88,7 +88,7 @@ public sealed class Conductor(
         await db.SaveChangesAsync(ct);
 
         job.LogFile = $"{job.Id}.log";
-        job.Stage = "setup";
+        job.Stage = RipStage.Setup;
 
         // Create config snapshot
         var armSettings = settings.Value;
@@ -149,6 +149,7 @@ public sealed class Conductor(
         };
 
         db.ConfigSnapshots.Add(config);
+        job.MarkStageComplete(RipStage.Setup);
         await db.SaveChangesAsync(ct);
 
         // Log ARM parameters
@@ -177,9 +178,12 @@ public sealed class Conductor(
         }
 
         // Identify the disc
-        job.Stage = "identify";
+        job.Stage = RipStage.Identify;
         await db.SaveChangesAsync(ct);
         await identifyService.IdentifyAsync(job, ct);
+
+        job.MarkStageComplete(RipStage.Identify);
+        await db.SaveChangesAsync(ct);
 
         if (await IsCancelledAsync(job, ct))
             return 1;
@@ -323,7 +327,7 @@ public sealed class Conductor(
             : $"abcde -d \"{job.DevPath}\" >> \"{Path.Combine(job.Config?.LogPath ?? "", job.LogFile ?? "")}\" 2>&1";
 
         logger.LogDebug("Sending command: {Command}", cmd);
-        job.Stage = "rip";
+        job.Stage = RipStage.Rip;
         job.Status = JobState.AudioRipping;
         await db.SaveChangesAsync(ct);
         BroadcastJobUpdate(job);
@@ -332,7 +336,7 @@ public sealed class Conductor(
         {
             await runner.RunAsync("bash", $"-c \"{cmd.Replace("\"", "\\\"")}\"", timeoutMs: 7200_000, ct: ct);
             logger.LogInformation("abcde call successful");
-            job.Stage = "done";
+            job.Stage = RipStage.Done;
             job.Status = JobState.Active;
         }
         catch (Exception ex)
@@ -378,7 +382,7 @@ public sealed class Conductor(
 
         var cmd = $"dd if=\"{job.DevPath}\" of=\"{incompleteFilename}\" bs=2048 conv=noerror,sync status=progress 2>> \"{Path.Combine(job.Config?.LogPath ?? "", job.LogFile ?? "")}\"";
 
-        job.Stage = "rip";
+        job.Stage = RipStage.Rip;
         await db.SaveChangesAsync(ct);
         BroadcastJobUpdate(job);
 
@@ -390,7 +394,7 @@ public sealed class Conductor(
             if (File.Exists(incompleteFilename))
                 File.Move(incompleteFilename, fullFinalFile);
             logger.LogInformation("Data rip call successful");
-            job.Stage = "done";
+            job.Stage = RipStage.Done;
         }
         catch (Exception ex)
         {

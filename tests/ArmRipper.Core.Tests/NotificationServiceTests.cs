@@ -3,6 +3,7 @@ using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
 using ArmRipper.Core.Notifications;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 
 namespace ArmRipper.Core.Tests;
 
@@ -16,7 +17,7 @@ public sealed class NotificationServiceTests : IDisposable
     {
         _db = TestHelpers.CreateDbContext();
         _runner = new CliProcessRunner(NullLogger<CliProcessRunner>.Instance);
-        _service = new NotificationService(NullLogger<NotificationService>.Instance, _db, _runner, []);
+        _service = new NotificationService(NullLogger<NotificationService>.Instance, _db, _runner, Mock.Of<IHttpClientFactory>(), []);
     }
 
     public void Dispose()

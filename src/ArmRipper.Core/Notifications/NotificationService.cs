@@ -12,6 +12,7 @@ public sealed class NotificationService(
     ILogger<NotificationService> logger,
     ArmDbContext db,
     ICliProcessRunner runner,
+    IHttpClientFactory httpClientFactory,
     IEnumerable<INotificationBroadcaster> broadcasters)
 {
     public const string NotifyTitle = "ARM notification";
@@ -68,8 +69,7 @@ public sealed class NotificationService(
 
     private async Task SendRemoteNotificationsAsync(ConfigSnapshot? cfg, string title, string body, CancellationToken ct)
     {
-        using var client = new HttpClient();
-        client.Timeout = TimeSpan.FromSeconds(10);
+        using var client = httpClientFactory.CreateClient("Notifications");
 
         // Pushbullet
         if (!string.IsNullOrEmpty(cfg?.PbKey))
@@ -96,9 +96,12 @@ public sealed class NotificationService(
         {
             var payload = new { type = "note", title, body };
             var json = JsonSerializer.Serialize(payload);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-            await client.PostAsync("https://api.pushbullet.com/v2/pushes", content, ct);
+            using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.pushbullet.com/v2/pushes")
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            await client.SendAsync(request, ct);
         }
         catch (Exception ex)
         {

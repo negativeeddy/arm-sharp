@@ -87,7 +87,7 @@
                                 </div>
                             </dd>
                             <dt class="col-sm-2">Stage</dt>
-                            <dd class="col-sm-4">@(Model.Stage ?? "—")</dd>
+                            <dd class="col-sm-4">@(Model.Stage?.ToString() ?? "—")</dd>
                             <dt class="col-sm-2">Started</dt>
                             <dd class="col-sm-4">@Model.StartTime.ToLocalTime().ToString("g")</dd>
                             <dt class="col-sm-2">Stopped</dt>
@@ -387,7 +387,7 @@ else
     (function () {
         var jobId = @Model.Id;
         var wasTerminal = false;
-        var lastStage = '@Model.Stage';
+        var lastStage = '@(Model.Stage?.ToString())';
 
         function findDd(label) {
             var container = document.querySelector('[data-job-id="' + jobId + '"]');

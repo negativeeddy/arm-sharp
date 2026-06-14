@@ -56,6 +56,18 @@ builder.Services.AddHttpClient<TmdbService>();
 builder.Services.AddSingleton<INotificationBroadcaster, SignalRNotificationBroadcaster>();
 builder.Services.AddSingleton<IBackgroundRipService, BackgroundRipService>();
 
+// Named HttpClient registrations (avoids socket exhaustion from per-call new HttpClient())
+builder.Services.AddHttpClient("Notifications", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("arm/1.0");
+});
+builder.Services.AddHttpClient("MakeMkv", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+});
+
 // Per-job file logging
 var fileLogProvider = new JobFileLoggerProvider();
 builder.Services.AddSingleton(fileLogProvider);

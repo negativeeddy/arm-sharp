@@ -62,7 +62,7 @@ public sealed class ConductorTests : IDisposable
             identify ?? new MockIdentifyService(),
             ripper ?? new MockArmRipperService(),
             musicBrainzService,
-            new NotificationService(NullLogger<NotificationService>.Instance, _db, runner, []),
+            new NotificationService(NullLogger<NotificationService>.Instance, _db, runner, Mock.Of<IHttpClientFactory>(), []),
             []);
     }
 

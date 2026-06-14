@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using System.IO;
 
 namespace ArmRipper.Core.Models;
@@ -12,7 +13,8 @@ public class Job
     public DateTime? StopTime { get; set; }
     public string? JobLength { get; set; }
     public JobState Status { get; set; } = JobState.Active;
-    public string? Stage { get; set; }
+    /// <summary>Current pipeline stage.</summary>
+    public RipStage? Stage { get; set; }
     public int? NoOfTitles { get; set; }
     public string? Title { get; set; }
     public string? TitleAuto { get; set; }
@@ -47,10 +49,26 @@ public class Job
     public bool ManualWaitResume { get; set; }
     public bool HasTrack99 { get; set; }
     public string? DiscFingerprint { get; set; }
+
+    /// <summary>Transient — current MakeMKV rip percentage (0–100). Goes over SignalR, NOT persisted to DB.</summary>
+    [NotMapped]
     public int? MakeMkvProgress { get; set; }
+
+    /// <summary>Transient — current transcode percentage (0–100). Goes over SignalR, NOT persisted to DB.</summary>
+    [NotMapped]
     public int? TranscodeProgress { get; set; }
+
+    /// <summary>Transient — human-readable description of current operation. Goes over SignalR, NOT persisted to DB.</summary>
+    [NotMapped]
     public string? ProgressMessage { get; set; }
+
     public string? StageErrors { get; set; }
+
+    /// <summary>
+    /// Pipe-delimited list of completed stage names (e.g. "setup|identify|rip").
+    /// Used for idempotency — before running a stage, check if it is already in this list.
+    /// </summary>
+    public string? CompletedStages { get; set; }
 
     public ICollection<Track> Tracks { get; init; } = new List<Track>();
     public ConfigSnapshot? Config { get; set; }
@@ -60,5 +78,31 @@ public class Job
     {
         var logPath = Config?.LogPath ?? defaultLogPath ?? "/home/arm/logs";
         return System.IO.Path.Combine(logPath, LogFile ?? $"{Id}.log");
+    }
+
+    /// <summary>Returns true if the given stage has already been completed.</summary>
+    public bool IsStageComplete(RipStage stage)
+    {
+        if (string.IsNullOrEmpty(CompletedStages))
+            return false;
+        var name = stage.ToString();
+        return CompletedStages.Split('|', StringSplitOptions.RemoveEmptyEntries)
+            .Any(s => s.Equals(name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Marks a stage as completed. Appends to CompletedStages if not already present.</summary>
+    public void MarkStageComplete(RipStage stage)
+    {
+        var name = stage.ToString();
+        var stages = string.IsNullOrEmpty(CompletedStages)
+            ? Array.Empty<string>()
+            : CompletedStages.Split('|', StringSplitOptions.RemoveEmptyEntries);
+
+        if (stages.Any(s => s.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        CompletedStages = string.IsNullOrEmpty(CompletedStages)
+            ? name
+            : $"{CompletedStages}|{name}";
     }
 }

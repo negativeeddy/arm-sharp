@@ -36,7 +36,8 @@ public sealed class MakeMkvServiceTests : IDisposable
             _runnerMock.Object,
             NullLogger<MakeMkvService>.Instance,
             TestHelpers.CreateOptions(),
-            _db);
+            _db,
+            Mock.Of<IHttpClientFactory>());
     }
 
     public void Dispose()
@@ -376,7 +377,8 @@ public sealed class MakeMkvServiceTests : IDisposable
             _runnerMock.Object,
             NullLogger<MakeMkvService>.Instance,
             TestHelpers.CreateOptions(),
-            db);
+            db,
+            Mock.Of<IHttpClientFactory>());
 
         var job = TestHelpers.CreateTestJob(j => j.DiscFingerprint = "VOL::12345");
 
@@ -473,7 +475,8 @@ public sealed class MakeMkvServiceTests : IDisposable
                 _runnerMock.Object,
                 NullLogger<MakeMkvService>.Instance,
                 settings,
-                _db);
+                _db,
+                Mock.Of<IHttpClientFactory>());
 
             await service.EnsureKeyAsync();
 
