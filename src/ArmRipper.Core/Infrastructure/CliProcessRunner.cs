@@ -110,11 +110,33 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         });
 
         var stderrTask = ReadAllLinesAsync(process.StandardError, ct);
-        var stdoutLines = new List<string>();
 
+        // Open log file for incremental writes
+        System.IO.StreamWriter? logWriter = null;
+        if (logFilePath is not null)
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(logFilePath);
+                if (dir is not null) Directory.CreateDirectory(dir);
+                logWriter = new System.IO.StreamWriter(logFilePath, append: true) { AutoFlush = false };
+                await logWriter.WriteLineAsync();
+                await logWriter.WriteLineAsync($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] $ {fileName} {arguments}");
+                await logWriter.FlushAsync(ct);
+            }
+            catch { logWriter = null; }
+        }
+
+        var lineCount = 0;
         while (await process.StandardOutput.ReadLineAsync(ct) is { } line)
         {
-            stdoutLines.Add(line);
+            if (logWriter is not null)
+            {
+                await logWriter.WriteLineAsync(line);
+                // Flush every 50 lines for live log visibility
+                if (++lineCount % 50 == 0)
+                    await logWriter.FlushAsync(ct);
+            }
             yield return line;
         }
 
@@ -122,12 +144,19 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
 
         var stderr = await stderrTask;
         if (stderr.Count > 0)
-            logger.LogWarning("Process stderr ({Name}): {Lines}", fileName, string.Join("\n", stderr));
-
-        // Write output to log file if specified
-        if (logFilePath is not null)
         {
-            await AppendToLogAsync(logFilePath, string.Join("\n", stdoutLines), string.Join("\n", stderr), fileName, arguments);
+            logger.LogWarning("Process stderr ({Name}): {Lines}", fileName, string.Join("\n", stderr));
+            if (logWriter is not null)
+            {
+                await logWriter.WriteLineAsync("STDERR:");
+                foreach (var errLine in stderr)
+                    await logWriter.WriteLineAsync(errLine);
+            }
+        }
+
+        if (logWriter is not null)
+        {
+            try { await logWriter.FlushAsync(); logWriter.Dispose(); } catch { }
         }
 
         logger.LogInformation("Process exited ({Name}) code={Code}", fileName, process.ExitCode);
