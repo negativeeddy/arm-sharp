@@ -314,10 +314,12 @@ public sealed partial class HandBrakeService(
                 break;
             }
 
+            // Progress lines can come through either stdout or stderr depending on 2>&1
+            ParseHandBrakeProgress(line!, progress);
+
             if (isErr)
             {
                 stderrLines.Add(line!);
-                ParseHandBrakeProgress(line!, progress);
             }
             else
             {
