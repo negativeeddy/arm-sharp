@@ -90,13 +90,6 @@
     var failed = FailedStage();
     var failedIdx = failed is null ? -1 : Array.IndexOf(stageOrder, failed);
 
-    int? StageProgress(string name) => name switch
-    {
-        "rip" => Model.MakeMkvProgress,
-        "transcode" => Model.TranscodeProgress,
-        _ => null
-    };
-
     string StageClass(bool isFailed, bool isDone, bool isActive, bool isWarning) =>
         isFailed ? "bg-danger text-white"
         : isWarning && isDone ? "bg-warning text-dark"
@@ -109,7 +102,6 @@
     @for (var i = 0; i < pipelineStages.Count; i++)
     {
         var (name, label, active, done, warning) = pipelineStages[i];
-        var pct = StageProgress(name);
         var thisIdx = i;
         var inFailure = failed is not null;
         var isDone = inFailure ? thisIdx < failedIdx : done;
@@ -118,16 +110,9 @@
         var isWarning = warning && isDone && !inFailure;
         var cls = StageClass(isFailed, isDone, isActive, isWarning);
         var stageErr = StageError(name);
-        var tip = isFailed ? $"Failed at {label}" : stageErr is not null ? $"{label}: {stageErr}" : isWarning ? Model.Warnings : pct.HasValue ? $"{label}: {pct}%" : label;
+        var tip = isFailed ? $"Failed at {label}" : stageErr is not null ? $"{label}: {stageErr}" : isWarning ? Model.Warnings : label;
         <div class="text-center flex-fill mx-1" style="min-width:0;">
             <div class="rounded py-1 px-1 small @cls text-nowrap" title="@tip">@label</div>
-            @if (isActive && pct.HasValue)
-            {
-                <div class="progress mt-1" style="height:4px;">
-                    <div class="progress-bar" role="progressbar"
-                         style="width:@(pct)%" aria-valuenow="@pct" aria-valuemin="0" aria-valuemax="100"></div>
-                </div>
-            }
         </div>
         @if (i < pipelineStages.Count - 1)
         {
@@ -136,16 +121,23 @@
     }
 </div>
 @{
-    var overallProgress = pipelineStages.Sum(s => StageProgress(s.name) ?? 0);
-    var overallProgressCount = pipelineStages.Count(s => StageProgress(s.name).HasValue);
-    var overallPct = overallProgressCount > 0 ? overallProgress / overallProgressCount : (int?)null;
+    // Show overall progress bar for the active stage
+    var activeProgress = Model.Status switch
+    {
+        JobState.VideoRipping => Model.MakeMkvProgress,
+        JobState.TranscodeActive => Model.TranscodeProgress,
+        _ => (int?)null
+    };
+    var showProgress = activeProgress.HasValue || Model.Status is JobState.VideoRipping or JobState.TranscodeActive;
 }
-@if (overallPct.HasValue)
+@if (showProgress)
 {
-    <div class="progress mt-2" style="height:6px;">
+    var pct = activeProgress ?? 0;
+    var label = !string.IsNullOrEmpty(Model.ProgressMessage) ? Model.ProgressMessage + " — " + pct + "%" : pct + "%";
+    <div class="progress mt-2" style="height:22px;">
         <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
-             style="width:@(overallPct)%" aria-valuenow="@overallPct" aria-valuemin="0" aria-valuemax="100">
-            @overallPct%
+             style="width:@(pct)%" aria-valuenow="@pct" aria-valuemin="0" aria-valuemax="100">
+            @label
         </div>
     </div>
 }
