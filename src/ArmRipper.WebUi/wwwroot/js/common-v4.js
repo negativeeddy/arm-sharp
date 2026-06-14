@@ -65,6 +65,8 @@ arm.startSignalR = function () {
 
     var _lastToastKey = '';
     arm.signalrConnection.on('JobUpdate', function (update) {
+        console.log('[ARM] JobUpdate:', JSON.stringify(update));
+
         // Toast only on status/stage changes (not every percent tick)
         var key = update.jobId + '|' + (update.status || '') + '|' + (update.stage || '');
         if (update.progressMessage && update.progressMessage !== key) key += '|' + update.progressMessage;

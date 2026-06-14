@@ -424,14 +424,18 @@ else
         var terminalStatuses = ['success', 'fail', 'cancelled'];
         function isTerminal(status) { return terminalStatuses.indexOf(status) !== -1; }
 
+        var _pipelineDebounce = null;
         function refreshPipeline() {
-            fetch('/api/jobs/' + jobId + '/pipeline')
-                .then(function (r) { return r.text(); })
-                .then(function (html) {
-                    var el = document.getElementById('pipeline-container');
-                    if (el) el.innerHTML = html;
-                })
-                .catch(function () {});
+            if (_pipelineDebounce) clearTimeout(_pipelineDebounce);
+            _pipelineDebounce = setTimeout(function () {
+                fetch('/api/jobs/' + jobId + '/pipeline')
+                    .then(function (r) { return r.text(); })
+                    .then(function (html) {
+                        var el = document.getElementById('pipeline-container');
+                        if (el) el.innerHTML = html;
+                    })
+                    .catch(function () {});
+            }, 1000);
         }
 
         function onJobUpdate(update) {
@@ -439,6 +443,12 @@ else
 
             setProgress(findDd('Rip Progress'), update.makeMkvProgress);
             setProgress(findDd('Transcode Progress'), update.transcodeProgress);
+
+            // Refresh pipeline when progress or stage changes
+            if (update.makeMkvProgress != null || update.transcodeProgress != null || (update.stage != null && update.stage !== lastStage)) {
+                if (update.stage != null && update.stage !== lastStage) lastStage = update.stage;
+                refreshPipeline();
+            }
 
             if (update.progressMessage != null) {
                 var dd = findDd('Progress');
@@ -471,9 +481,7 @@ else
             }
 
             if (update.stage != null && update.stage !== lastStage) {
-                lastStage = update.stage;
                 setText(findDd('Stage'), update.stage);
-                refreshPipeline();
             }
 
             if (update.stopTime != null) {
