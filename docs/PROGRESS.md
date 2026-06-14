@@ -57,5 +57,5 @@
    - ✅ **Home page**: 10s polling replaced with debounced SignalR-driven refresh (500ms debounce), with 30s fallback polling if SignalR disconnects
    - ✅ `/api/jobs/{id}/pipeline` endpoint added for live pipeline partial re-rendering
    - 🔜 **Phase 3**: Individual cell-level updates on Home page table (currently server-renders tbody on each update)
-4. **Audio CD / Data disc** — Pipelines exist in Conductor but untested.
-5. **Notification services** — Pushbullet, IFTTT, Pushover configured in appsettings but untested.
+4. 🔄 **Audio CD / Data disc** — Pipelines exist in Conductor (MusicBrainzService + abcde for audio, dd for data) but untested end-to-end. Stage assignments now wired. Deferred for later — needs physical audio CD and data disc for testing.
+5. 📝 **Notification services** — **DOCUMENTED** — Pushbullet, IFTTT, JSON webhook, and Bash scripts are fully implemented in `NotificationService`. Pushover and Apprise are documented in `docs/IMPROVEMENTS.md` for later (low priority — needs real API keys to test). Settings UI Apprise tab is currently read-only.

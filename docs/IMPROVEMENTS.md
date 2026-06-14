@@ -140,3 +140,20 @@ Focus: user-friendliness, easy setup, easy diagnosis.
   - Fall back to `makemkvcon` scanning only for discs not in the database.
   - API is simple REST — define a `DiscDatabaseService` client with disc-id → track-list response model, cache results locally, and plug into `IdentifyService` or a new `TrackIdentifyService` between identify and rip.
   - **Note:** The current disc fingerprinting and track caching provides a local-first foundation. thediscdb.com could be added as an upstream cache-population source later.
+
+## Notifications (Low Priority)
+
+Pushbullet, IFTTT, JSON webhook, and Bash script notifications are already implemented in `NotificationService.SendRemoteNotificationsAsync()`. Two additional channels remain:
+
+### Pushover
+- **API:** `POST https://api.pushover.net/1/messages.json` with `token` (app key), `user` (user key), `message`, `title`, `sound`, etc.
+- **Config keys:** `PoUserKey` / `PO_USER_KEY` already exist in `ArmSettings` and `ConfigSnapshot`, mapped from YAML. Missing: a `PoAppToken` key for the application token.
+- **Implementation:** ~20 lines in `NotificationService` — `SendPushoverAsync(client, appToken, userKey, title, body, ct)`.
+- **Settings UI:** Apprise tab currently read-only; would need editable form fields.
+
+### Apprise
+- **CLI:** `apprise` is a command-line tool supporting 80+ notification services (Slack, Discord, Telegram, email, etc.). Original Python ARM invokes it via subprocess.
+- **Config key:** `Apprise` / `APPRISE` already exist in `ArmSettings` and `ConfigSnapshot`.
+- **Implementation:** ~30 lines in `NotificationService` — call `apprise -b "body" -t "title"` via `CliProcessRunner`. May need to pass a config file (`apprise -c /etc/arm/config/apprise.yml`).
+- **Testing idea:** Could test Apprise with Signal (the messaging app) since Apprise supports Signal via signal-cli or API gateway. This would be a good end-to-end test of the notification pipeline without needing a Pushbullet/IFTTT account.
+- **Settings UI:** Same as Pushover — needs editable form on Apprise tab.
