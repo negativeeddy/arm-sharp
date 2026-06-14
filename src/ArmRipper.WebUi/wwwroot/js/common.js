@@ -1,5 +1,8 @@
 var arm = arm || {};
 
+// v3 — SignalR debug toasts
+console.log('[ARM] common.js v3 loaded');
+
 arm.signalrConnection = null;
 
 // --- JobUpdate callback registry ---
@@ -51,6 +54,7 @@ arm.refreshNotifBadge = function () {
 
 arm.startSignalR = function () {
     if (!window.signalR) {
+        alert('SignalR library not loaded — CDN may be blocked');
         arm._showToast('\u274C SignalR library not loaded — CDN may be blocked');
         return;
     }
