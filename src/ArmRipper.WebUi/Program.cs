@@ -56,6 +56,11 @@ builder.Services.AddHttpClient<TmdbService>();
 builder.Services.AddSingleton<INotificationBroadcaster, SignalRNotificationBroadcaster>();
 builder.Services.AddSingleton<IBackgroundRipService, BackgroundRipService>();
 
+// Per-job file logging
+var fileLogProvider = new JobFileLoggerProvider();
+builder.Services.AddSingleton(fileLogProvider);
+builder.Services.AddLogging(logging => logging.AddProvider(fileLogProvider));
+
 var app = builder.Build();
 
 var dbFile = connectionString.Replace("Data Source=", "").Split(';')[0];

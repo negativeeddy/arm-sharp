@@ -38,6 +38,11 @@ builder.Services.AddScoped<IConductor, Conductor>();
 builder.Services.AddSingleton<INotificationBroadcaster, NullNotificationBroadcaster>();
 builder.Services.AddSingleton<IBackgroundRipService, BackgroundRipService>();
 
+// Per-job file logging
+var fileLogProvider = new JobFileLoggerProvider();
+builder.Services.AddSingleton(fileLogProvider);
+builder.Services.AddLogging(logging => logging.AddProvider(fileLogProvider));
+
 builder.Services.AddLogging(logging => logging.AddConsole());
 
 var host = builder.Build();
