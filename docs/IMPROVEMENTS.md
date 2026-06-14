@@ -10,6 +10,11 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 - `[Ll]og/` and `[Ll]ogs/` in `.gitignore` are too broad — they match any directory named Logs/ at any depth. Changed to `/[Ll]og/` and `/[Ll]ogs/` (root-anchored) so `Views/Logs/` is tracked.
 - DB file `data/arm.db` is not gitignored — should be added so test/seed data isn't committed.
 
+## Data / Persistence
+
+- **Migrate from `DateTime` to `DateTimeOffset`** — All model timestamps (`Job.StartTime`, `Job.StopTime`, `Notification.Timestamp`, `DiscMetadata.CreatedAt`/`LastUsedAt`, etc.) use `DateTime`. EF Core reads these back as `DateTimeKind.Unspecified` from SQLite, losing the UTC context. `.ToLocalTime()` in views works but is a band-aid. Switching to `DateTimeOffset` stores the offset with the value, survives round-tripping, and makes timezone intent explicit. Requires touching models, EF mappings, all view comparisons, and serialization. Since we're willing to blow the DB away, no migration complexity — just a schema reset.
+- DB file `data/arm.db` is not gitignored — should be added so test/seed data isn't committed.
+
 ## Configuration & Setup
 
 - `ArmSettings` is missing many properties that `ConfigSnapshot` already defines (HbArgsDvd, HbArgsBd, FfmpegCli, notification channels, etc.). After parity, should consolidate into one source of truth.
@@ -52,6 +57,7 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 - **Active Rips page** (`/jobs/activerips`) — separate page from the Home dashboard active-rips table. Currently just lists all active jobs. Could add batch actions (abandon all, retry all).
 - **Database view** — search/filter/pagination works but could use column sorting by year/status/title. Tablesorter is applied but needs click-to-sort on headers.
 - **Home dashboard** — core metrics displayed. Could add charts (job success rate over time, rips per day) or sparkline trends.
+-- external links -- anywhere we reference an external id like an IMDB id, make that a link to the title page on the external site
 
 ## MusicBrainz
 
