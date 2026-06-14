@@ -348,10 +348,23 @@ public class SettingsController(
     }
 
     [HttpPost("start-rip")]
-    public IActionResult StartRip(string devPath)
+    public async Task<IActionResult> StartRip(string devPath)
     {
         backgroundRip.StartRip(devPath);
-        TempData["Message"] = $"Rip started for {devPath} in the background.";
+
+        // Wait briefly for the background task to create the job in DB
+        await Task.Delay(500);
+
+        // Find the most recent job for this device
+        var job = await db.Jobs
+            .Where(j => j.DevPath == devPath)
+            .OrderByDescending(j => j.StartTime)
+            .FirstOrDefaultAsync();
+
+        if (job is not null)
+            return RedirectToAction("JobDetail", "Jobs", new { jobId = job.Id });
+
+        TempData["Message"] = $"Rip started for {devPath}. Job page will appear shortly.";
         return RedirectToAction("Index");
     }
 
