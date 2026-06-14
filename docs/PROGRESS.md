@@ -3,21 +3,27 @@
 ## Current Status
 **Date**: 2026-06-13
 **Disc**: Zombieland (DVD)
-**Job**: #12 — **FULL PIPELINE SUCCESS** ✅
-**Status**: Success (14m 10s total)
-**Output**: `/home/arm/media/completed/movies/Zombieland (2009)/Zombieland (2009).mkv` (2.1GB)
+**Jobs**:
+- #12 — **FULL PIPELINE SUCCESS** ✅ (14m 10s)
+- #13 — **FULL PIPELINE SUCCESS** ✅ (13m 33s)
 
-### Fixed in this session
+**Output**:
+- Job #12: `/home/arm/media/completed/movies/Zombieland (2009)/Zombieland (2009).mkv` (2.1GB)
+- Job #13: `/home/arm/media/completed/movies/Zombieland (2009)_1781401312/Zombieland (2009).mkv` (2.1GB)
+
+### Fixed and Validated
 1. ✅ **IdentifyLoopAsync return type** — Changed `Task` to `Task<JsonDocument?>` so OMDB/TMDB response is actually returned and parsed
 2. ✅ **OMDB metadata parsing** — VideoType, Year, IMDb ID, Poster now extracted from search results (previously discarded)
 3. ✅ **Mount retry** — 3-attempt loop with `eject -t` tray re-seat when mount fails with "no medium found"
 4. ✅ **Progress callback threading** — Replaced `Progress<T>` with `InlineProgress<T>` to avoid SynchronizationContext/ThreadPool dispatch issues
 5. ✅ **Local tablesorter** — jquery.tablesorter CSS/JS now served locally (CDN was blocked by MIME type checks)
 6. ✅ **Continue button** — ManualWait stage has a Continue button to skip the 60s wait
-7. ✅ **InlineProgress fix validated** — Pipeline completes correctly; progress values are set but MakeMKV/HandBrake may not emit parseable progress lines
+7. ✅ **HandBrake progress parsing** — `ParseHandBrakeProgress` now called on both stdout and stderr (since `2>&1` redirect sends progress to stdout). **Validated with Job #13**: TranscodeProgress updated live: 15% → 39% → 66% → 89% → 100%
+8. ✅ **MakeMkvProgress** — Still null (MakeMKV doesn't emit PRGC/PRGV lines during rip phase, only during scan)
 
 ## Pipeline Achievements
 - ✅ Full pipeline: Setup → Identify → ManualWait → Rip → Transcode → Finalize
+- ✅ **Live TranscodeProgress tracking in DB** (was always null before fix)
 - ✅ Continue button on ManualWait stage
 - ✅ Tray reseat (eject -t) for mount failures
 - ✅ Local tablesorter files (no CDN dependency)
@@ -26,10 +32,11 @@
 - ✅ Output routing by VideoType (movies/, tv/, unidentified/)
 - ✅ Raw/transcode temp files cleaned up after completion
 - ✅ BackgroundRipService reports completion
+- ✅ Deduplication via `_unixTimestamp` suffix works correctly
 
 ## Known Issues
-1. **MakeMkvProgress/TranscodeProgress always null** — Progress callbacks are invoked but MakeMKV may not output PRGC/PRGV lines during rip, and HandBrake's progress goes through `2>&1` redirect which puts it on stdout instead of stderr (where parsing looks). The ProgressMessage IS set correctly ("Transcoding file 1 of 1").
+1. **MakeMkvProgress always null** — MakeMKV doesn't emit PRGC/PRGV lines during the rip phase (only during initial scan). ProgressMessage IS set correctly.
 2. **Job.Stage field** — Currently a Unix timestamp, not a descriptive stage name. Used only for deduplication in output paths.
-3. **SignalR hub** — Exists for log streaming but doesn't broadcast job progress updates.
+3. **SignalR hub** — Exists for log streaming but doesn't broadcast job progress updates. Adding live progress would require hub method + client-side SignalR subscription.
 4. **Audio CD / Data disc** — Pipelines exist in Conductor but untested.
 5. **Notification services** — Pushbullet, IFTTT, Pushover configured in appsettings but untested.
