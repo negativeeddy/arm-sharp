@@ -81,19 +81,42 @@ public sealed partial class IdentifyService(
             return true;
         }
 
-        logger.LogInformation("Trying to mount disc at {DevPath}...", job.DevPath);
-        var devName = Path.GetFileName(job.DevPath);
-        var mountTarget = $"/mnt/dev/{devName}";
-        Directory.CreateDirectory(mountTarget);
-        await runner.RunAsync("mount", $"--source {job.DevPath!} --target {mountTarget}", timeoutMs: 30_000, ct: ct);
-
-        mountPoint = await FindMountAsync(job.DevPath!, ct);
-        if (mountPoint is not null)
+        // Try to mount the disc — retry with tray cycle if initial attempt fails
+        for (var attempt = 0; attempt < 3; attempt++)
         {
-            logger.LogInformation("Successfully mounted disc to {MountPoint}", mountPoint);
-            job.MountPoint = mountPoint;
-            await ExtractDiscLabelAsync(job, ct);
-            return true;
+            logger.LogInformation("Mount attempt {Attempt}: trying to mount disc at {DevPath}...", attempt + 1, job.DevPath);
+            var devName = Path.GetFileName(job.DevPath);
+            var mountTarget = $"/mnt/dev/{devName}";
+            Directory.CreateDirectory(mountTarget);
+
+            var mountResult = await runner.RunAsync("mount",
+                $"--source {job.DevPath!} --target {mountTarget}", timeoutMs: 30_000, ct: ct);
+
+            if (mountResult.ExitCode == 0)
+            {
+                mountPoint = await FindMountAsync(job.DevPath!, ct);
+                if (mountPoint is not null)
+                {
+                    logger.LogInformation("Successfully mounted disc to {MountPoint}", mountPoint);
+                    job.MountPoint = mountPoint;
+                    await ExtractDiscLabelAsync(job, ct);
+                    return true;
+                }
+            }
+
+            // If mount failed (e.g. "no medium found"), try re-seating the drive tray
+            if (!string.IsNullOrEmpty(mountResult.StdErr) &&
+                mountResult.StdErr.Contains("no medium", StringComparison.OrdinalIgnoreCase))
+            {
+                logger.LogWarning("Mount failed — no medium detected. Attempting tray re-seat (eject -t)...");
+                await runner.RunAsync("eject", $"-t {job.DevPath!}", timeoutMs: 15_000, ct: ct);
+                // Give the drive time to settle after re-seat
+                await Task.Delay(3000, ct);
+                continue;
+            }
+
+            // Mount failed for a reason other than "no medium" — no point retrying
+            break;
         }
 
         if (!string.IsNullOrEmpty(job.MountPoint))
@@ -373,10 +396,82 @@ public sealed partial class IdentifyService(
         var year = string.IsNullOrEmpty(job.Year) ? "" : Regex.Replace(job.Year, @"\D", "");
 
         logger.LogDebug("Calling webservice with title: {Title} and year: {Year}", searchTitle, year);
-        await IdentifyLoopAsync(job, searchTitle, year, ct);
+        var response = await IdentifyLoopAsync(job, searchTitle, year, ct);
+
+        // Parse the search result to extract video type and other metadata
+        if (response is not null)
+        {
+            try
+            {
+                if (response.RootElement.TryGetProperty("Search", out var search) &&
+                    search.GetArrayLength() > 0)
+                {
+                    var first = search[0];
+                    var resultType = first.TryGetProperty("Type", out var t) ? t.GetString() : null;
+                    var resultTitle = first.TryGetProperty("Title", out var tl) ? tl.GetString() : null;
+                    var resultYear = first.TryGetProperty("Year", out var yr) ? yr.GetString() : null;
+                    var resultImdb = first.TryGetProperty("imdbID", out var im) ? im.GetString() : null;
+                    var resultPoster = first.TryGetProperty("Poster", out var po) ? po.GetString() : null;
+
+                    if (!string.IsNullOrEmpty(resultType))
+                    {
+                        job.VideoType = job.VideoTypeAuto = resultType switch
+                        {
+                            "movie" => "movie",
+                            "series" => "series",
+                            "episode" => "episode",
+                            _ => null
+                        };
+                    }
+
+                    // Update title/year from search result if ARM API didn't provide them
+                    if (string.IsNullOrEmpty(job.YearAuto) && !string.IsNullOrEmpty(resultYear))
+                        job.Year = job.YearAuto = resultYear;
+
+                    if (string.IsNullOrEmpty(job.ImdbIdAuto) && !string.IsNullOrEmpty(resultImdb))
+                        job.ImdbId = job.ImdbIdAuto = resultImdb;
+
+                    if (string.IsNullOrEmpty(job.PosterUrlAuto) && !string.IsNullOrEmpty(resultPoster))
+                        job.PosterUrl = job.PosterUrlAuto = resultPoster;
+
+                    await db.SaveChangesAsync(ct);
+
+                    // Try to get full details via IMDb ID lookup for richer metadata
+                    if (!string.IsNullOrEmpty(resultImdb))
+                    {
+                        try
+                        {
+                            var apiKey = settings.Value.OmdbApiKey;
+                            if (!string.IsNullOrEmpty(apiKey))
+                            {
+                                using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+                                var detailUrl = $"https://www.omdbapi.com/?i={resultImdb}&apikey={apiKey}&plot=full";
+                                var detailJson = await httpClient.GetStringAsync(detailUrl, ct);
+                                var detailDoc = JsonDocument.Parse(detailJson);
+                                if (detailDoc.RootElement.TryGetProperty("Response", out var resp) && resp.GetString() == "True")
+                                {
+                                    if (string.IsNullOrEmpty(job.YearAuto) &&
+                                        detailDoc.RootElement.TryGetProperty("Year", out var detailYear))
+                                        job.Year = job.YearAuto = detailYear.GetString();
+
+                                    if (string.IsNullOrEmpty(job.PosterUrlAuto) &&
+                                        detailDoc.RootElement.TryGetProperty("Poster", out var detailPoster))
+                                        job.PosterUrl = job.PosterUrlAuto = detailPoster.GetString();
+                                }
+                            }
+                        }
+                        catch { /* non-critical */ }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Failed to parse metadata search result");
+            }
+        }
     }
 
-    private async Task IdentifyLoopAsync(Job job, string title, string year, CancellationToken ct)
+    private async Task<JsonDocument?> IdentifyLoopAsync(Job job, string title, string year, CancellationToken ct)
     {
         JsonDocument? response = null;
 
@@ -406,6 +501,8 @@ public sealed partial class IdentifyService(
             if (response is null)
                 response = await CallMetadataProviderAsync(job, title, null, ct);
         }
+
+        return response;
     }
 
     private async Task<JsonDocument?> TryWithYearAsync(Job job, string title, string year, CancellationToken ct)

@@ -350,20 +350,29 @@ afterMakeMkv:
     }
 
     private IProgress<int> MkvProgress(Job job, string message, CancellationToken ct) =>
-        new Progress<int>(pct =>
+        new InlineProgress<int>(pct =>
         {
             job.MakeMkvProgress = pct;
             job.ProgressMessage = message;
-            db.SaveChanges();
+            try { db.SaveChanges(); } catch (Exception ex) { logger.LogDebug(ex, "Failed to save MKV progress"); }
         });
 
     private IProgress<int> TranscodeProgress(Job job, string message, CancellationToken ct) =>
-        new Progress<int>(pct =>
+        new InlineProgress<int>(pct =>
         {
             job.TranscodeProgress = pct;
             job.ProgressMessage = message;
-            db.SaveChanges();
+            try { db.SaveChanges(); } catch (Exception ex) { logger.LogDebug(ex, "Failed to save transcode progress"); }
         });
+
+    /// <summary>
+    /// A simple IProgress&lt;T&gt; implementation that invokes the handler
+    /// synchronously on the calling thread, avoiding SynchronizationContext dispatch.
+    /// </summary>
+    private sealed class InlineProgress<T>(Action<T> handler) : IProgress<T>
+    {
+        public void Report(T value) => handler(value);
+    }
 
     private async Task NotifyExitAsync(Job job, CancellationToken ct)
     {
