@@ -23,6 +23,13 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner) : Control
             .Take(10)
             .ToListAsync();
 
+        // Pass drives and active job device paths for the Drives widget
+        ViewBag.Drives = await db.SystemDrives.ToListAsync();
+        ViewBag.ActiveJobDevPaths = activeRips
+            .Where(j => !string.IsNullOrEmpty(j.DevPath))
+            .Select(j => j.DevPath!)
+            .ToHashSet();
+
         ViewBag.Hostname = Environment.MachineName;
         ViewBag.CpuCount = Environment.ProcessorCount;
 

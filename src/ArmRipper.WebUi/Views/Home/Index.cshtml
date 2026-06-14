@@ -64,6 +64,16 @@
     </table>
 </div>
 
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Drives</span>
+        <a href="/settings/scan" class="btn btn-sm btn-outline-primary">Scan for drives</a>
+    </div>
+    <div class="card-body py-2">
+        <partial name="_Drives" model="(ViewBag.Drives as IEnumerable<ArmRipper.Core.Models.SystemDrive> ?? Array.Empty<ArmRipper.Core.Models.SystemDrive>())" />
+    </div>
+</div>
+
 <div class="row mb-3">
     <div class="col-md-3 mb-2">
         <div class="card h-100">

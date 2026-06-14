@@ -1,0 +1,55 @@
+@model IEnumerable<ArmRipper.Core.Models.SystemDrive>
+@{
+    var activeDevPaths = ViewBag.ActiveJobDevPaths as HashSet<string> ?? new HashSet<string>();
+}
+
+@if (!Model.Any())
+{
+    <p class="text-muted small mb-0">No drives found. <a href="/settings/scan">Scan for drives</a></p>
+}
+else
+{
+    <table class="table table-sm table-striped mb-0">
+        <thead>
+            <tr>
+                <th>Device</th>
+                <th>Model</th>
+                <th>Capabilities</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var d in Model)
+            {
+                var isRipping = activeDevPaths.Contains(d.Mount ?? "");
+                <tr class="@(d.DriveMode == "disabled" ? "table-secondary text-muted" : "")">
+                    <td><code>@d.Mount</code></td>
+                    <td>@d.Model</td>
+                    <td>
+                        @if (d.ReadCd) { <span class="badge badge-secondary">CD</span> }
+                        @if (d.ReadDvd) { <span class="badge badge-info">DVD</span> }
+                        @if (d.ReadBd) { <span class="badge badge-primary">BD</span> }
+                        @if (!d.ReadCd && !d.ReadDvd && !d.ReadBd) { <span class="badge badge-light">?</span> }
+                    </td>
+                    <td class="text-nowrap">
+                        @if (isRipping)
+                        {
+                            <span class="badge bg-warning text-dark">Ripping</span>
+                        }
+                        else
+                        {
+                            <form method="post" action="/settings/start-rip" style="display:inline;">
+                                <input type="hidden" name="devPath" value="@d.Mount" />
+                                <button type="submit" class="btn btn-sm btn-success" title="Start rip">Rip</button>
+                            </form>
+                        }
+                        <form method="post" action="/settings/eject" style="display:inline;">
+                            <input type="hidden" name="devPath" value="@d.Mount" />
+                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Eject disc">Eject</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
