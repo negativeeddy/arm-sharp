@@ -10,6 +10,29 @@ arm.onJobUpdate = function (fn) {
     arm._jobUpdateHandlers.push(fn);
 };
 
+arm._showToast = function (msg) {
+    var container = document.getElementById('toastContainer');
+    if (!container) return;
+    var toast = document.createElement('div');
+    toast.className = 'alert alert-info alert-dismissible fade show py-1 px-2 mb-1 small';
+    toast.style.fontSize = '11px';
+    toast.style.lineHeight = '1.3';
+    toast.innerHTML = '<span>' + msg + '</span>' +
+        '<button type="button" class="close py-0 px-1" data-dismiss="alert" style="font-size:14px;">&times;</button>';
+    container.appendChild(toast);
+    // Auto-remove after 6 seconds
+    setTimeout(function () {
+        if (toast.parentNode) {
+            toast.classList.remove('show');
+            setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 300);
+        }
+    }, 6000);
+    // Limit to 5 toasts
+    while (container.children.length > 5) {
+        container.removeChild(container.firstChild);
+    }
+};
+
 arm.refreshNotifBadge = function () {
     var badge = document.getElementById('notifBadge');
     if (!badge) return;
@@ -38,6 +61,15 @@ arm.startSignalR = function () {
     });
 
     arm.signalrConnection.on('JobUpdate', function (update) {
+        // Debug toast — shows every incoming JobUpdate
+        var parts = ['#' + update.JobId];
+        if (update.Status) parts.push(update.Status);
+        if (update.Stage) parts.push(update.Stage);
+        if (update.MakeMkvProgress != null) parts.push('Rip:' + update.MakeMkvProgress + '%');
+        if (update.TranscodeProgress != null) parts.push('Xcode:' + update.TranscodeProgress + '%');
+        if (update.ProgressMessage) parts.push(update.ProgressMessage);
+        arm._showToast(parts.join(' | '));
+
         // Dispatch to all registered page handlers
         for (var i = 0; i < arm._jobUpdateHandlers.length; i++) {
             try { arm._jobUpdateHandlers[i](update); } catch (e) { console.error(e); }
