@@ -188,6 +188,7 @@ public sealed class Conductor(
             var waitTime = cfg.ManualWaitTime > 0 ? cfg.ManualWaitTime : 60;
             logger.LogInformation("Waiting {Time}s for manual title override", waitTime);
             job.Status = JobState.ManualWaitStarted;
+            job.ProgressMessage = $"Manual wait: {waitTime}s remaining";
             await db.SaveChangesAsync(ct);
             BroadcastJobUpdate(job);
 
@@ -197,7 +198,7 @@ public sealed class Conductor(
                 await Task.Delay(5000, ct);
                 waited += 5;
 
-                // Refresh job to check for changes
+                // Refresh job to check for UI changes
                 await db.Entry(job).ReloadAsync(ct);
 
                 if (job.Status == JobState.Cancelled)
@@ -220,12 +221,22 @@ public sealed class Conductor(
                     BroadcastJobUpdate(job);
                     break;
                 }
+
+                // Update countdown
+                var remaining = waitTime - waited;
+                if (remaining > 0)
+                {
+                    job.ProgressMessage = $"Manual wait: {remaining}s remaining";
+                    await db.SaveChangesAsync(ct);
+                    BroadcastJobUpdate(job);
+                }
             }
 
             if (string.IsNullOrEmpty(job.TitleManual))
                 logger.LogInformation("Manual wait expired, continuing with auto-identified title");
 
             job.Status = JobState.Active;
+            job.ProgressMessage = null;
             await db.SaveChangesAsync(ct);
             BroadcastJobUpdate(job);
         }
