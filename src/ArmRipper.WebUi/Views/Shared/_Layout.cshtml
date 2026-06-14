@@ -76,7 +76,10 @@
     <div id="toastContainer" style="position:fixed; bottom:1rem; right:1rem; z-index:9999; max-width:400px;"></div>
     <script>
         arm.initDarkMode();
-        arm.startSignalR();
+        $(function () {
+            // Slight delay to ensure SignalR CDN lib has loaded
+            setTimeout(function () { arm.startSignalR(); }, 500);
+        });
     </script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>

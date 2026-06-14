@@ -50,7 +50,10 @@ arm.refreshNotifBadge = function () {
 };
 
 arm.startSignalR = function () {
-    if (!window.signalR) return;
+    if (!window.signalR) {
+        arm._showToast('\u274C SignalR library not loaded — CDN may be blocked');
+        return;
+    }
     arm.signalrConnection = new signalR.HubConnectionBuilder()
         .withUrl('/hubs/notifications')
         .withAutomaticReconnect()
@@ -81,8 +84,13 @@ arm.startSignalR = function () {
     });
 
     arm.signalrConnection.start()
-        .then(function () { arm.refreshNotifBadge(); })
-        .catch(function () {});
+        .then(function () {
+            arm.refreshNotifBadge();
+            arm._showToast('\u2705 SignalR connected');
+        })
+        .catch(function (err) {
+            arm._showToast('\u274C SignalR failed: ' + (err.message || err));
+        });
 };
 
 arm.notificationPollInterval = null;
