@@ -70,20 +70,6 @@ arm.startSignalR = function () {
     arm.signalrConnection.on('JobUpdate', function (update) {
         console.log('[ARM] JobUpdate:', JSON.stringify(update));
 
-        // Toast only on status/stage changes (not every percent tick)
-        var key = update.jobId + '|' + (update.status || '') + '|' + (update.stage || '');
-        if (update.progressMessage && update.progressMessage !== key) key += '|' + update.progressMessage;
-        if (key !== _lastToastKey) {
-            _lastToastKey = key;
-            var parts = ['#' + update.jobId];
-            if (update.status) parts.push(update.status);
-            if (update.stage) parts.push(update.stage);
-            if (update.makeMkvProgress != null) parts.push('Rip:' + update.makeMkvProgress + '%');
-            if (update.transcodeProgress != null) parts.push('Xcode:' + update.transcodeProgress + '%');
-            if (update.progressMessage) parts.push(update.progressMessage);
-            arm._showToast(parts.join(' | '));
-        }
-
         for (var i = 0; i < arm._jobUpdateHandlers.length; i++) {
             try { arm._jobUpdateHandlers[i](update); } catch (e) {}
         }
