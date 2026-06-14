@@ -59,8 +59,11 @@ arm.startSignalR = function () {
         .withAutomaticReconnect()
         .build();
 
-    arm.signalrConnection.on('Notification', function () {
+    arm.signalrConnection.on('Notification', function (notif) {
         arm.refreshNotifBadge();
+        if (notif && notif.eventType) {
+            arm._showToast('\u{1F514} ' + notif.eventType + ': ' + (notif.message || ''));
+        }
     });
 
     var _lastToastKey = '';
