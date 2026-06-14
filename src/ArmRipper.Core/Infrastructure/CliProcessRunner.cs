@@ -11,8 +11,7 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         string arguments,
         string? workingDirectory = null,
         int timeoutMs = 120_000,
-        CancellationToken ct = default,
-        string? logFilePath = null)
+        CancellationToken ct = default)
     {
         logger.LogDebug("Running: {FileName} {Arguments}", fileName, arguments);
 
@@ -57,12 +56,6 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         var stdOutStr = string.Join("\n", await stdout);
         var stdErrStr = string.Join("\n", await stderr);
 
-        // Write output to log file if specified
-        if (logFilePath is not null)
-        {
-            await AppendToLogAsync(logFilePath, stdOutStr, stdErrStr, fileName, arguments);
-        }
-
         var result = new CliResult(process.ExitCode, stdOutStr, stdErrStr, false);
         logger.LogDebug("Exit code {Code}: {FileName}", result.ExitCode, fileName);
         return result;
@@ -80,8 +73,7 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         string fileName,
         string arguments,
         string? workingDirectory = null,
-        [EnumeratorCancellation] CancellationToken ct = default,
-        string? logFilePath = null)
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
         logger.LogInformation("Streaming: {FileName} {Arguments}", fileName, arguments);
 
@@ -111,32 +103,8 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
 
         var stderrTask = ReadAllLinesAsync(process.StandardError, ct);
 
-        // Open log file for incremental writes
-        System.IO.StreamWriter? logWriter = null;
-        if (logFilePath is not null)
-        {
-            try
-            {
-                var dir = Path.GetDirectoryName(logFilePath);
-                if (dir is not null) Directory.CreateDirectory(dir);
-                logWriter = new System.IO.StreamWriter(logFilePath, append: true) { AutoFlush = false };
-                await logWriter.WriteLineAsync();
-                await logWriter.WriteLineAsync($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] $ {fileName} {arguments}");
-                await logWriter.FlushAsync(ct);
-            }
-            catch { logWriter = null; }
-        }
-
-        var lineCount = 0;
         while (await process.StandardOutput.ReadLineAsync(ct) is { } line)
         {
-            if (logWriter is not null)
-            {
-                await logWriter.WriteLineAsync(line);
-                // Flush every 50 lines for live log visibility
-                if (++lineCount % 50 == 0)
-                    await logWriter.FlushAsync(ct);
-            }
             yield return line;
         }
 
@@ -146,17 +114,8 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         if (stderr.Count > 0)
         {
             logger.LogWarning("Process stderr ({Name}): {Lines}", fileName, string.Join("\n", stderr));
-            if (logWriter is not null)
-            {
-                await logWriter.WriteLineAsync("STDERR:");
-                foreach (var errLine in stderr)
-                    await logWriter.WriteLineAsync(errLine);
-            }
-        }
-
-        if (logWriter is not null)
-        {
-            try { await logWriter.FlushAsync(); logWriter.Dispose(); } catch { }
+            foreach (var errLine in stderr)
+                logger.LogDebug("STDERR {Name}: {Line}", fileName, errLine);
         }
 
         logger.LogInformation("Process exited ({Name}) code={Code}", fileName, process.ExitCode);

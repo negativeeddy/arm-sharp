@@ -4,48 +4,42 @@ using Microsoft.Extensions.Logging;
 namespace ArmRipper.Core.Infrastructure;
 
 /// <summary>
-/// Singleton ILoggerProvider that writes to per-job log files via AsyncLocal.
-/// All loggers in the same async context automatically write to the right file.
+/// ILoggerProvider that writes log messages to per-job log files.
+/// Uses ILogger.BeginScope with "LogFilePath" key — fully thread-safe,
+/// supports multiple concurrent jobs and parallel operations.
 /// </summary>
-public sealed class JobFileLoggerProvider : ILoggerProvider
+public sealed class JobFileLoggerProvider : ILoggerProvider, ISupportExternalScope
 {
-    private static readonly AsyncLocal<string?> _currentLogPath = new();
     private readonly ConcurrentDictionary<string, StreamWriter> _writers = new();
+    private IExternalScopeProvider? _scopeProvider;
 
-    /// <summary>
-    /// Set the log file path for the current async context.
-    /// Returns an IDisposable that restores the previous path when disposed.
-    /// </summary>
-    public static IDisposable BeginJobScope(string logFilePath)
+    void ISupportExternalScope.SetScopeProvider(IExternalScopeProvider scopeProvider)
+        => _scopeProvider = scopeProvider;
+
+    public ILogger CreateLogger(string categoryName)
     {
-        var previous = _currentLogPath.Value;
-        _currentLogPath.Value = logFilePath;
-        return new ScopeRestorer(previous);
+        var logger = new JobFileLogger(this, categoryName);
+        if (_scopeProvider is not null)
+            logger.SetScopeProvider(_scopeProvider);
+        return logger;
     }
 
-    public ILogger CreateLogger(string categoryName) => new JobFileLogger(this, categoryName);
+    /// <summary>Scope key used to pass the log file path. Use with logger.BeginScope().</summary>
+    public const string LogFilePathKey = "LogFilePath";
 
-    internal void Write(string categoryName, string entry)
+    internal StreamWriter GetWriter(string filePath)
     {
-        var path = _currentLogPath.Value;
-        if (path is null) return;
-
-        var writer = _writers.GetOrAdd(path, p =>
+        return _writers.GetOrAdd(filePath, p =>
         {
-            var dir = System.IO.Path.GetDirectoryName(p);
-            if (dir is not null) System.IO.Directory.CreateDirectory(dir);
+            var dir = Path.GetDirectoryName(p);
+            if (dir is not null) Directory.CreateDirectory(dir);
             var sw = new StreamWriter(p, append: true) { AutoFlush = true };
             sw.WriteLine();
-            sw.WriteLine(string.Concat("=== ARM Job Log: ", System.IO.Path.GetFileNameWithoutExtension(p), " ==="));
+            sw.WriteLine($"=== ARM Job Log: {Path.GetFileNameWithoutExtension(p)} ===");
             sw.WriteLine();
             sw.Flush();
             return sw;
         });
-
-        lock (writer)
-        {
-            writer.WriteLine(entry);
-        }
     }
 
     public void Dispose()
@@ -53,24 +47,55 @@ public sealed class JobFileLoggerProvider : ILoggerProvider
         foreach (var w in _writers.Values) { w.Flush(); w.Dispose(); }
         _writers.Clear();
     }
-
-    private sealed class ScopeRestorer(string? previous) : IDisposable
-    {
-        public void Dispose() => _currentLogPath.Value = previous;
-    }
 }
 
-internal sealed class JobFileLogger(JobFileLoggerProvider provider, string categoryName) : ILogger
+internal sealed class JobFileLogger : ILogger
 {
-    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-    public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Information;
+    private readonly JobFileLoggerProvider _provider;
+    private readonly string _categoryName;
+    private IExternalScopeProvider? _scopeProvider;
+
+    public JobFileLogger(JobFileLoggerProvider provider, string categoryName)
+    {
+        _provider = provider;
+        _categoryName = categoryName;
+    }
+
+    internal void SetScopeProvider(IExternalScopeProvider scopeProvider) => _scopeProvider = scopeProvider;
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull
+        => _scopeProvider?.Push(state);
+
+    public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Debug;
 
     public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
     {
         if (!IsEnabled(logLevel)) return;
+
         var msg = formatter(state, exception);
-        var entry = string.Concat("[", DateTime.Now.ToString("HH:mm:ss"), "] ", logLevel.ToString()[..4], ": ", categoryName, ": ", msg);
-        if (exception is not null) entry = string.Concat(entry, "\n", exception.ToString());
-        provider.Write(categoryName, entry);
+        var entry = $"[{DateTime.Now:HH:mm:ss}] {logLevel.ToString()[..4]}: {_categoryName}: {msg}";
+        if (exception is not null) entry += $"\n{exception}";
+
+        // Find the log file path from the current scope chain
+        string? filePath = null;
+        _scopeProvider?.ForEachScope<object?>((scope, _) =>
+        {
+            if (scope is IEnumerable<KeyValuePair<string, object>> props)
+            {
+                foreach (var kv in props)
+                {
+                    if (kv.Key == JobFileLoggerProvider.LogFilePathKey && kv.Value is string path)
+                        filePath = path;
+                }
+            }
+        }, null);
+
+        if (filePath is null) return;
+
+        var writer = _provider.GetWriter(filePath);
+        lock (writer)
+        {
+            writer.WriteLine(entry);
+        }
     }
 }

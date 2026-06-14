@@ -161,8 +161,11 @@ public sealed class Conductor(
 
     private async Task<int> ProcessJobAsync(Job job, CancellationToken ct)
     {
-        // Route all ILogger output to the job's log file for this async context
-        using var _ = JobFileLoggerProvider.BeginJobScope(job.GetLogFilePath());
+        // Route all ILogger output to the job's log file for this async scope
+        using var _ = logger.BeginScope(new Dictionary<string, object>
+        {
+            [JobFileLoggerProvider.LogFilePathKey] = job.GetLogFilePath()
+        });
 
         logger.LogInformation("Starting Disc identification");
 
