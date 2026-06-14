@@ -53,8 +53,22 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         // Wait for async readers to finish (they may lag behind process exit)
         await Task.WhenAll(stdout, stderr);
 
-        var stdOutStr = string.Join("\n", await stdout);
-        var stdErrStr = string.Join("\n", await stderr);
+        var stdOutList = await stdout;
+        var stdErrList = await stderr;
+        var stdOutStr = string.Join("\n", stdOutList);
+        var stdErrStr = string.Join("\n", stdErrList);
+
+        // Write command output to log file via Debug level
+        foreach (var line in stdOutList)
+        {
+            if (!string.IsNullOrWhiteSpace(line))
+                logger.LogDebug("{FileName}: {Line}", fileName, line);
+        }
+        foreach (var line in stdErrList)
+        {
+            if (!string.IsNullOrWhiteSpace(line))
+                logger.LogDebug("STDERR {FileName}: {Line}", fileName, line);
+        }
 
         var result = new CliResult(process.ExitCode, stdOutStr, stdErrStr, false);
         logger.LogDebug("Exit code {Code}: {FileName}", result.ExitCode, fileName);
@@ -95,6 +109,8 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         // TODO: is this a race condition if the process writes to stdout before we start reading? Should we start reading before starting the process?
         process.Start();
 
+        logger.LogDebug("Process started ({Name}): {Arguments}", fileName, arguments);
+
         using var _ = ct.Register(() =>
         {
             try { process.Kill(entireProcessTree: true); } catch { }
@@ -105,6 +121,7 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
 
         while (await process.StandardOutput.ReadLineAsync(ct) is { } line)
         {
+            logger.LogDebug("{Name}: {Line}", fileName, line);
             yield return line;
         }
 
@@ -113,7 +130,6 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         var stderr = await stderrTask;
         if (stderr.Count > 0)
         {
-            logger.LogWarning("Process stderr ({Name}): {Lines}", fileName, string.Join("\n", stderr));
             foreach (var errLine in stderr)
                 logger.LogDebug("STDERR {Name}: {Line}", fileName, errLine);
         }
