@@ -676,12 +676,11 @@ public partial class MakeMkvService
             var tp = int.TryParse(parts[3], out var v3) ? v3 : 0;
             return new ParsedLine(MakeMkvOutputType.PrgV, new PrgV(ct, tt, cp, tp));
         }
-        else if (parts.Length >= 3)
+        else
         {
-            // 3-field (MakeMKV v1.18+): stream_id,current_bytes,total_bytes
-            var cp = int.TryParse(parts[1], out var v1) ? v1 : 0;
-            var tp = int.TryParse(parts[2], out var v2) ? v2 : 0;
-            return new ParsedLine(MakeMkvOutputType.PrgV, new PrgV(0, 0, cp, tp));
+            // 3-field (MakeMKV v1.18+): ambiguous format — skip progress,
+            // let the file-size monitor handle it reliably
+            return new ParsedLine(MakeMkvOutputType.PrgV, new PrgV(0, 0, 0, 0));
         }
         return new ParsedLine(MakeMkvOutputType.PrgV, new PrgV(0, 0, 0, 0));
     }

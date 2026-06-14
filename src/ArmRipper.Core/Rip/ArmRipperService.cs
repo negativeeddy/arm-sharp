@@ -388,7 +388,7 @@ afterMakeMkv:
         {
             job.MakeMkvProgress = pct;
             job.ProgressMessage = message;
-            try { db.SaveChanges(); } catch (Exception ex) { logger.LogDebug(ex, "Failed to save MKV progress"); }
+            try { lock (db) { db.SaveChanges(); } } catch (Exception ex) { logger.LogDebug(ex, "Failed to save MKV progress"); }
             BroadcastJobUpdate(job);
         });
 
@@ -397,7 +397,7 @@ afterMakeMkv:
         {
             job.TranscodeProgress = pct;
             job.ProgressMessage = message;
-            try { db.SaveChanges(); } catch (Exception ex) { logger.LogDebug(ex, "Failed to save transcode progress"); }
+            try { lock (db) { db.SaveChanges(); } } catch (Exception ex) { logger.LogDebug(ex, "Failed to save transcode progress"); }
             BroadcastJobUpdate(job);
         });
 
