@@ -377,22 +377,111 @@ public partial class MakeMkvService
 
     public async Task RipTrackAsync(Job job, string trackNumber, string outputPath, string mkvArgs, int minLength, IProgress<int>? progress = null, CancellationToken ct = default)
     {
-        var args = $"--robot --messages=-stdout mkv --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
-        if (!string.IsNullOrEmpty(mkvArgs))
-            args = $"--robot --messages=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
+        // Estimate expected file size from track info for progress monitoring
+        var expectedSize = job.Tracks
+            .Where(t => t.TrackNumber == trackNumber)
+            .Sum(t => t.FileSize ?? 0);
 
-        await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
-            ParseAndReportProgress(line, progress);
+        var monitorCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var monitorTask = expectedSize > 0 && progress is not null
+            ? MonitorRipFileSizeAsync(outputPath, expectedSize, progress, monitorCts.Token)
+            : Task.CompletedTask;
+
+        try
+        {
+            var args = $"--robot --messages=-stdout mkv --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
+            if (!string.IsNullOrEmpty(mkvArgs))
+                args = $"--robot --messages=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
+
+            await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
+                ParseAndReportProgress(line, progress);
+
+            // Rip completed successfully — report 100%
+            if (progress is not null)
+                progress.Report(100);
+        }
+        finally
+        {
+            // Stop the file-size monitor
+            monitorCts.Cancel();
+            try { await monitorTask; } catch (OperationCanceledException) { }
+        }
     }
 
     public async Task RipAllTitlesAsync(Job job, string outputPath, string mkvArgs, int minLength, IProgress<int>? progress = null, CancellationToken ct = default)
     {
-        var args = $"--robot --messages=-stdout mkv --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
-        if (!string.IsNullOrEmpty(mkvArgs))
-            args = $"--robot --messages=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
+        // Estimate total expected size from all eligible tracks
+        var minLen = job.Config?.MinLength ?? _settings.Value.MinLength;
+        var maxLen = job.Config?.MaxLength ?? _settings.Value.MaxLength;
+        var expectedSize = job.Tracks
+            .Where(t => (t.Length ?? 0) >= minLen && (t.Length ?? 0) <= maxLen)
+            .Sum(t => t.FileSize ?? 0);
 
-        await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
-            ParseAndReportProgress(line, progress);
+        var monitorCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var monitorTask = expectedSize > 0 && progress is not null
+            ? MonitorRipFileSizeAsync(outputPath, expectedSize, progress, monitorCts.Token)
+            : Task.CompletedTask;
+
+        try
+        {
+            var args = $"--robot --messages=-stdout mkv --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
+            if (!string.IsNullOrEmpty(mkvArgs))
+                args = $"--robot --messages=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
+
+            await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
+                ParseAndReportProgress(line, progress);
+
+            // Rip completed successfully — report 100%
+            if (progress is not null)
+                progress.Report(100);
+        }
+        finally
+        {
+            // Stop the file-size monitor
+            monitorCts.Cancel();
+            try { await monitorTask; } catch (OperationCanceledException) { }
+        }
+    }
+
+    /// <summary>
+    /// Monitors the output directory for .mkv file growth and reports progress
+    /// based on total written bytes vs expected size. Acts as a fallback when
+    /// MakeMKV does not emit PRGC/PRGV progress lines during the rip phase.
+    /// </summary>
+    private async Task MonitorRipFileSizeAsync(string outputPath, long expectedSize, IProgress<int> progress, CancellationToken ct)
+    {
+        if (expectedSize <= 0) return;
+
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(2000, ct);
+
+                if (!Directory.Exists(outputPath)) continue;
+
+                long totalSize = 0;
+                try
+                {
+                    foreach (var file in Directory.EnumerateFiles(outputPath, "*.mkv"))
+                        totalSize += new FileInfo(file).Length;
+                }
+                catch (UnauthorizedAccessException) { continue; }
+                catch (DirectoryNotFoundException) { continue; }
+
+                if (totalSize > 0)
+                {
+                    var pct = (int)(totalSize * 100.0 / expectedSize);
+                    pct = Math.Clamp(pct, 0, 99); // Cap at 99%; 100% is set by the caller on completion
+                    progress.Report(pct);
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Error in MakeMKV file-size progress monitor");
+        }
     }
 
     private void ParseAndReportProgress(string line, IProgress<int>? progress)
