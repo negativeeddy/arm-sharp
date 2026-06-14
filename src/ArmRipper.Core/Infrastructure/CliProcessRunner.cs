@@ -24,6 +24,7 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
                 WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                RedirectStandardInput = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             }
@@ -76,6 +77,7 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
                 WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                RedirectStandardInput = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             }
