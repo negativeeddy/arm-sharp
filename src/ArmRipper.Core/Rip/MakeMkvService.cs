@@ -500,18 +500,25 @@ public partial class MakeMkvService
     {
         if (progress is null) return;
 
-        var parsed = ParseLine(line);
-        if (parsed is null) return;
-
-        var pct = parsed.Type switch
+        try
         {
-            MakeMkvOutputType.PrgC when parsed.Data is PrgC pc => (int)(pc.CurrentProgress * 100.0 / pc.TotalProgress),
-            MakeMkvOutputType.PrgV when parsed.Data is PrgV pv => (int)(pv.CurrentProgress * 100.0 / pv.TotalProgress),
-            _ => (int?)null
-        };
+            var parsed = ParseLine(line);
+            if (parsed is null) return;
 
-        if (pct.HasValue)
-            progress.Report(pct.Value);
+            var pct = parsed.Type switch
+            {
+                MakeMkvOutputType.PrgC when parsed.Data is PrgC pc => pc.TotalProgress > 0 ? (int)(pc.CurrentProgress * 100.0 / pc.TotalProgress) : (int?)null,
+                MakeMkvOutputType.PrgV when parsed.Data is PrgV pv => pv.TotalProgress > 0 ? (int)(pv.CurrentProgress * 100.0 / pv.TotalProgress) : (int?)null,
+                _ => (int?)null
+            };
+
+            if (pct.HasValue)
+                progress.Report(pct.Value);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Error parsing MakeMKV progress line: {Line}", line);
+        }
     }
 
     private static Track CreateTrackObj(Job job, int tid, string baseName, int seconds, string aspect, double fps, string filename, int chapters, long filesize)
@@ -660,17 +667,19 @@ public partial class MakeMkvService
     private static ParsedLine ParsePrgV(string content)
     {
         var parts = content.Split(',');
-        var ct = int.Parse(parts[0]);
-        var tt = int.Parse(parts[1]);
-        var cp = int.Parse(parts[2]);
-        var tp = int.Parse(parts[3]);
+        var ct = parts.Length > 0 && int.TryParse(parts[0], out var v0) ? v0 : 0;
+        var tt = parts.Length > 1 && int.TryParse(parts[1], out var v1) ? v1 : 0;
+        var cp = parts.Length > 2 && int.TryParse(parts[2], out var v2) ? v2 : 0;
+        var tp = parts.Length > 3 && int.TryParse(parts[3], out var v3) ? v3 : 0;
         return new ParsedLine(MakeMkvOutputType.PrgV, new PrgV(ct, tt, cp, tp));
     }
 
     private static ParsedLine ParsePrgC(string content)
     {
         var parts = content.Split(',');
-        return new ParsedLine(MakeMkvOutputType.PrgC, new PrgC(int.Parse(parts[0]), int.Parse(parts[1])));
+        var cp = parts.Length > 0 && int.TryParse(parts[0], out var v0) ? v0 : 0;
+        var tp = parts.Length > 1 && int.TryParse(parts[1], out var v1) ? v1 : 0;
+        return new ParsedLine(MakeMkvOutputType.PrgC, new PrgC(cp, tp));
     }
 
     private static ParsedLine ParsePrgT(string content)
