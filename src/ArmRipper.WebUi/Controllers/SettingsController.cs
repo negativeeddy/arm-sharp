@@ -350,19 +350,23 @@ public class SettingsController(
     [HttpPost("start-rip")]
     public async Task<IActionResult> StartRip(string devPath)
     {
+        // Record the max existing job ID before starting, so we can find the new one
+        var maxIdBefore = await db.Jobs.MaxAsync(j => (int?)j.Id) ?? 0;
+
         backgroundRip.StartRip(devPath);
 
-        // Wait briefly for the background task to create the job in DB
-        await Task.Delay(500);
+        // Poll for the new job to appear in DB (up to 5 seconds)
+        for (var i = 0; i < 20; i++)
+        {
+            await Task.Delay(250);
+            var job = await db.Jobs
+                .Where(j => j.Id > maxIdBefore && j.DevPath == devPath)
+                .OrderByDescending(j => j.Id)
+                .FirstOrDefaultAsync();
 
-        // Find the most recent job for this device
-        var job = await db.Jobs
-            .Where(j => j.DevPath == devPath)
-            .OrderByDescending(j => j.StartTime)
-            .FirstOrDefaultAsync();
-
-        if (job is not null)
-            return RedirectToAction("JobDetail", "Jobs", new { jobId = job.Id });
+            if (job is not null)
+                return RedirectToAction("JobDetail", "Jobs", new { jobId = job.Id });
+        }
 
         TempData["Message"] = $"Rip started for {devPath}. Job page will appear shortly.";
         return RedirectToAction("Index");
