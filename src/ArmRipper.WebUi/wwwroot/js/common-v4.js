@@ -1,23 +1,18 @@
 var arm = arm || {};
 
-// v4 — SignalR debug toasts with console logging
-console.log('[ARM] common.js v4 loaded');
-
 arm.signalrConnection = null;
 
 // --- JobUpdate callback registry ---
-// Pages register handlers via arm.onJobUpdate(fn). fn receives { JobId, Status, Stage, ... }
 arm._jobUpdateHandlers = [];
 
 arm.onJobUpdate = function (fn) {
     arm._jobUpdateHandlers.push(fn);
 };
 
+// --- Toast notifications ---
 arm._showToast = function (msg) {
-    console.log('[ARM] toast:', msg);
     var container = document.getElementById('toastContainer');
     if (!container) {
-        // Create the container if it doesn't exist
         container = document.createElement('div');
         container.id = 'toastContainer';
         container.style.cssText = 'position:fixed; bottom:1rem; right:1rem; z-index:9999; max-width:400px;';
@@ -30,14 +25,12 @@ arm._showToast = function (msg) {
     toast.innerHTML = '<span>' + msg + '</span>' +
         '<button type="button" class="close py-0 px-1" data-dismiss="alert" style="font-size:14px;">&times;</button>';
     container.appendChild(toast);
-    // Auto-remove after 6 seconds
     setTimeout(function () {
         if (toast.parentNode) {
             toast.classList.remove('show');
             setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 300);
         }
     }, 6000);
-    // Limit to 5 toasts
     while (container.children.length > 5) {
         container.removeChild(container.firstChild);
     }
@@ -60,11 +53,7 @@ arm.refreshNotifBadge = function () {
 };
 
 arm.startSignalR = function () {
-    if (!window.signalR) {
-        alert('SignalR library not loaded — CDN may be blocked');
-        arm._showToast('\u274C SignalR library not loaded — CDN may be blocked');
-        return;
-    }
+    if (!window.signalR) return;
     arm.signalrConnection = new signalR.HubConnectionBuilder()
         .withUrl('/hubs/notifications')
         .withAutomaticReconnect()
@@ -74,19 +63,24 @@ arm.startSignalR = function () {
         arm.refreshNotifBadge();
     });
 
+    var _lastToastKey = '';
     arm.signalrConnection.on('JobUpdate', function (update) {
-        // Debug toast — shows every incoming JobUpdate
-        var parts = ['#' + update.JobId];
-        if (update.Status) parts.push(update.Status);
-        if (update.Stage) parts.push(update.Stage);
-        if (update.MakeMkvProgress != null) parts.push('Rip:' + update.MakeMkvProgress + '%');
-        if (update.TranscodeProgress != null) parts.push('Xcode:' + update.TranscodeProgress + '%');
-        if (update.ProgressMessage) parts.push(update.ProgressMessage);
-        arm._showToast(parts.join(' | '));
+        // Toast only on status/stage changes (not every percent tick)
+        var key = update.JobId + '|' + (update.Status || '') + '|' + (update.Stage || '');
+        if (update.ProgressMessage && update.ProgressMessage !== key) key += '|' + update.ProgressMessage;
+        if (key !== _lastToastKey) {
+            _lastToastKey = key;
+            var parts = ['#' + update.JobId];
+            if (update.Status) parts.push(update.Status);
+            if (update.Stage) parts.push(update.Stage);
+            if (update.MakeMkvProgress != null) parts.push('Rip:' + update.MakeMkvProgress + '%');
+            if (update.TranscodeProgress != null) parts.push('Xcode:' + update.TranscodeProgress + '%');
+            if (update.ProgressMessage) parts.push(update.ProgressMessage);
+            arm._showToast(parts.join(' | '));
+        }
 
-        // Dispatch to all registered page handlers
         for (var i = 0; i < arm._jobUpdateHandlers.length; i++) {
-            try { arm._jobUpdateHandlers[i](update); } catch (e) { console.error(e); }
+            try { arm._jobUpdateHandlers[i](update); } catch (e) {}
         }
     });
 
@@ -95,15 +89,8 @@ arm.startSignalR = function () {
     });
 
     arm.signalrConnection.start()
-        .then(function () {
-            arm.refreshNotifBadge();
-            console.log('[ARM] SignalR connected, showing toast...');
-            arm._showToast('\u2705 SignalR connected');
-        })
-        .catch(function (err) {
-            console.error('[ARM] SignalR failed:', err);
-            arm._showToast('\u274C SignalR failed: ' + (err.message || err));
-        });
+        .then(function () { arm.refreshNotifBadge(); })
+        .catch(function () {});
 };
 
 arm.notificationPollInterval = null;
