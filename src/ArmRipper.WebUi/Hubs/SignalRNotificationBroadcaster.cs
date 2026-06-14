@@ -10,4 +10,9 @@ public sealed class SignalRNotificationBroadcaster(IHubContext<NotificationHub> 
     {
         await hubContext.Clients.All.SendAsync("Notification", notification, ct);
     }
+
+    public async Task BroadcastJobUpdateAsync(JobUpdate update, CancellationToken ct = default)
+    {
+        await hubContext.Clients.All.SendAsync("JobUpdate", update, ct);
+    }
 }

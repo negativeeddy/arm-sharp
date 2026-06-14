@@ -45,6 +45,15 @@
    - `RipMusicAsync()` now sets `job.Stage = "rip"` before abcde and `job.Stage = "done"` after
    - `RipDataAsync()` now sets `job.Stage = "rip"` before dd and `job.Stage = "done"` after
    - `_Pipeline.cshtml` now dynamically adjusts stages based on `DiscType` (audio/data discs omit transcode stage)
-3. **SignalR hub** — Exists for log streaming but doesn't broadcast job progress updates. Adding live progress would require hub method + client-side SignalR subscription.
+3. 🔄 **SignalR hub — Broadcast job progress updates** — **IN PROGRESS (Phase 1 done)**
+   - ✅ `JobUpdate` DTO created in Core.Models — UI-independent snapshot of mutable job fields
+   - ✅ `BroadcastJobUpdateAsync(JobUpdate)` added to `INotificationBroadcaster`
+   - ✅ Implemented in `SignalRNotificationBroadcaster` (sends "JobUpdate" SignalR event to all clients)
+   - ✅ `NullNotificationBroadcaster` implements no-op (used by CLI)
+   - ✅ `ArmRipperService` broadcasts on every % progress change (rip + transcode) and status/stage transitions
+   - ✅ `Conductor` broadcasts on all status/stage transitions (setup, identify, manual wait, dispatch, audio/data rip, completion)
+   - 🔜 **Phase 2**: Replace 5s `location.reload()` on JobDetail page with SignalR `JobUpdate` listener
+   - 🔜 **Phase 3**: Replace 10s polling on Home page with SignalR listener for table row updates
+   - 🔜 **Phase 4**: Remove 15s notification polling fallback (SignalR already handles it), wire `RefreshRate` from DB
 4. **Audio CD / Data disc** — Pipelines exist in Conductor but untested.
 5. **Notification services** — Pushbullet, IFTTT, Pushover configured in appsettings but untested.

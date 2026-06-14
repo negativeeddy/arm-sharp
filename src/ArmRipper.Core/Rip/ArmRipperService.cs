@@ -17,7 +17,8 @@ public sealed class ArmRipperService(
     IFfmpegService ffmpeg,
     ICliProcessRunner runner,
     NotificationService notifications,
-    IOptions<ArmSettings> settings) : IArmRipperService
+    IOptions<ArmSettings> settings,
+    IEnumerable<INotificationBroadcaster> broadcasters) : IArmRipperService
 {
     public async Task<string> RipVisualMediaAsync(Job job, string logFile, bool hasDupes, bool protection, CancellationToken ct = default)
     {
@@ -78,6 +79,7 @@ public sealed class ArmRipperService(
                     job.Stage = "rip";
                     job.Status = JobState.VideoRipping;
                     await db.SaveChangesAsync(ct);
+                    BroadcastJobUpdate(job);
 
                     if (!Directory.Exists(makeMkvOutPath))
                         Directory.CreateDirectory(makeMkvOutPath);
@@ -127,6 +129,7 @@ public sealed class ArmRipperService(
                 job.Stage = "rip";
                 job.Status = JobState.VideoRipping;
                 await db.SaveChangesAsync(ct);
+                BroadcastJobUpdate(job);
 
                 try
                 {
@@ -242,6 +245,7 @@ afterMakeMkv:
 
         job.Stage = "finalize";
         await db.SaveChangesAsync(ct);
+        BroadcastJobUpdate(job);
 
         logger.LogDebug("Transcode status: [{SkipTranscode}] and MakeMKV Status: [{UseMakeMkv}]",
             job.Config?.SkipTranscode ?? settings.Value.SkipTranscode, useMakeMkv);
@@ -275,6 +279,7 @@ afterMakeMkv:
 
         job.Stage = "done";
         await db.SaveChangesAsync(ct);
+        BroadcastJobUpdate(job);
 
         logger.LogInformation("************* ARM processing complete *************");
         return finalDirectory;
@@ -292,6 +297,7 @@ afterMakeMkv:
         job.Stage = "transcode";
         job.Status = JobState.TranscodeActive;
         await db.SaveChangesAsync(ct);
+        BroadcastJobUpdate(job);
 
         if (job.Config?.UseFfmpeg ?? settings.Value.UseFfmpeg)
         {
@@ -360,12 +366,21 @@ afterMakeMkv:
         RecordStageError(job, stage, $"Expected status {expectedStatus}, was {job.Status}");
     }
 
+    /// <summary>Fire-and-forget broadcast of job state to all connected UI clients.</summary>
+    private void BroadcastJobUpdate(Job job)
+    {
+        var update = JobUpdate.FromJob(job);
+        foreach (var b in broadcasters)
+            _ = b.BroadcastJobUpdateAsync(update);
+    }
+
     private IProgress<int> MkvProgress(Job job, string message, CancellationToken ct) =>
         new InlineProgress<int>(pct =>
         {
             job.MakeMkvProgress = pct;
             job.ProgressMessage = message;
             try { db.SaveChanges(); } catch (Exception ex) { logger.LogDebug(ex, "Failed to save MKV progress"); }
+            BroadcastJobUpdate(job);
         });
 
     private IProgress<int> TranscodeProgress(Job job, string message, CancellationToken ct) =>
@@ -374,6 +389,7 @@ afterMakeMkv:
             job.TranscodeProgress = pct;
             job.ProgressMessage = message;
             try { db.SaveChanges(); } catch (Exception ex) { logger.LogDebug(ex, "Failed to save transcode progress"); }
+            BroadcastJobUpdate(job);
         });
 
     /// <summary>

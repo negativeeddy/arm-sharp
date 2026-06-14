@@ -17,8 +17,17 @@ public sealed class Conductor(
     IIdentifyService identifyService,
     IArmRipperService armRipperService,
     IMusicBrainzService musicBrainzService,
-    NotificationService notificationService) : IConductor
+    NotificationService notificationService,
+    IEnumerable<INotificationBroadcaster> broadcasters) : IConductor
 {
+    /// <summary>Fire-and-forget broadcast of job state to all connected UI clients.</summary>
+    private void BroadcastJobUpdate(Job job)
+    {
+        var update = JobUpdate.FromJob(job);
+        foreach (var b in broadcasters)
+            _ = b.BroadcastJobUpdateAsync(update);
+    }
+
     public async Task<int> RunAsync(string devicePath, CancellationToken ct = default)
     {
         Job? job = null;
@@ -36,6 +45,7 @@ public sealed class Conductor(
                 job.Status = JobState.Failure;
                 job.Errors = ex.Message;
                 try { await db.SaveChangesAsync(ct); } catch { /* best effort */ }
+                BroadcastJobUpdate(job);
             }
             return 1;
         }
@@ -179,6 +189,7 @@ public sealed class Conductor(
             logger.LogInformation("Waiting {Time}s for manual title override", waitTime);
             job.Status = JobState.ManualWaitStarted;
             await db.SaveChangesAsync(ct);
+            BroadcastJobUpdate(job);
 
             var waited = 0;
             while (waited < waitTime)
@@ -206,6 +217,7 @@ public sealed class Conductor(
                     logger.LogInformation("Manual wait resumed by user");
                     job.ManualWaitResume = false;
                     await db.SaveChangesAsync(ct);
+                    BroadcastJobUpdate(job);
                     break;
                 }
             }
@@ -215,6 +227,7 @@ public sealed class Conductor(
 
             job.Status = JobState.Active;
             await db.SaveChangesAsync(ct);
+            BroadcastJobUpdate(job);
         }
 
         // Notify entry
@@ -250,6 +263,7 @@ public sealed class Conductor(
                 logger.LogCritical("Couldn't identify the disc type. Exiting without any action.");
                 job.Status = JobState.Failure;
                 await db.SaveChangesAsync(ct);
+                BroadcastJobUpdate(job);
                 return 1;
         }
 
@@ -275,6 +289,7 @@ public sealed class Conductor(
         }
 
         await db.SaveChangesAsync(ct);
+        BroadcastJobUpdate(job);
         logger.LogInformation("************* ARM processing complete *************");
         return 0;
     }
@@ -293,6 +308,7 @@ public sealed class Conductor(
         job.Stage = "rip";
         job.Status = JobState.AudioRipping;
         await db.SaveChangesAsync(ct);
+        BroadcastJobUpdate(job);
 
         try
         {
@@ -310,6 +326,7 @@ public sealed class Conductor(
         }
 
         await db.SaveChangesAsync(ct);
+        BroadcastJobUpdate(job);
     }
 
     private async Task RipDataAsync(Job job, CancellationToken ct)
@@ -345,6 +362,7 @@ public sealed class Conductor(
 
         job.Stage = "rip";
         await db.SaveChangesAsync(ct);
+        BroadcastJobUpdate(job);
 
         try
         {
@@ -364,6 +382,9 @@ public sealed class Conductor(
             job.Errors = err;
             try { File.Delete(incompleteFilename); } catch { }
         }
+
+        await db.SaveChangesAsync(ct);
+        BroadcastJobUpdate(job);
 
         try
         {
