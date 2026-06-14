@@ -81,6 +81,42 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
         return Redirect(returnUrl ?? Url.Action("TitleSearch")!);
     }
 
+    [HttpGet("log-tail")]
+    public async Task<IActionResult> LogTail(int jobId, int lines = 50)
+    {
+        var job = await db.Jobs.FindAsync(jobId);
+        if (job is null)
+            return NotFound();
+
+        var logPath = Path.Combine(
+            job.Config?.LogPath ?? settings.Value.LogPath ?? "/home/arm/logs",
+            job.LogFile ?? $"{jobId}.log");
+
+        if (!System.IO.File.Exists(logPath))
+            return Content("");
+
+        // Read last ~lines from the log file (approximate by byte offset)
+        var fileInfo = new System.IO.FileInfo(logPath);
+        var bufferSize = Math.Min(fileInfo.Length, lines * 512); // ~512 bytes per line avg
+        var maxBytes = Math.Min(fileInfo.Length, 64 * 1024); // 64KB max
+        var readSize = Math.Min(bufferSize, maxBytes);
+
+        var content = "";
+        await using (var fs = new System.IO.FileStream(logPath, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.ReadWrite))
+        {
+            if (fileInfo.Length > readSize)
+                fs.Seek(-readSize, System.IO.SeekOrigin.End);
+            using var reader = new System.IO.StreamReader(fs);
+            content = await reader.ReadToEndAsync();
+        }
+
+        // Trim to last N lines
+        var allLines = content.Split('\n');
+        var tailLines = allLines.Skip(Math.Max(0, allLines.Length - lines - 1));
+
+        return Content(string.Join('\n', tailLines), "text/plain");
+    }
+
     [HttpPost("cancel")]
     public async Task<IActionResult> Cancel(int jobId)
     {

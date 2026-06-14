@@ -21,14 +21,21 @@ public sealed partial class IdentifyService(
 {
     public async Task IdentifyAsync(Job job, CancellationToken ct = default)
     {
+        job.ProgressMessage = "Mounting disc...";
+        await db.SaveChangesAsync(ct);
+
         var mounted = await CheckMountAsync(job, ct);
 
         if (mounted)
         {
+            job.ProgressMessage = "Detecting disc type...";
+            await db.SaveChangesAsync(ct);
             job.DiscType = GetDiscType(job.MountPoint!);
         }
         else
         {
+            job.ProgressMessage = "Detecting disc type (fallback)...";
+            await db.SaveChangesAsync(ct);
             job.DiscType = await DetectDiscTypeFallbackAsync(job, ct);
         }
 
@@ -46,7 +53,11 @@ public sealed partial class IdentifyService(
                 };
 
                 if (identified)
+                {
+                    job.ProgressMessage = "Fetching metadata...";
+                    await db.SaveChangesAsync(ct);
                     await GetVideoDetailsAsync(job, ct);
+                }
                 else
                 {
                     job.HasNiceTitle = false;
@@ -65,8 +76,12 @@ public sealed partial class IdentifyService(
             }
         }
 
+        job.ProgressMessage = "Computing disc fingerprint...";
+        await db.SaveChangesAsync(ct);
         await ComputeDiscFingerprintAsync(job, ct);
 
+        job.ProgressMessage = "Unmounting disc...";
+        await db.SaveChangesAsync(ct);
         await UnmountAsync(job, ct);
     }
 
@@ -252,6 +267,8 @@ public sealed partial class IdentifyService(
             }
             else
             {
+                job.ProgressMessage = "Computing CRC64 hash...";
+                await db.SaveChangesAsync(ct);
                 crc64 = await ComputeDvdCrc64Async(job.MountPoint, ct);
                 logger.LogInformation("DVD CRC64 hash is: {Crc64}", crc64);
                 job.CrcId = crc64;

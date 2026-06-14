@@ -18,7 +18,8 @@
     string? StageError(string name) => stageErrors.TryGetValue(name, out var msg) ? msg : null;
 
     // Determine pipeline stages based on disc type
-    var isVideo = Model.DiscType is DiscType.Dvd or DiscType.Bluray;
+    // Default to video pipeline for Unknown (most common; identify will determine actual type)
+    var isVideo = Model.DiscType is DiscType.Dvd or DiscType.Bluray or DiscType.Unknown;
     var isMusic = Model.DiscType is DiscType.Music;
     var isData = Model.DiscType is DiscType.Data;
 

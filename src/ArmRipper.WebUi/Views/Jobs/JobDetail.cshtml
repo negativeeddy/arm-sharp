@@ -36,7 +36,7 @@
                                 @(Model.MakeMkvProgress.HasValue ? $"{Model.MakeMkvProgress}%" : "0%")
                             </div>
                         </div>
-                        @if (Model.Status is JobState.VideoRipping or JobState.TranscodeActive or JobState.Active)
+                        @if (Model.Status is JobState.VideoRipping or JobState.TranscodeActive)
                         {
                             <span class="spinner-border spinner-border-sm text-secondary" role="status"></span>
                         }
@@ -76,10 +76,7 @@
                         {
                             <form method="post" action="/jobs/continue-wait" style="display:inline">
                                 <input type="hidden" name="jobId" value="@Model.Id" />
-                                <button type="submit" class="btn btn-success btn-sm">
-                                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                                    Continue with Auto Title
-                                </button>
+                                <button type="submit" class="btn btn-success btn-sm">Start Now</button>
                             </form>
                         }
                         <form method="post" action="/jobs/cancel" onsubmit="return confirm('Cancel this job?')" style="display:inline">
@@ -117,7 +114,7 @@
                                 @(Model.MakeMkvProgress.HasValue ? $"{Model.MakeMkvProgress}%" : "0%")
                             </div>
                         </div>
-                        @if (Model.Status is JobState.VideoRipping or JobState.TranscodeActive or JobState.Active)
+                        @if (Model.Status is JobState.VideoRipping or JobState.TranscodeActive)
                         {
                             <span class="spinner-border spinner-border-sm text-secondary" role="status"></span>
                         }
@@ -153,6 +150,13 @@
                 {
                     <dt class="col-sm-2"></dt>
                     <dd class="col-sm-10">
+                        @if (Model.Status is JobState.ManualWaitStarted)
+                        {
+                            <form method="post" action="/jobs/continue-wait" style="display:inline">
+                                <input type="hidden" name="jobId" value="@Model.Id" />
+                                <button type="submit" class="btn btn-success btn-sm">Start Now</button>
+                            </form>
+                        }
                         <form method="post" action="/jobs/cancel" onsubmit="return confirm('Cancel this job?')">
                             <input type="hidden" name="jobId" value="@Model.Id" />
                             <button type="submit" class="btn btn-danger btn-sm">Cancel Job</button>
@@ -319,6 +323,20 @@
     <div class="card-header">Pipeline</div>
     <div class="card-body" id="pipeline-container">
         <partial name="_Pipeline" model="Model" />
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <a class="text-decoration-none" data-bs-toggle="collapse" href="#logCollapse" role="button" id="logToggle">
+            Live Log ▾
+        </a>
+        <a href="/logs?jobId=@Model.Id" class="btn btn-outline-secondary btn-sm">View Full Log</a>
+    </div>
+    <div class="collapse show" id="logCollapse">
+        <div class="card-body p-0">
+            <pre id="logContent" class="mb-0 small p-2" style="max-height:300px; overflow-y:auto; background:#1e1e1e; color:#d4d4d4; font-family:monospace; font-size:12px; line-height:1.4;">Loading...</pre>
+        </div>
     </div>
 </div>
 
@@ -674,6 +692,25 @@ else
                 }
             }
         }
+
+        // Log tail refresh
+        var logInterval = null;
+        function refreshLog() {
+            var pre = document.getElementById('logContent');
+            if (!pre) return;
+            // Only fetch if the log section is visible (not collapsed)
+            var collapse = document.getElementById('logCollapse');
+            if (collapse && !collapse.classList.contains('show')) return;
+            fetch('/jobs/log-tail?jobId=' + jobId + '&lines=40')
+                .then(function (r) { return r.text(); })
+                .then(function (text) {
+                    if (text) pre.textContent = text;
+                    pre.scrollTop = pre.scrollHeight;
+                })
+                .catch(function () {});
+        }
+        refreshLog();
+        logInterval = setInterval(refreshLog, 3000);
 
         arm.onJobUpdate(onJobUpdate);
     })();
