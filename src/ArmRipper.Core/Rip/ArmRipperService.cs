@@ -78,6 +78,7 @@ public sealed class ArmRipperService(
                     GuardStage(job, "identify", "Active/VideoInfo", () => job.Status is JobState.Active or JobState.VideoInfo);
                     job.Stage = "rip";
                     job.Status = JobState.VideoRipping;
+                    job.ProgressMessage = "Starting rip...";
                     await db.SaveChangesAsync(ct);
                     BroadcastJobUpdate(job);
 
@@ -128,6 +129,7 @@ public sealed class ArmRipperService(
                 GuardStage(job, "identify", "Active/VideoInfo", () => job.Status is JobState.Active or JobState.VideoInfo);
                 job.Stage = "rip";
                 job.Status = JobState.VideoRipping;
+                job.ProgressMessage = "Starting rip...";
                 await db.SaveChangesAsync(ct);
                 BroadcastJobUpdate(job);
 
@@ -244,6 +246,7 @@ afterMakeMkv:
         await StartTranscodeAsync(job, logFile, transcodeInPath!, transcodeOutPath, protection, ct);
 
         job.Stage = "finalize";
+        job.ProgressMessage = "Finalizing...";
         await db.SaveChangesAsync(ct);
         BroadcastJobUpdate(job);
 
@@ -278,6 +281,7 @@ afterMakeMkv:
         await NotifyExitAsync(job, ct);
 
         job.Stage = "done";
+        job.ProgressMessage = null;
         await db.SaveChangesAsync(ct);
         BroadcastJobUpdate(job);
 
@@ -296,6 +300,7 @@ afterMakeMkv:
         GuardStage(job, "rip", "VideoRipping", () => job.Status is JobState.VideoRipping);
         job.Stage = "transcode";
         job.Status = JobState.TranscodeActive;
+        job.ProgressMessage = "Starting transcode...";
         await db.SaveChangesAsync(ct);
         BroadcastJobUpdate(job);
 

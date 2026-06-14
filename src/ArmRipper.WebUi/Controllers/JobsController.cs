@@ -128,6 +128,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
         {
             job.Status = JobState.Cancelled;
             job.Errors = "Cancelled by user";
+            job.ProgressMessage = "Cancelled";
             await db.SaveChangesAsync();
         }
 

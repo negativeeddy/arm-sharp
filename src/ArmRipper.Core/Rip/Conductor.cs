@@ -44,6 +44,7 @@ public sealed class Conductor(
             {
                 job.Status = JobState.Failure;
                 job.Errors = ex.Message;
+                job.ProgressMessage = null;
                 try { await db.SaveChangesAsync(ct); } catch { /* best effort */ }
                 BroadcastJobUpdate(job);
             }
@@ -236,7 +237,7 @@ public sealed class Conductor(
                 logger.LogInformation("Manual wait expired, continuing with auto-identified title");
 
             job.Status = JobState.Active;
-            job.ProgressMessage = null;
+            job.ProgressMessage = "Starting rip...";
             await db.SaveChangesAsync(ct);
             BroadcastJobUpdate(job);
         }
