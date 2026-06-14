@@ -389,9 +389,9 @@ public partial class MakeMkvService
 
         try
         {
-            var args = $"--robot --messages=-stdout mkv --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
+            var args = $"--robot --messages=-stdout --progress=-stdout mkv --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
             if (!string.IsNullOrEmpty(mkvArgs))
-                args = $"--robot --messages=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
+                args = $"--robot --messages=-stdout --progress=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
 
             await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
                 ParseAndReportProgress(line, progress);
@@ -424,9 +424,9 @@ public partial class MakeMkvService
 
         try
         {
-            var args = $"--robot --messages=-stdout mkv --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
+            var args = $"--robot --messages=-stdout --progress=-stdout mkv --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
             if (!string.IsNullOrEmpty(mkvArgs))
-                args = $"--robot --messages=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
+                args = $"--robot --messages=-stdout --progress=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
 
             await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
                 ParseAndReportProgress(line, progress);
