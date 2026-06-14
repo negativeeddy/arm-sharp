@@ -39,7 +39,12 @@
 
 ## Known Issues
 1. ✅ **MakeMkvProgress always null** — **FIXED** by adding file-size based progress estimation (background monitor polls output .mkv size vs expected track size)
-2. **Job.Stage field** — Currently a Unix timestamp, not a descriptive stage name. Used only for deduplication in output paths.
+2. ✅ **Job.Stage field** — **FIXED** — Now accurately described as storing descriptive stage names ("setup", "identify", "rip", "transcode", "finalize", "done"). Gaps addressed:
+   - `Conductor.SetupJobAsync()` now sets `job.Stage = "setup"`
+   - `Conductor.ProcessJobAsync()` now sets `job.Stage = "identify"` before identify call
+   - `RipMusicAsync()` now sets `job.Stage = "rip"` before abcde and `job.Stage = "done"` after
+   - `RipDataAsync()` now sets `job.Stage = "rip"` before dd and `job.Stage = "done"` after
+   - `_Pipeline.cshtml` now dynamically adjusts stages based on `DiscType` (audio/data discs omit transcode stage)
 3. **SignalR hub** — Exists for log streaming but doesn't broadcast job progress updates. Adding live progress would require hub method + client-side SignalR subscription.
 4. **Audio CD / Data disc** — Pipelines exist in Conductor but untested.
 5. **Notification services** — Pushbullet, IFTTT, Pushover configured in appsettings but untested.

@@ -27,7 +27,7 @@ public sealed class ArmRipperService(
         var transcodeOutPath = Path.Combine(job.Config?.TranscodePath ?? settings.Value.TranscodePath!, typeSubFolder, jobTitle);
         var finalDirectory = Path.Combine(job.Config?.CompletedPath ?? settings.Value.CompletedPath!, typeSubFolder, jobTitle);
 
-        job.Stage ??= DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+        job.Stage ??= "setup";
 
         transcodeOutPath = CheckForDupeFolder(hasDupes, transcodeOutPath, job);
         finalDirectory = CheckForDupeFolder(hasDupes, finalDirectory, job);
@@ -73,7 +73,9 @@ public sealed class ArmRipperService(
                 // Encrypted BDs often return 0 tracks from info; rip all titles directly
                 if (tracks.Count == 0 && job.DiscType is DiscType.Bluray or DiscType.Dvd)
                 {
+                    job.Stage = "identify";
                     GuardStage(job, "identify", "Active/VideoInfo", () => job.Status is JobState.Active or JobState.VideoInfo);
+                    job.Stage = "rip";
                     job.Status = JobState.VideoRipping;
                     await db.SaveChangesAsync(ct);
 
@@ -120,7 +122,9 @@ public sealed class ArmRipperService(
                 await db.SaveChangesAsync(ct);
 
                 logger.LogInformation("************* Ripping disc with MakeMKV *************");
+                job.Stage = "identify";
                 GuardStage(job, "identify", "Active/VideoInfo", () => job.Status is JobState.Active or JobState.VideoInfo);
+                job.Stage = "rip";
                 job.Status = JobState.VideoRipping;
                 await db.SaveChangesAsync(ct);
 
@@ -236,6 +240,9 @@ afterMakeMkv:
 
         await StartTranscodeAsync(job, logFile, transcodeInPath!, transcodeOutPath, protection, ct);
 
+        job.Stage = "finalize";
+        await db.SaveChangesAsync(ct);
+
         logger.LogDebug("Transcode status: [{SkipTranscode}] and MakeMKV Status: [{UseMakeMkv}]",
             job.Config?.SkipTranscode ?? settings.Value.SkipTranscode, useMakeMkv);
 
@@ -266,6 +273,9 @@ afterMakeMkv:
 
         await NotifyExitAsync(job, ct);
 
+        job.Stage = "done";
+        await db.SaveChangesAsync(ct);
+
         logger.LogInformation("************* ARM processing complete *************");
         return finalDirectory;
     }
@@ -279,6 +289,7 @@ afterMakeMkv:
         }
 
         GuardStage(job, "rip", "VideoRipping", () => job.Status is JobState.VideoRipping);
+        job.Stage = "transcode";
         job.Status = JobState.TranscodeActive;
         await db.SaveChangesAsync(ct);
 
@@ -576,7 +587,7 @@ afterMakeMkv:
 
         if (allowDuplicates || !hasDupes)
         {
-            hbOutPath = hbOutPath + "_" + job.Stage;
+            hbOutPath = hbOutPath + "_" + job.Id;
             EnsureDirectory(hbOutPath);
             return hbOutPath;
         }

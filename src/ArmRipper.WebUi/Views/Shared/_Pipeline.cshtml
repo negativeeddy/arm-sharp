@@ -1,8 +1,7 @@
 @model ArmRipper.Core.Models.Job
+@using ArmRipper.Core.Models
 
 @{
-    var hasRipProgress = Model.MakeMkvProgress.HasValue;
-    var hasTranscodeProgress = Model.TranscodeProgress.HasValue;
     var hasWarning = !string.IsNullOrEmpty(Model.Warnings);
 
     var stageErrors = new Dictionary<string, string>();
@@ -18,25 +17,77 @@
 
     string? StageError(string name) => stageErrors.TryGetValue(name, out var msg) ? msg : null;
 
-    var pipelineStages = new[]
+    // Determine pipeline stages based on disc type
+    var isVideo = Model.DiscType is DiscType.Dvd or DiscType.Bluray;
+    var isMusic = Model.DiscType is DiscType.Music;
+    var isData = Model.DiscType is DiscType.Data;
+
+    var pipelineStages = new List<(string name, string label, bool isActive, bool isDone, bool isWarning)>();
+
+    // Setup — active initially, done when any work has started
+    pipelineStages.Add(("setup", "Setup",
+        Model.Status == JobState.Active && string.IsNullOrEmpty(Model.Stage),
+        isActive: Model.Stage is not null && Model.Stage != "setup" && !Model.Status.IsTerminal()
+            || Model.Status is JobState.Success,
+        StageError("setup") is not null));
+
+    // Identify — active during identify, done when moved past it
+    pipelineStages.Add(("identify", "Identify",
+        Model.Stage == "identify" && !Model.Status.IsTerminal(),
+        Model.Stage is not null && Model.Stage != "identify" && Model.Stage != "setup"
+            || Model.Status.IsTerminal(),
+        StageError("identify") is not null || hasWarning));
+
+    // Rip — varies by disc type
+    if (isVideo)
     {
-        ("setup", "Setup", true, Model.Status != JobState.Active, StageError("setup") is not null),
-        ("identify", "Identify", Model.Status is JobState.Active or JobState.VideoInfo, Model.Status is not JobState.Active and not JobState.VideoInfo, StageError("identify") is not null || hasWarning),
-        ("rip", "Rip", Model.Status is JobState.VideoRipping, Model.Status is JobState.TranscodeActive or JobState.Success or JobState.Failure, StageError("rip") is not null),
-        ("transcode", "Transcode", Model.Status is JobState.TranscodeActive, Model.Status is JobState.Success or JobState.Failure, StageError("transcode") is not null),
-        ("done", "Done", false, Model.Status is JobState.Success or JobState.Failure, false),
-    };
+        pipelineStages.Add(("rip", "Rip",
+            Model.Status is JobState.VideoRipping,
+            Model.Status is JobState.TranscodeActive or JobState.Success or JobState.Failure,
+            StageError("rip") is not null));
+    }
+    else if (isMusic)
+    {
+        pipelineStages.Add(("rip", "Rip",
+            Model.Status is JobState.AudioRipping,
+            Model.Status is JobState.Success or JobState.Failure,
+            StageError("rip") is not null));
+    }
+    else // Data or Unknown
+    {
+        pipelineStages.Add(("rip", "Rip",
+            Model.Stage == "rip" && !Model.Status.IsTerminal(),
+            Model.Status.IsTerminal(),
+            StageError("rip") is not null));
+    }
+
+    // Transcode — only for video discs
+    if (isVideo)
+    {
+        pipelineStages.Add(("transcode", "Transcode",
+            Model.Status is JobState.TranscodeActive,
+            Model.Status is JobState.Success or JobState.Failure,
+            StageError("transcode") is not null));
+    }
+
+    // Done
+    pipelineStages.Add(("done", "Done",
+        false,
+        Model.Status.IsTerminal(),
+        false));
+
+    var stageOrder = pipelineStages.Select(s => s.name).ToArray();
 
     string? FailedStage()
     {
         if (Model.Status != JobState.Failure || Model.Stage is null) return null;
         var s = Model.Stage;
-        if (s.Contains("Rip", StringComparison.OrdinalIgnoreCase)) return "rip";
-        if (s.Contains("Transcode", StringComparison.OrdinalIgnoreCase)) return "transcode";
-        return "identify";
+        if (s.Contains("rip", StringComparison.OrdinalIgnoreCase)) return "rip";
+        if (s.Contains("transcode", StringComparison.OrdinalIgnoreCase)) return "transcode";
+        return s;
     }
     var failed = FailedStage();
-    var stageOrder = new[] { "setup", "identify", "rip", "transcode", "done" };
+    var failedIdx = failed is null ? -1 : Array.IndexOf(stageOrder, failed);
 
     int? StageProgress(string name) => name switch
     {
@@ -54,11 +105,11 @@
 }
 
 <div class="d-flex justify-content-between align-items-center">
-    @foreach (var (name, label, active, done, warning) in pipelineStages)
+    @for (var i = 0; i < pipelineStages.Count; i++)
     {
+        var (name, label, active, done, warning) = pipelineStages[i];
         var pct = StageProgress(name);
-        var failedIdx = failed is null ? -1 : Array.IndexOf(stageOrder, failed);
-        var thisIdx = Array.IndexOf(stageOrder, name);
+        var thisIdx = i;
         var inFailure = failed is not null;
         var isDone = inFailure ? thisIdx < failedIdx : done;
         var isFailed = name == failed;
@@ -77,16 +128,16 @@
                 </div>
             }
         </div>
-        @if (name != "done")
+        @if (i < pipelineStages.Count - 1)
         {
             <div class="text-muted flex-shrink-0" style="width:12px;text-align:center;">&rarr;</div>
         }
     }
 </div>
 @{
-    var overall = pipelineStages.Sum(s => StageProgress(s.Item1) ?? 0);
-    var overallCount = pipelineStages.Count(s => StageProgress(s.Item1).HasValue);
-    var overallPct = overallCount > 0 ? overall / overallCount : (int?)null;
+    var overallProgress = pipelineStages.Sum(s => StageProgress(s.name) ?? 0);
+    var overallProgressCount = pipelineStages.Count(s => StageProgress(s.name).HasValue);
+    var overallPct = overallProgressCount > 0 ? overallProgress / overallProgressCount : (int?)null;
 }
 @if (overallPct.HasValue)
 {
