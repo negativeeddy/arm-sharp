@@ -18,7 +18,7 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner) : Control
     {
         var activeRips = await db.Jobs
             .Include(j => j.Config)
-            .Where(j => j.Status != JobState.Success && j.Status != JobState.Failure)
+            .Where(j => j.Status != JobState.Success && j.Status != JobState.Failure && j.Status != JobState.Cancelled)
             .OrderByDescending(j => j.StartTime)
             .Take(10)
             .ToListAsync();

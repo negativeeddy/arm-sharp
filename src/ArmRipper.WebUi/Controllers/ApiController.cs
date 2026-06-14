@@ -60,7 +60,7 @@ public partial class ApiController(
     {
         var jobs = await db.Jobs
             .Include(j => j.Config)
-            .Where(j => j.Status != JobState.Success && j.Status != JobState.Failure)
+            .Where(j => j.Status != JobState.Success && j.Status != JobState.Failure && j.Status != JobState.Cancelled)
             .OrderByDescending(j => j.StartTime)
             .ToListAsync();
 
