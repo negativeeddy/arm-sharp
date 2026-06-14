@@ -352,7 +352,10 @@ public class SettingsController(
     {
         // Check if a job is already running for this device
         var existingJob = await db.Jobs
-            .Where(j => j.DevPath == devPath && !j.Status.IsTerminal())
+            .Where(j => j.DevPath == devPath
+                && j.Status != JobState.Success
+                && j.Status != JobState.Failure
+                && j.Status != JobState.Cancelled)
             .OrderByDescending(j => j.StartTime)
             .FirstOrDefaultAsync();
 
