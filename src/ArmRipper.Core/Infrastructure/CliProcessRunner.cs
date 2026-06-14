@@ -131,7 +131,7 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         if (stderr.Count > 0)
         {
             foreach (var errLine in stderr)
-                logger.LogDebug("{FileName}: {Line}", fileName, errLine);
+                logger.LogDebug("STDERR {FileName}: {Line}", fileName, errLine);
         }
 
         logger.LogInformation("Process exited ({Name}) code={Code}", fileName, process.ExitCode);
