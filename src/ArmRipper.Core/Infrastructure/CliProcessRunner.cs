@@ -32,6 +32,12 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
 
         process.Start();
 
+        using var _ = ct.Register(() =>
+        {
+            try { process.Kill(entireProcessTree: true); } catch { }
+            logger.LogWarning("Process cancelled ({Name})", fileName);
+        });
+
         var stdout = ReadAllLinesAsync(process.StandardOutput, ct);
         var stderr = ReadAllLinesAsync(process.StandardError, ct);
 
