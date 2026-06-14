@@ -667,11 +667,23 @@ public partial class MakeMkvService
     private static ParsedLine ParsePrgV(string content)
     {
         var parts = content.Split(',');
-        var ct = parts.Length > 0 && int.TryParse(parts[0], out var v0) ? v0 : 0;
-        var tt = parts.Length > 1 && int.TryParse(parts[1], out var v1) ? v1 : 0;
-        var cp = parts.Length > 2 && int.TryParse(parts[2], out var v2) ? v2 : 0;
-        var tp = parts.Length > 3 && int.TryParse(parts[3], out var v3) ? v3 : 0;
-        return new ParsedLine(MakeMkvOutputType.PrgV, new PrgV(ct, tt, cp, tp));
+        if (parts.Length >= 4)
+        {
+            // 4-field: current_title,total_titles,current_progress,total_progress
+            var ct = int.TryParse(parts[0], out var v0) ? v0 : 0;
+            var tt = int.TryParse(parts[1], out var v1) ? v1 : 0;
+            var cp = int.TryParse(parts[2], out var v2) ? v2 : 0;
+            var tp = int.TryParse(parts[3], out var v3) ? v3 : 0;
+            return new ParsedLine(MakeMkvOutputType.PrgV, new PrgV(ct, tt, cp, tp));
+        }
+        else if (parts.Length >= 3)
+        {
+            // 3-field (MakeMKV v1.18+): stream_id,current_bytes,total_bytes
+            var cp = int.TryParse(parts[1], out var v1) ? v1 : 0;
+            var tp = int.TryParse(parts[2], out var v2) ? v2 : 0;
+            return new ParsedLine(MakeMkvOutputType.PrgV, new PrgV(0, 0, cp, tp));
+        }
+        return new ParsedLine(MakeMkvOutputType.PrgV, new PrgV(0, 0, 0, 0));
     }
 
     private static ParsedLine ParsePrgC(string content)
