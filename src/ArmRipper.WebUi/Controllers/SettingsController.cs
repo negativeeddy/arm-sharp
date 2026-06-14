@@ -350,6 +350,15 @@ public class SettingsController(
     [HttpPost("start-rip")]
     public async Task<IActionResult> StartRip(string devPath)
     {
+        // Check if a job is already running for this device
+        var existingJob = await db.Jobs
+            .Where(j => j.DevPath == devPath && !j.Status.IsTerminal())
+            .OrderByDescending(j => j.StartTime)
+            .FirstOrDefaultAsync();
+
+        if (existingJob is not null)
+            return RedirectToAction("JobDetail", "Jobs", new { jobId = existingJob.Id });
+
         // Record the max existing job ID before starting, so we can find the new one
         var maxIdBefore = await db.Jobs.MaxAsync(j => (int?)j.Id) ?? 0;
 
