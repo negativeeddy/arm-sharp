@@ -438,6 +438,47 @@ else
             }, 1000);
         }
 
+        function updateActionButtons(status) {
+            var dd = findDd('');  // last dd in the dl is the actions row
+            // Find the actions dd by looking for the form elements
+            var container = document.querySelector('[data-job-id="' + jobId + '"]');
+            if (!container) return;
+            var forms = container.querySelectorAll('form');
+            var actionsDd = null;
+            forms.forEach(function (f) {
+                if (f.action && (f.action.indexOf('/cancel') > -1 || f.action.indexOf('/continue-wait') > -1)) {
+                    actionsDd = f.parentElement;
+                }
+            });
+            if (!actionsDd) return;
+
+            var isManualWait = status === 'waiting'; // ManualWaitStarted
+            var isTerminal_ = terminalStatuses.indexOf(status) !== -1;
+
+            if (isTerminal_) {
+                actionsDd.innerHTML = '';
+                return;
+            }
+
+            if (isManualWait) {
+                actionsDd.innerHTML =
+                    '<form method="post" action="/jobs/continue-wait" style="display:inline">' +
+                    '<input type="hidden" name="jobId" value="' + jobId + '" />' +
+                    '<button type="submit" class="btn btn-success me-2">\u25B6 Skip Wait \u2014 Start Now</button>' +
+                    '</form>' +
+                    '<form method="post" action="/jobs/cancel" onsubmit="return confirm(\'Cancel this job?\')" style="display:inline">' +
+                    '<input type="hidden" name="jobId" value="' + jobId + '" />' +
+                    '<button type="submit" class="btn btn-outline-danger btn-sm">Cancel Job</button>' +
+                    '</form>';
+            } else {
+                actionsDd.innerHTML =
+                    '<form method="post" action="/jobs/cancel" onsubmit="return confirm(\'Cancel this job?\')" style="display:inline">' +
+                    '<input type="hidden" name="jobId" value="' + jobId + '" />' +
+                    '<button type="submit" class="btn btn-outline-danger btn-sm">Cancel Job</button>' +
+                    '</form>';
+            }
+        }
+
         function onJobUpdate(update) {
             if (update.jobId !== jobId) return;
 
@@ -464,18 +505,13 @@ else
                         dd.textContent = update.status;
                     }
                 }
+
+                // Update action buttons when status changes
+                updateActionButtons(update.status);
+
                 if (isTerminal(update.status) && !wasTerminal) {
                     wasTerminal = true;
                     setSpinner(false);
-                    var container = document.querySelector('[data-job-id="' + jobId + '"]');
-                    if (container) {
-                        var forms = container.querySelectorAll('form');
-                        forms.forEach(function (f) {
-                            if (f.action && (f.action.indexOf('/cancel') > -1 || f.action.indexOf('/continue-wait') > -1)) {
-                                f.style.display = 'none';
-                            }
-                        });
-                    }
                     setTimeout(function () { location.reload(); }, 2000);
                 }
             }
