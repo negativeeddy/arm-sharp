@@ -121,22 +121,28 @@
     }
 </div>
 @{
-    // Show overall progress bar for the active stage
+    // Show progress bar whenever there's useful info: rip %, transcode %, or a progress message
     var activeProgress = Model.Status switch
     {
         JobState.VideoRipping => Model.MakeMkvProgress,
         JobState.TranscodeActive => Model.TranscodeProgress,
         _ => (int?)null
     };
-    var showProgress = activeProgress.HasValue || Model.Status is JobState.VideoRipping or JobState.TranscodeActive;
+    var hasMessage = !string.IsNullOrEmpty(Model.ProgressMessage);
+    var showProgress = activeProgress.HasValue
+        || Model.Status is JobState.VideoRipping or JobState.TranscodeActive
+        || hasMessage;
 }
 @if (showProgress)
 {
     var pct = activeProgress ?? 0;
-    var label = !string.IsNullOrEmpty(Model.ProgressMessage) ? Model.ProgressMessage + " — " + pct + "%" : pct + "%";
+    var isIndeterminate = activeProgress is null && hasMessage;
+    var label = hasMessage
+        ? (activeProgress.HasValue ? Model.ProgressMessage + " — " + pct + "%" : Model.ProgressMessage)
+        : pct + "%";
     <div class="progress mt-2" style="height:22px;">
-        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar"
-             style="width:@(pct)%" aria-valuenow="@pct" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-bar @(isIndeterminate ? "progress-bar-striped progress-bar-animated bg-info" : "progress-bar-striped progress-bar-animated")" role="progressbar"
+             style="width:@(isIndeterminate ? "100" : pct)%" aria-valuenow="@pct" aria-valuemin="0" aria-valuemax="100">
             @label
         </div>
     </div>
