@@ -1,12 +1,13 @@
 # ARM Sharp Pipeline Testing Progress
 
 ## Current Status
-**Date**: 2026-06-13
+**Date**: 2026-06-14
 **Disc**: Zombieland (DVD)
 **Jobs**:
 - #12 — **FULL PIPELINE SUCCESS** ✅ (14m 10s)
 - #13 — **FULL PIPELINE SUCCESS** ✅ (13m 33s)
-- #14 — **PIPELINE RUNNING** 🔄 (MakeMKV progress fix validation)
+- #14 — **PIPELINE RUNNING** 🔄 (MakeMKV progress = 66% and climbing)
+- ✅ **UI timezone fix applied** — All UTC timestamps now converted to local time (America/Chicago) via `.ToLocalTime()` in 7 view files
 
 **Output**:
 - Job #12: `/home/arm/media/completed/movies/Zombieland (2009)/Zombieland (2009).mkv` (2.1GB)
