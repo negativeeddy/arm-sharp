@@ -435,26 +435,26 @@ else
         }
 
         function onJobUpdate(update) {
-            if (update.JobId !== jobId) return;
+            if (update.jobId !== jobId) return;
 
-            setProgress(findDd('Rip Progress'), update.MakeMkvProgress);
-            setProgress(findDd('Transcode Progress'), update.TranscodeProgress);
+            setProgress(findDd('Rip Progress'), update.makeMkvProgress);
+            setProgress(findDd('Transcode Progress'), update.transcodeProgress);
 
-            if (update.ProgressMessage != null) {
+            if (update.progressMessage != null) {
                 var dd = findDd('Progress');
-                if (dd) dd.textContent = update.ProgressMessage;
+                if (dd) dd.textContent = update.progressMessage;
             }
 
-            if (update.Status != null) {
+            if (update.status != null) {
                 var dd = findDd('Status');
                 if (dd) {
-                    if (update.Warnings) {
-                        dd.innerHTML = '<span class="badge bg-warning text-dark" title="' + update.Warnings.replace(/"/g, '&quot;') + '">\u26A0 ' + update.Status + '</span>';
+                    if (update.warnings) {
+                        dd.innerHTML = '<span class="badge bg-warning text-dark" title="' + update.warnings.replace(/"/g, '&quot;') + '">\u26A0 ' + update.status + '</span>';
                     } else {
-                        dd.textContent = update.Status;
+                        dd.textContent = update.status;
                     }
                 }
-                if (isTerminal(update.Status) && !wasTerminal) {
+                if (isTerminal(update.status) && !wasTerminal) {
                     wasTerminal = true;
                     setSpinner(false);
                     var container = document.querySelector('[data-job-id="' + jobId + '"]');
@@ -470,24 +470,24 @@ else
                 }
             }
 
-            if (update.Stage != null && update.Stage !== lastStage) {
-                lastStage = update.Stage;
-                setText(findDd('Stage'), update.Stage);
+            if (update.stage != null && update.stage !== lastStage) {
+                lastStage = update.stage;
+                setText(findDd('Stage'), update.stage);
                 refreshPipeline();
             }
 
-            if (update.StopTime != null) {
+            if (update.stopTime != null) {
                 var dd = findDd('Stopped');
                 if (dd) {
-                    try { var d = new Date(update.StopTime); dd.textContent = d.toLocaleString(); } catch (e) { dd.textContent = update.StopTime; }
+                    try { var d = new Date(update.stopTime); dd.textContent = d.toLocaleString(); } catch (e) { dd.textContent = update.stopTime; }
                 }
             }
 
-            if (update.JobLength != null) setText(findDd('Duration'), update.JobLength);
+            if (update.jobLength != null) setText(findDd('Duration'), update.jobLength);
 
-            if (update.Warnings != null) {
+            if (update.warnings != null) {
                 var wEl = document.getElementById('warnings-card');
-                if (update.Warnings) {
+                if (update.warnings) {
                     if (!wEl) {
                         var pipelineCard = document.querySelector('.card:has(#pipeline-container)');
                         if (pipelineCard) {
@@ -499,13 +499,13 @@ else
                         }
                     }
                     var pre = document.getElementById('warnings-text');
-                    if (pre) pre.textContent = update.Warnings;
+                    if (pre) pre.textContent = update.warnings;
                 } else if (wEl) wEl.style.display = 'none';
             }
 
-            if (update.Errors != null) {
+            if (update.errors != null) {
                 var eEl = document.getElementById('errors-card');
-                if (update.Errors) {
+                if (update.errors) {
                     if (!eEl) {
                         var pipelineCard = document.querySelector('.card:has(#pipeline-container)');
                         if (pipelineCard) {
@@ -517,7 +517,7 @@ else
                         }
                     }
                     var pre = document.getElementById('errors-text');
-                    if (pre) pre.textContent = update.Errors;
+                    if (pre) pre.textContent = update.errors;
                 } else if (eEl) eEl.style.display = 'none';
             }
         }

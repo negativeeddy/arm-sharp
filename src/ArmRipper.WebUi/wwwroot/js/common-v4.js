@@ -66,16 +66,16 @@ arm.startSignalR = function () {
     var _lastToastKey = '';
     arm.signalrConnection.on('JobUpdate', function (update) {
         // Toast only on status/stage changes (not every percent tick)
-        var key = update.JobId + '|' + (update.Status || '') + '|' + (update.Stage || '');
-        if (update.ProgressMessage && update.ProgressMessage !== key) key += '|' + update.ProgressMessage;
+        var key = update.jobId + '|' + (update.status || '') + '|' + (update.stage || '');
+        if (update.progressMessage && update.progressMessage !== key) key += '|' + update.progressMessage;
         if (key !== _lastToastKey) {
             _lastToastKey = key;
-            var parts = ['#' + update.JobId];
-            if (update.Status) parts.push(update.Status);
-            if (update.Stage) parts.push(update.Stage);
-            if (update.MakeMkvProgress != null) parts.push('Rip:' + update.MakeMkvProgress + '%');
-            if (update.TranscodeProgress != null) parts.push('Xcode:' + update.TranscodeProgress + '%');
-            if (update.ProgressMessage) parts.push(update.ProgressMessage);
+            var parts = ['#' + update.jobId];
+            if (update.status) parts.push(update.status);
+            if (update.stage) parts.push(update.stage);
+            if (update.makeMkvProgress != null) parts.push('Rip:' + update.makeMkvProgress + '%');
+            if (update.transcodeProgress != null) parts.push('Xcode:' + update.transcodeProgress + '%');
+            if (update.progressMessage) parts.push(update.progressMessage);
             arm._showToast(parts.join(' | '));
         }
 
