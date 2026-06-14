@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace ArmRipper.Core.Models;
 
 public class Job
@@ -52,4 +54,11 @@ public class Job
 
     public ICollection<Track> Tracks { get; init; } = new List<Track>();
     public ConfigSnapshot? Config { get; set; }
+
+    /// <summary>Full path to the on-disk log file for this job.</summary>
+    public string GetLogFilePath(string? defaultLogPath = null)
+    {
+        var logPath = Config?.LogPath ?? defaultLogPath ?? "/home/arm/logs";
+        return System.IO.Path.Combine(logPath, LogFile ?? $"{Id}.log");
+    }
 }

@@ -122,7 +122,7 @@ public partial class MakeMkvService
         var fileName = "makemkvcon";
         var arguments = $"--robot --messages=-stdout info dev:{job.DevPath} --minlength={minLength}";
 
-        var result = await _runner.RunAsync(fileName, arguments, timeoutMs: 300_000, ct: ct);
+        var result = await _runner.RunAsync(fileName, arguments, timeoutMs: 300_000, ct: ct, logFilePath: job.GetLogFilePath(_settings.Value.LogPath));
         if (result.TimedOut)
         {
             _logger.LogWarning("makemkvcon info timed out");
@@ -393,7 +393,7 @@ public partial class MakeMkvService
             if (!string.IsNullOrEmpty(mkvArgs))
                 args = $"--robot --messages=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
 
-            await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
+            await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct, logFilePath: job.GetLogFilePath(_settings.Value.LogPath)))
                 ParseAndReportProgress(line, progress);
 
             // Rip completed successfully — report 100%
@@ -428,7 +428,7 @@ public partial class MakeMkvService
             if (!string.IsNullOrEmpty(mkvArgs))
                 args = $"--robot --messages=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
 
-            await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
+            await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct, logFilePath: job.GetLogFilePath(_settings.Value.LogPath)))
                 ParseAndReportProgress(line, progress);
 
             // Rip completed successfully — report 100%

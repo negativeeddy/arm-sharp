@@ -11,7 +11,8 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         string arguments,
         string? workingDirectory = null,
         int timeoutMs = 120_000,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? logFilePath = null)
     {
         logger.LogDebug("Running: {FileName} {Arguments}", fileName, arguments);
 
@@ -53,7 +54,16 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         // Wait for async readers to finish (they may lag behind process exit)
         await Task.WhenAll(stdout, stderr);
 
-        var result = new CliResult(process.ExitCode, string.Join("\n", await stdout), string.Join("\n", await stderr), false);
+        var stdOutStr = string.Join("\n", await stdout);
+        var stdErrStr = string.Join("\n", await stderr);
+
+        // Write output to log file if specified
+        if (logFilePath is not null)
+        {
+            await AppendToLogAsync(logFilePath, stdOutStr, stdErrStr, fileName, arguments);
+        }
+
+        var result = new CliResult(process.ExitCode, stdOutStr, stdErrStr, false);
         logger.LogDebug("Exit code {Code}: {FileName}", result.ExitCode, fileName);
         return result;
     }
@@ -70,7 +80,8 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         string fileName,
         string arguments,
         string? workingDirectory = null,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken ct = default,
+        string? logFilePath = null)
     {
         logger.LogInformation("Streaming: {FileName} {Arguments}", fileName, arguments);
 
@@ -99,9 +110,11 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         });
 
         var stderrTask = ReadAllLinesAsync(process.StandardError, ct);
+        var stdoutLines = new List<string>();
 
         while (await process.StandardOutput.ReadLineAsync(ct) is { } line)
         {
+            stdoutLines.Add(line);
             yield return line;
         }
 
@@ -110,6 +123,13 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         var stderr = await stderrTask;
         if (stderr.Count > 0)
             logger.LogWarning("Process stderr ({Name}): {Lines}", fileName, string.Join("\n", stderr));
+
+        // Write output to log file if specified
+        if (logFilePath is not null)
+        {
+            await AppendToLogAsync(logFilePath, string.Join("\n", stdoutLines), string.Join("\n", stderr), fileName, arguments);
+        }
+
         logger.LogInformation("Process exited ({Name}) code={Code}", fileName, process.ExitCode);
 
         process.Dispose();
@@ -166,5 +186,29 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         logger.LogInformation("Process exited ({Name}) code={Code}", fileName, exitCode);
         process.Dispose();
         yield return (null, false, exitCode);
+    }
+
+    private async Task AppendToLogAsync(string logFilePath, string stdOut, string stdErr, string fileName, string arguments)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(logFilePath);
+            if (dir is not null)
+                Directory.CreateDirectory(dir);
+
+            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            var header = $"\n[{timestamp}] $ {fileName} {arguments}\n";
+            var body = header;
+            if (!string.IsNullOrEmpty(stdOut))
+                body += stdOut + "\n";
+            if (!string.IsNullOrEmpty(stdErr))
+                body += "STDERR:\n" + stdErr + "\n";
+
+            await File.AppendAllTextAsync(logFilePath, body);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to write to log file {Path}", logFilePath);
+        }
     }
 }

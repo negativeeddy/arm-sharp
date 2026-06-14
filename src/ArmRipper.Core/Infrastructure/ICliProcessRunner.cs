@@ -9,13 +9,15 @@ public interface ICliProcessRunner
         string arguments,
         string? workingDirectory = null,
         int timeoutMs = 120_000,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        string? logFilePath = null);
 
     IAsyncEnumerable<string> RunStreamingAsync(
         string fileName,
         string arguments,
         string? workingDirectory = null,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        string? logFilePath = null);
 
     IAsyncEnumerable<(string? Line, bool IsStdErr, int? ExitCode)> RunStreamingAllAsync(
         string fileName,
