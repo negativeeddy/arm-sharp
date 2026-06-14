@@ -56,9 +56,9 @@
                 <dt class="col-sm-3">Stage</dt>
                 <dd class="col-sm-9">@(Model.Stage ?? "—")</dd>
                 <dt class="col-sm-3">Started</dt>
-                <dd class="col-sm-9">@Model.StartTime.ToString("g")</dd>
+                <dd class="col-sm-9">@Model.StartTime.ToLocalTime().ToString("g")</dd>
                 <dt class="col-sm-3">Stopped</dt>
-                <dd class="col-sm-9">@Model.StopTime?.ToString("g")</dd>
+                <dd class="col-sm-9">@Model.StopTime?.ToLocalTime().ToString("g")</dd>
                 <dt class="col-sm-3">Duration</dt>
                 <dd class="col-sm-9">@Model.JobLength</dd>
                 <dt class="col-sm-3">Titles</dt>
@@ -137,9 +137,9 @@
                 <dt class="col-sm-2">Stage</dt>
                 <dd class="col-sm-10">@(Model.Stage ?? "—")</dd>
                 <dt class="col-sm-2">Started</dt>
-                <dd class="col-sm-10">@Model.StartTime.ToString("g")</dd>
+                <dd class="col-sm-10">@Model.StartTime.ToLocalTime().ToString("g")</dd>
                 <dt class="col-sm-2">Stopped</dt>
-                <dd class="col-sm-10">@Model.StopTime?.ToString("g")</dd>
+                <dd class="col-sm-10">@Model.StopTime?.ToLocalTime().ToString("g")</dd>
                 <dt class="col-sm-2">Duration</dt>
                 <dd class="col-sm-10">@Model.JobLength</dd>
                 <dt class="col-sm-2">Titles</dt>

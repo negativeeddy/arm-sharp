@@ -78,7 +78,7 @@ else
                     <td>@job.Year</td>
                     <td>@(job.VideoType ?? job.DiscType.ToString())</td>
                     <td>@job.Status</td>
-                    <td class="text-nowrap">@job.StartTime.ToString("g")</td>
+                    <td class="text-nowrap">@job.StartTime.ToLocalTime().ToString("g")</td>
                     <td class="text-nowrap">
                         <a href="/jobs/jobdetail?jobId=@job.Id" class="btn btn-sm btn-outline-primary">View</a>
                         <a href="/logs/view?file=@job.LogFile&mode=full" class="btn btn-sm btn-outline-info">Log</a>

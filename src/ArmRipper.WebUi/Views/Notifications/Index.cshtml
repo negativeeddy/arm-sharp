@@ -45,7 +45,7 @@ else
             @foreach (var notification in Model)
             {
                 <tr class="@(notification.Read ? "" : "table-active")">
-                    <td>@notification.Timestamp.ToString("g")</td>
+                    <td>@notification.Timestamp.ToLocalTime().ToString("g")</td>
                     <td><span class="badge badge-secondary">@notification.EventType</span></td>
                     <td>@notification.Message</td>
                     <td>@(notification.Read ? "Yes" : "No")</td>

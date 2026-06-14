@@ -81,6 +81,7 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
             }
         };
 
+        // TODO: is this a race condition if the process writes to stdout before we start reading? Should we start reading before starting the process?
         process.Start();
 
         using var _ = ct.Register(() =>
