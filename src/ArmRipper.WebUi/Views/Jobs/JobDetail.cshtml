@@ -137,9 +137,9 @@
                 {
                     foreach (var r in meta.Ratings)
                     {
+                        if (r.Source == "Internet Movie Database") continue; // we show IMDb badge below
                         var ratingUrl = r.Source switch
                         {
-                            "Internet Movie Database" when imdbUrl is not null => imdbUrl,
                             "Rotten Tomatoes" => $"https://www.rottentomatoes.com/search?search={Uri.EscapeDataString(meta.Title ?? "")}",
                             "Metacritic" => $"https://www.metacritic.com/search/{Uri.EscapeDataString(meta.Title ?? "")}",
                             _ => null
