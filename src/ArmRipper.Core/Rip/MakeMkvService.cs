@@ -447,10 +447,18 @@ public partial class MakeMkvService
     /// Monitors the output directory for .mkv file growth and reports progress
     /// based on total written bytes vs expected size. Acts as a fallback when
     /// MakeMKV does not emit PRGC/PRGV progress lines during the rip phase.
+    /// Only counts .mkv files created after this monitor starts, so that
+    /// sequential per-track rips don't double-count previous tracks' files.
     /// </summary>
     private async Task MonitorRipFileSizeAsync(string outputPath, long expectedSize, IProgress<int> progress, CancellationToken ct)
     {
         if (expectedSize <= 0) return;
+
+        // Snapshot files that already exist before this rip starts,
+        // so we only count newly created files during this rip session.
+        var preExisting = Directory.Exists(outputPath)
+            ? Directory.EnumerateFiles(outputPath, "*.mkv").ToHashSet()
+            : new HashSet<string>();
 
         try
         {
@@ -464,7 +472,11 @@ public partial class MakeMkvService
                 try
                 {
                     foreach (var file in Directory.EnumerateFiles(outputPath, "*.mkv"))
+                    {
+                        // Skip files that were already there before this rip started
+                        if (preExisting.Contains(file)) continue;
                         totalSize += new FileInfo(file).Length;
+                    }
                 }
                 catch (UnauthorizedAccessException) { continue; }
                 catch (DirectoryNotFoundException) { continue; }
