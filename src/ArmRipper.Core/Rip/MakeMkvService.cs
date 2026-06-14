@@ -675,7 +675,16 @@ public partial class MakeMkvService
 
     private static ParsedLine ParsePrgT(string content)
     {
-        return new ParsedLine(MakeMkvOutputType.PrgT, new PrgT(int.Parse(content)));
+        // PRGT format: code,total,"text" — e.g. 5018,0,"Scanning CD-ROM devices"
+        var parts = SplitCsv(content);
+        if (parts.Length >= 2 && int.TryParse(parts[1], out var total2))
+            return new ParsedLine(MakeMkvOutputType.PrgT, new PrgT(total2));
+
+        // Fallback: try parsing as single int (legacy)
+        if (int.TryParse(content, out var total1))
+            return new ParsedLine(MakeMkvOutputType.PrgT, new PrgT(total1));
+
+        return new ParsedLine(MakeMkvOutputType.PrgT, new PrgT(0));
     }
 
     private static string[] SplitCsv(string input)
