@@ -1,7 +1,7 @@
 var arm = arm || {};
 
-// v3 — SignalR debug toasts
-console.log('[ARM] common.js v3 loaded');
+// v4 — SignalR debug toasts with console logging
+console.log('[ARM] common.js v4 loaded');
 
 arm.signalrConnection = null;
 
@@ -14,8 +14,15 @@ arm.onJobUpdate = function (fn) {
 };
 
 arm._showToast = function (msg) {
+    console.log('[ARM] toast:', msg);
     var container = document.getElementById('toastContainer');
-    if (!container) return;
+    if (!container) {
+        // Create the container if it doesn't exist
+        container = document.createElement('div');
+        container.id = 'toastContainer';
+        container.style.cssText = 'position:fixed; bottom:1rem; right:1rem; z-index:9999; max-width:400px;';
+        document.body.appendChild(container);
+    }
     var toast = document.createElement('div');
     toast.className = 'alert alert-info alert-dismissible fade show py-1 px-2 mb-1 small';
     toast.style.fontSize = '11px';
@@ -90,9 +97,11 @@ arm.startSignalR = function () {
     arm.signalrConnection.start()
         .then(function () {
             arm.refreshNotifBadge();
+            console.log('[ARM] SignalR connected, showing toast...');
             arm._showToast('\u2705 SignalR connected');
         })
         .catch(function (err) {
+            console.error('[ARM] SignalR failed:', err);
             arm._showToast('\u274C SignalR failed: ' + (err.message || err));
         });
 };
