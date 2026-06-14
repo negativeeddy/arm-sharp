@@ -29,6 +29,10 @@ public sealed class ArmRipperService(
         var finalDirectory = Path.Combine(job.Config?.CompletedPath ?? settings.Value.CompletedPath!, typeSubFolder, jobTitle);
 
         job.Stage ??= "setup";
+        job.Stage = "identify";  // transition stage
+        job.ProgressMessage ??= "Preparing to rip...";
+        await db.SaveChangesAsync(ct);
+        BroadcastJobUpdate(job);
 
         transcodeOutPath = CheckForDupeFolder(hasDupes, transcodeOutPath, job);
         finalDirectory = CheckForDupeFolder(hasDupes, finalDirectory, job);
