@@ -45,15 +45,17 @@
    - `RipMusicAsync()` now sets `job.Stage = "rip"` before abcde and `job.Stage = "done"` after
    - `RipDataAsync()` now sets `job.Stage = "rip"` before dd and `job.Stage = "done"` after
    - `_Pipeline.cshtml` now dynamically adjusts stages based on `DiscType` (audio/data discs omit transcode stage)
-3. 🔄 **SignalR hub — Broadcast job progress updates** — **IN PROGRESS (Phase 1 done)**
+3. 🔄 **SignalR hub — Broadcast job progress updates** — **Phase 2 complete**
    - ✅ `JobUpdate` DTO created in Core.Models — UI-independent snapshot of mutable job fields
    - ✅ `BroadcastJobUpdateAsync(JobUpdate)` added to `INotificationBroadcaster`
    - ✅ Implemented in `SignalRNotificationBroadcaster` (sends "JobUpdate" SignalR event to all clients)
    - ✅ `NullNotificationBroadcaster` implements no-op (used by CLI)
    - ✅ `ArmRipperService` broadcasts on every % progress change (rip + transcode) and status/stage transitions
    - ✅ `Conductor` broadcasts on all status/stage transitions (setup, identify, manual wait, dispatch, audio/data rip, completion)
-   - 🔜 **Phase 2**: Replace 5s `location.reload()` on JobDetail page with SignalR `JobUpdate` listener
-   - 🔜 **Phase 3**: Replace 10s polling on Home page with SignalR listener for table row updates
-   - 🔜 **Phase 4**: Remove 15s notification polling fallback (SignalR already handles it), wire `RefreshRate` from DB
+   - ✅ `common.js` added callback registry — pages register via `arm.onJobUpdate(fn)`
+   - ✅ **JobDetail page**: 5s `location.reload()` replaced with SignalR listener that updates progress bars, status, stage, pipeline, stop time, duration, warnings/errors in-place; full reload only on job completion
+   - ✅ **Home page**: 10s polling replaced with debounced SignalR-driven refresh (500ms debounce), with 30s fallback polling if SignalR disconnects
+   - ✅ `/api/jobs/{id}/pipeline` endpoint added for live pipeline partial re-rendering
+   - 🔜 **Phase 3**: Individual cell-level updates on Home page table (currently server-renders tbody on each update)
 4. **Audio CD / Data disc** — Pipelines exist in Conductor but untested.
 5. **Notification services** — Pushbullet, IFTTT, Pushover configured in appsettings but untested.

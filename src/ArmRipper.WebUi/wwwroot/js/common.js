@@ -2,6 +2,14 @@ var arm = arm || {};
 
 arm.signalrConnection = null;
 
+// --- JobUpdate callback registry ---
+// Pages register handlers via arm.onJobUpdate(fn). fn receives { JobId, Status, Stage, ... }
+arm._jobUpdateHandlers = [];
+
+arm.onJobUpdate = function (fn) {
+    arm._jobUpdateHandlers.push(fn);
+};
+
 arm.refreshNotifBadge = function () {
     var badge = document.getElementById('notifBadge');
     if (!badge) return;
@@ -27,6 +35,13 @@ arm.startSignalR = function () {
 
     arm.signalrConnection.on('Notification', function () {
         arm.refreshNotifBadge();
+    });
+
+    arm.signalrConnection.on('JobUpdate', function (update) {
+        // Dispatch to all registered page handlers
+        for (var i = 0; i < arm._jobUpdateHandlers.length; i++) {
+            try { arm._jobUpdateHandlers[i](update); } catch (e) { console.error(e); }
+        }
     });
 
     arm.signalrConnection.onreconnected(function () {

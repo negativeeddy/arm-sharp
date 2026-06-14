@@ -67,6 +67,15 @@ public partial class ApiController(
         return PartialView("~/Views/Jobs/_ActiveJobRows.cshtml", jobs);
     }
 
+    [HttpGet("jobs/{id:int}/pipeline")]
+    public async Task<IActionResult> JobPipeline(int id)
+    {
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id);
+        if (job is null)
+            return NotFound();
+        return PartialView("~/Views/Shared/_Pipeline.cshtml", job);
+    }
+
     [HttpGet("jobs/{id}")]
     public async Task<IActionResult> GetJob(int id)
     {

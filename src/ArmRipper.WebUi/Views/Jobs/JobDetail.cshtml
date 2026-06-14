@@ -6,7 +6,7 @@
 
 <h1>Job @Model.Id: @Model.Title</h1>
 
-<div class="row mb-4">
+<div class="row mb-4" data-job-id="@Model.Id">
     @if (Model.PosterUrl is not null)
     {
         <div class="col-md-3 mb-3">
@@ -317,27 +317,27 @@
 
 <div class="card mb-4">
     <div class="card-header">Pipeline</div>
-    <div class="card-body">
+    <div class="card-body" id="pipeline-container">
         <partial name="_Pipeline" model="Model" />
     </div>
 </div>
 
 @if (!string.IsNullOrEmpty(Model.Warnings))
 {
-    <div class="card border-warning mb-4">
+    <div class="card border-warning mb-4" id="warnings-card">
         <div class="card-header text-warning fw-bold">Warnings</div>
         <div class="card-body">
-            <pre class="mb-0 small">@Model.Warnings</pre>
+            <pre id="warnings-text" class="mb-0 small">@Model.Warnings</pre>
         </div>
     </div>
 }
 
 @if (!string.IsNullOrEmpty(Model.Errors))
 {
-    <div class="card border-danger mb-4">
+    <div class="card border-danger mb-4" id="errors-card">
         <div class="card-header text-danger fw-bold">Errors</div>
         <div class="card-body">
-            <pre class="mb-0 small">@Model.Errors</pre>
+            <pre id="errors-text" class="mb-0 small">@Model.Errors</pre>
         </div>
     </div>
 }
@@ -494,7 +494,189 @@ else
 
 @if (Model.Status is not JobState.Success and not JobState.Failure)
 {
+    @section Scripts {
     <script>
-        setTimeout(() => location.reload(), 5000);
+    (function () {
+        var jobId = @Model.Id;
+        var wasTerminal = false;
+        var lastStage = '@Model.Stage';
+
+        // Helper: find a <dd> element by its preceding <dt> text label
+        function findDd(label) {
+            var container = document.querySelector('[data-job-id="' + jobId + '"]');
+            if (!container) return null;
+            var dts = container.querySelectorAll('dt');
+            for (var i = 0; i < dts.length; i++) {
+                if (dts[i].innerText.trim().indexOf(label) === 0) {
+                    return dts[i].nextElementSibling;
+                }
+            }
+            return null;
+        }
+
+        // Update progress bar and its text
+        function setProgress(dd, pct) {
+            if (!dd) return;
+            var bar = dd.querySelector('.progress-bar');
+            if (!bar) return;
+            var val = pct != null ? pct : 0;
+            bar.style.width = val + '%';
+            bar.setAttribute('aria-valuenow', val);
+            bar.textContent = val + '%';
+        }
+
+        // Show/hide the spinner next to progress bars
+        function setSpinner(show) {
+            var container = document.querySelector('[data-job-id="' + jobId + '"]');
+            if (!container) return;
+            var spinners = container.querySelectorAll('.spinner-border');
+            spinners.forEach(function (s) { s.style.display = show ? '' : 'none'; });
+        }
+
+        // Replace text content of a <dd>
+        function setText(dd, text) {
+            if (!dd || text == null) return;
+            dd.textContent = text;
+        }
+
+        // Terminal status strings (lowercase from server)
+        var terminalStatuses = ['success', 'fail', 'cancelled'];
+
+        function isTerminal(status) {
+            return terminalStatuses.indexOf(status) !== -1;
+        }
+
+        // Re-fetch pipeline partial from server
+        function refreshPipeline() {
+            fetch('/api/jobs/' + jobId + '/pipeline')
+                .then(function (r) { return r.text(); })
+                .then(function (html) {
+                    var el = document.getElementById('pipeline-container');
+                    if (el) el.innerHTML = html;
+                })
+                .catch(function () {});
+        }
+
+        // Main update handler
+        function onJobUpdate(update) {
+            if (update.JobId !== jobId) return;
+
+            // Progress bars
+            setProgress(findDd('Rip Progress'), update.MakeMkvProgress);
+            setProgress(findDd('Transcode Progress'), update.TranscodeProgress);
+
+            // Progress message
+            if (update.ProgressMessage != null) {
+                var dd = findDd('Progress');
+                if (dd) {
+                    dd.textContent = update.ProgressMessage;
+                } else if (update.ProgressMessage) {
+                    // Progress row doesn't exist yet, could add it but skip for now
+                }
+            }
+
+            // Status
+            if (update.Status != null) {
+                var dd = findDd('Status');
+                if (dd) {
+                    if (update.Warnings) {
+                        dd.innerHTML = '<span class=\"badge bg-warning text-dark\" title=\"' +
+                            update.Warnings.replace(/"/g, '&quot;') + '\">Warning</span>';
+                    } else {
+                        dd.textContent = update.Status;
+                    }
+                }
+
+                // On transition to terminal: clean up UI and schedule full reload
+                if (isTerminal(update.Status) && !wasTerminal) {
+                    wasTerminal = true;
+                    setSpinner(false);
+                    var container = document.querySelector('[data-job-id="' + jobId + '"]');
+                    if (container) {
+                        var forms = container.querySelectorAll('form');
+                        forms.forEach(function (f) {
+                            if (f.action && (f.action.indexOf('/cancel') > -1 || f.action.indexOf('/continue-wait') > -1)) {
+                                f.style.display = 'none';
+                            }
+                        });
+                    }
+                    // Full reload after short delay to pick up final tracks, paths
+                    setTimeout(function () { location.reload(); }, 2000);
+                }
+            }
+
+            // Stage
+            if (update.Stage != null && update.Stage !== lastStage) {
+                lastStage = update.Stage;
+                setText(findDd('Stage'), update.Stage);
+                // Refresh pipeline when stage changes
+                refreshPipeline();
+            }
+
+            // Stop time
+            if (update.StopTime != null) {
+                var dd = findDd('Stopped');
+                if (dd) {
+                    try {
+                        var d = new Date(update.StopTime);
+                        dd.textContent = d.toLocaleString();
+                    } catch (e) { dd.textContent = update.StopTime; }
+                }
+            }
+
+            // Duration
+            if (update.JobLength != null) {
+                setText(findDd('Duration'), update.JobLength);
+            }
+
+            // Warnings card
+            if (update.Warnings != null) {
+                var warningEl = document.getElementById('warnings-card');
+                if (update.Warnings) {
+                    if (!warningEl) {
+                        // Create warnings card if it doesn't exist
+                        var pipelineCard = document.querySelector('.card:has(#pipeline-container)');
+                        if (pipelineCard) {
+                            var div = document.createElement('div');
+                            div.id = 'warnings-card';
+                            div.className = 'card border-warning mb-4';
+                            div.innerHTML = '<div class=\"card-header text-warning fw-bold\">Warnings</div>' +
+                                '<div class=\"card-body\"><pre id=\"warnings-text\" class=\"mb-0 small\"></pre></div>';
+                            pipelineCard.parentNode.insertBefore(div, pipelineCard);
+                        }
+                    }
+                    var pre = document.getElementById('warnings-text');
+                    if (pre) pre.textContent = update.Warnings;
+                } else if (warningEl) {
+                    warningEl.style.display = 'none';
+                }
+            }
+
+            // Errors card
+            if (update.Errors != null) {
+                var errorEl = document.getElementById('errors-card');
+                if (update.Errors) {
+                    if (!errorEl) {
+                        var pipelineCard = document.querySelector('.card:has(#pipeline-container)');
+                        if (pipelineCard) {
+                            var div = document.createElement('div');
+                            div.id = 'errors-card';
+                            div.className = 'card border-danger mb-4';
+                            div.innerHTML = '<div class=\"card-header text-danger fw-bold\">Errors</div>' +
+                                '<div class=\"card-body\"><pre id=\"errors-text\" class=\"mb-0 small\"></pre></div>';
+                            pipelineCard.parentNode.insertBefore(div, pipelineCard);
+                        }
+                    }
+                    var pre = document.getElementById('errors-text');
+                    if (pre) pre.textContent = update.Errors;
+                } else if (errorEl) {
+                    errorEl.style.display = 'none';
+                }
+            }
+        }
+
+        arm.onJobUpdate(onJobUpdate);
+    })();
     </script>
+    }
 }
