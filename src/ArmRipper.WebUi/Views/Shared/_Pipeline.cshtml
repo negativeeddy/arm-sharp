@@ -28,7 +28,7 @@
     // Setup — active initially, done when any work has started
     pipelineStages.Add(("setup", "Setup",
         Model.Status == JobState.Active && string.IsNullOrEmpty(Model.Stage),
-        isActive: Model.Stage is not null && Model.Stage != "setup" && !Model.Status.IsTerminal()
+        Model.Stage is not null && Model.Stage != "setup" && !Model.Status.IsTerminal()
             || Model.Status is JobState.Success,
         StageError("setup") is not null));
 
