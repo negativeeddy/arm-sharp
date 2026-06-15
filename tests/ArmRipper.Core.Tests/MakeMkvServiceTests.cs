@@ -1,4 +1,3 @@
-using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
@@ -6,7 +5,6 @@ using ArmRipper.Core.Rip;
 using Microsoft.EntityFrameworkCore;
 using DriveInfo = ArmRipper.Core.Rip.DriveInfo;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 
 namespace ArmRipper.Core.Tests;

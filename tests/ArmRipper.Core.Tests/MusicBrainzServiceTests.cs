@@ -1,9 +1,7 @@
 using System.Net;
-using System.Xml.Linq;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
-using ArmRipper.Core.Models;
 using ArmRipper.Core.Rip;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;

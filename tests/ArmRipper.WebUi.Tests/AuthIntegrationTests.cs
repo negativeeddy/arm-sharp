@@ -1,10 +1,6 @@
 using System.Net;
 using System.Text.RegularExpressions;
-using ArmRipper.Core.Infrastructure.Data;
-using ArmRipper.Core.Models;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace ArmRipper.WebUi.Tests;
 

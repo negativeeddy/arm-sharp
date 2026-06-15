@@ -1,5 +1,3 @@
-using System.Collections;
-
 namespace ArmRipper.Core.Models;
 
 public class ConfigSnapshot

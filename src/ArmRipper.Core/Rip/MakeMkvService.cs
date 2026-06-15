@@ -683,7 +683,6 @@ public partial class MakeMkvService : IMakeMkvService
             // let the file-size monitor handle it reliably
             return new ParsedLine(MakeMkvOutputType.PrgV, new PrgV(0, 0, 0, 0));
         }
-        return new ParsedLine(MakeMkvOutputType.PrgV, new PrgV(0, 0, 0, 0));
     }
 
     private static ParsedLine ParsePrgC(string content)
