@@ -288,12 +288,14 @@ public sealed partial class HandBrakeService(
     private (string? preset, string? args) GetHbSettings(Job job)
     {
         if (job.DiscType == DiscType.Dvd)
-            return (job.Config?.HbPresetDvd ?? settings.Value.HbPresetDvd, job.Config?.HbArgsDvd ?? "");
+            return (job.Config?.HbPresetDvd ?? settings.Value.HbPresetDvd,
+                    job.Config?.HbArgsDvd ?? settings.Value.HbArgsDvd);
 
         if (job.DiscType == DiscType.Bluray)
-            return (job.Config?.HbPresetBd ?? settings.Value.HbPresetBd, job.Config?.HbArgsBd ?? "");
+            return (job.Config?.HbPresetBd ?? settings.Value.HbPresetBd,
+                    job.Config?.HbArgsBd ?? settings.Value.HbArgsBd);
 
-        return (settings.Value.HbPresetDvd, "");
+        return (settings.Value.HbPresetDvd, settings.Value.HbArgsDvd);
     }
 
     private async Task<CliResult> RunHandBrakeCommandAsync(string cmd, CancellationToken ct, IProgress<int>? progress = null, string? logFilePath = null)

@@ -1,0 +1,145 @@
+@model List<CompletedFileInfo>
+@{
+    ViewData["Title"] = "Completed Files";
+    string TopLevelDir(string? relativePath)
+    {
+        if (string.IsNullOrEmpty(relativePath)) return "Other";
+        var parts = relativePath.Split('/', '\\');
+        return parts.Length > 0 && !string.IsNullOrEmpty(parts[0])
+            ? char.ToUpper(parts[0][0]) + parts[0][1..]
+            : "Other";
+    }
+    var groups = Model.GroupBy(f => TopLevelDir(f.RelativeDirectory))
+        .OrderByDescending(g => g.Sum(f => f.SizeBytes))
+        .ToList();
+    var totalFiles = Model.Count;
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Completed Files</h1>
+    <div>
+        <span class="text-muted mr-2">@totalFiles file@(totalFiles != 1 ? "s" : "")</span>
+        <a href="/completed?refresh=true" class="btn btn-outline-secondary btn-sm">🔄 Refresh</a>
+    </div>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="alert alert-info">No completed video files found.</div>
+}
+else
+{
+    foreach (var group in groups)
+    {
+        var groupSize = group.Sum(f => f.SizeBytes);
+        var groupSizeStr = groupSize switch
+        {
+            >= 1_000_000_000 => $"{groupSize / 1_000_000_000.0:F2} GB",
+            >= 1_000_000 => $"{groupSize / 1_000_000.0:F1} MB",
+            _ => $"{groupSize / 1_000.0:F0} KB"
+        };
+
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    @group.Key
+                    <small class="text-muted ml-2">@group.Count() file@(group.Count() != 1 ? "s" : "")</small>
+                </h5>
+                <span class="text-muted">@groupSizeStr</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sortable mb-0 group-table">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>File</th>
+                                <th>Directory</th>
+                                <th>Size</th>
+                                <th>Duration</th>
+                                <th>Video</th>
+                                <th>Resolution</th>
+                                <th>Audio</th>
+                                <th>HDR</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var file in group)
+                            {
+                                <tr>
+                                    <td>
+                                        <a href="/completed/probe?filePath=@Uri.EscapeDataString(file.FilePath)" class="font-weight-bold">
+                                            @file.FileName
+                                        </a>
+                                    </td>
+                                    <td><small class="text-muted">@file.RelativeDirectory</small></td>
+                                    <td data-order="@file.SizeBytes">@file.SizeFormatted</td>
+                                    <td data-order="@file.DurationSeconds">@file.DurationFormatted</td>
+                                    <td>
+                                        @if (file.Video != null)
+                                        {
+                                            <span title="@file.Video.CodecLongName">@file.Video.CodecName</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (file.Video != null)
+                                        {
+                                            <span>@file.Video.Width×@file.Video.Height</span>
+                                            @if (!string.IsNullOrEmpty(file.Video.PixelFormat))
+                                            {
+                                                <br /><small class="text-muted">@file.Video.PixelFormat</small>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (file.AudioStreams.Count > 0)
+                                        {
+                                            var first = file.AudioStreams[0];
+                                            <span title="@first.CodecLongName">@first.CodecName</span>
+                                            <span class="text-muted">· @first.Channels ch (@first.BitrateFormatted)</span>
+                                            @if (file.AudioStreams.Count > 1)
+                                            {
+                                                <br /><small class="text-muted">+@(file.AudioStreams.Count - 1) more</small>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (file.Video?.IsHdr == true)
+                                        {
+                                            <span class="badge badge-success">HDR</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@section Scripts {
+    <script>
+        $(function () {
+            $(".group-table").tablesorter({
+                sortList: [[2, 1]] // sort by size descending within each group
+            });
+        });
+    </script>
+}

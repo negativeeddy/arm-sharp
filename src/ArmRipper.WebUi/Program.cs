@@ -37,6 +37,7 @@ builder.Services.AddControllers()
         opts.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
     });
 builder.Services.AddSignalR();
+builder.Services.AddMemoryCache();
 
 builder.Services.AddSingleton<ICliProcessRunner, CliProcessRunner>();
 builder.Services.AddScoped<IIdentifyService, IdentifyService>();

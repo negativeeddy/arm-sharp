@@ -17,6 +17,7 @@ Focus: user-friendliness, easy setup, easy diagnosis.
 
 ## Configuration & Setup
 
+- **Add 4K UHD disc type with separate settings** — Currently `ArmSettings` and `ConfigSnapshot` only have `HbArgsDvd` / `HbPresetDvd` and `HbArgsBd` / `HbPresetBd`. 4K UHD discs need different handling (ffmpeg passthrough to preserve HDR, no HandBrake re-encode). Add `HbArgsUhd` / `HbPresetUhd` and `FfmpegPostFileArgsUhd` properties, a `DiscType.Uhd` enum value, and wire them through `HandBrakeService.GetHbSettings()` and the `Conductor` pipeline. The YAML config should map `HB_ARGS_UHD` / `HB_PRESET_UHD` / `FFMPEG_POST_FILE_ARGS_UHD` keys. For 4K UHD, the typical workflow is `USE_FFMPEG: true` with `-c:v copy -c:a ac3 -b:a 640k` to preserve HDR metadata losslessly; for 1080p BD, HandBrake re-encode with nvenc is preferred. Users currently have to swap `arm.yaml` manually when switching between 1080p and 4K discs — automatic disc-type detection would eliminate this.
 - `ArmSettings` is missing many properties that `ConfigSnapshot` already defines (HbArgsDvd, HbArgsBd, FfmpegCli, notification channels, etc.). After parity, should consolidate into one source of truth.
 - No `appsettings.Production.json` or env-aware config profiles. Would help users separate sensitive keys (API keys) from path config.
 - Seed data scripts exist in `scripts/` but require manual run. Consider auto-seeding on first launch for demo/testing.
