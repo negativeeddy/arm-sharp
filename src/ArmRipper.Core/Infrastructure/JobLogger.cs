@@ -29,5 +29,15 @@ public sealed class JobLogger : ILogger
 
     public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
-    public void Dispose() => _fileWriter.Dispose();
+    public void Dispose()
+    {
+        _fileWriter.Flush();
+        _fileWriter.Dispose();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _fileWriter.FlushAsync();
+        await _fileWriter.DisposeAsync();
+    }
 }

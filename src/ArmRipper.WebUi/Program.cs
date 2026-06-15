@@ -14,7 +14,8 @@ var builder = WebApplication.CreateBuilder(args);
 var yamlValues = ArmYamlConfigLoader.LoadYamlValues("/etc/arm/config/arm.yaml");
 builder.Configuration.AddInMemoryCollection(yamlValues);
 
-var connectionString = builder.Configuration.GetConnectionString("ArmDb") ?? "Data Source=/etc/arm/config/arm-sharp.db";
+var connectionString = (builder.Configuration.GetConnectionString("ArmDb") ?? "Data Source=/etc/arm/config/arm-sharp.db")
+    + ";Busy Timeout=5000;Pooling=True;";
 builder.Services.AddDbContext<ArmDbContext>(options =>
     options.UseSqlite(connectionString));
 
@@ -43,7 +44,7 @@ builder.Services.AddScoped<IIdentifyService, IdentifyService>();
 builder.Services.AddScoped<IHandBrakeService, HandBrakeService>();
 builder.Services.AddScoped<IFfmpegService, FfmpegService>();
 builder.Services.AddScoped<IArmRipperService, ArmRipperService>();
-builder.Services.AddScoped<MakeMkvService>();
+builder.Services.AddScoped<IMakeMkvService, MakeMkvService>();
 builder.Services.AddHttpClient<IMusicBrainzService, MusicBrainzService>(client =>
 {
     client.DefaultRequestHeaders.UserAgent.ParseAdd("arm/1.0");

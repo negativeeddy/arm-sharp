@@ -10,7 +10,7 @@ using Microsoft.Extensions.Options;
 
 namespace ArmRipper.Core.Rip;
 
-public partial class MakeMkvService
+public partial class MakeMkvService : IMakeMkvService
 {
     private const int UnknownDrv = 999;
     private const int MaxDevices = 16;

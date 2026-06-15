@@ -91,7 +91,7 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
     {
         logger.LogInformation("Streaming: {FileName} {Arguments}", fileName, arguments);
 
-        var process = new Process
+        using var process = new Process
         {
             StartInfo = new ProcessStartInfo
             {
@@ -106,12 +106,11 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
             }
         };
 
-        // TODO: is this a race condition if the process writes to stdout before we start reading? Should we start reading before starting the process?
         process.Start();
 
         logger.LogDebug("Process started ({Name}): {Arguments}", fileName, arguments);
 
-        using var _ = ct.Register(() =>
+        using var ctReg = ct.Register(() =>
         {
             try { process.Kill(entireProcessTree: true); } catch { }
             logger.LogWarning("Process cancelled ({Name})", fileName);
@@ -119,10 +118,20 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
 
         var stderrTask = ReadAllLinesAsync(process.StandardError, ct);
 
-        while (await process.StandardOutput.ReadLineAsync(ct) is { } line)
+        try
         {
-            logger.LogDebug("{Name}: {Line}", fileName, line);
-            yield return line;
+            while (await process.StandardOutput.ReadLineAsync(ct) is { } line)
+            {
+                logger.LogDebug("{Name}: {Line}", fileName, line);
+                yield return line;
+            }
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+            }
         }
 
         process.WaitForExit();
@@ -135,8 +144,6 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         }
 
         logger.LogInformation("Process exited ({Name}) code={Code}", fileName, process.ExitCode);
-
-        process.Dispose();
     }
 
     public async IAsyncEnumerable<(string? Line, bool IsStdErr, int? ExitCode)> RunStreamingAllAsync(
@@ -147,7 +154,7 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
     {
         logger.LogInformation("Streaming both: {FileName} {Arguments}", fileName, arguments);
 
-        var process = new Process
+        using var process = new Process
         {
             StartInfo = new ProcessStartInfo
             {
@@ -162,6 +169,11 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
         };
 
         process.Start();
+
+        using var ctReg = ct.Register(() =>
+        {
+            try { process.Kill(entireProcessTree: true); } catch { }
+        });
 
         var channel = System.Threading.Channels.Channel.CreateUnbounded<(string?, bool)>();
 
@@ -181,14 +193,23 @@ public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRun
             }
         }, ct);
 
-        await foreach (var (line, isErr) in channel.Reader.ReadAllAsync(ct))
-            yield return (line, isErr, null);
+        try
+        {
+            await foreach (var (line, isErr) in channel.Reader.ReadAllAsync(ct))
+                yield return (line, isErr, null);
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+            }
+        }
 
         await readerTask;
         process.WaitForExit();
         var exitCode = process.ExitCode;
         logger.LogInformation("Process exited ({Name}) code={Code}", fileName, exitCode);
-        process.Dispose();
         yield return (null, false, exitCode);
     }
 

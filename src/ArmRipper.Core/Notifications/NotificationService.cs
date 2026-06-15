@@ -101,7 +101,9 @@ public sealed class NotificationService(
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             };
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-            await client.SendAsync(request, ct);
+            var response = await client.SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode)
+                logger.LogWarning("Pushbullet returned {StatusCode}: {Body}", (int)response.StatusCode, await response.Content.ReadAsStringAsync(ct));
         }
         catch (Exception ex)
         {
@@ -117,7 +119,9 @@ public sealed class NotificationService(
             var payload = new { value1 = title, value2 = body };
             var json = JsonSerializer.Serialize(payload);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
-            await client.PostAsync($"https://maker.ifttt.com/trigger/{eventName}/with/key/{key}", content, ct);
+            var response = await client.PostAsync($"https://maker.ifttt.com/trigger/{eventName}/with/key/{key}", content, ct);
+            if (!response.IsSuccessStatusCode)
+                logger.LogWarning("IFTTT returned {StatusCode}", (int)response.StatusCode);
         }
         catch (Exception ex)
         {
@@ -132,7 +136,9 @@ public sealed class NotificationService(
             var payload = new { title, body };
             var json = JsonSerializer.Serialize(payload);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
-            await client.PostAsync(url, content, ct);
+            var response = await client.PostAsync(url, content, ct);
+            if (!response.IsSuccessStatusCode)
+                logger.LogWarning("JSON webhook {Url} returned {StatusCode}", url, (int)response.StatusCode);
         }
         catch (Exception ex)
         {

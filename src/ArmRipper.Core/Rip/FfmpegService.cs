@@ -81,11 +81,21 @@ public sealed partial class FfmpegService(
                     track.Error = ex.Message;
                     await db.SaveChangesAsync(ct);
                 }
-                job.Errors = ex.Message;
-                job.Status = JobState.Failure;
+                // Continue to next file — don't abandon remaining tracks
+                var existingErrors = job.Errors ?? "";
+                job.Errors = string.IsNullOrEmpty(existingErrors)
+                    ? $"{Path.GetFileName(file)}: {ex.Message}"
+                    : $"{existingErrors}; {Path.GetFileName(file)}: {ex.Message}";
                 await db.SaveChangesAsync(ct);
-                throw;
             }
+        }
+
+        // Only mark failure if ALL tracks failed
+        if (mkvFiles.Count > 0 && !job.Tracks.Any(t => t.Ripped))
+        {
+            job.Status = JobState.Failure;
+            job.Errors ??= "All MKV files failed to transcode";
+            await db.SaveChangesAsync(ct);
         }
 
         return new CliResult(0, string.Join("\n", allStdOut), string.Join("\n", allStdErr), false);

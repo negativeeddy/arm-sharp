@@ -437,6 +437,9 @@ public sealed class Conductor(
 
         var previousRips = await db.Jobs
             .Where(j => j.Label == job.Label && j.Status == JobState.Success)
+            .OrderByDescending(j => j.StopTime)
+            .Select(j => new { j.Title, j.Year, j.HasNiceTitle, j.VideoType, j.PosterUrl })
+            .Take(10)
             .ToListAsync(ct);
 
         if (previousRips.Count == 1)

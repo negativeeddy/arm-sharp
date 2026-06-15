@@ -12,7 +12,7 @@ namespace ArmRipper.Core.Rip;
 public sealed class ArmRipperService(
     ILogger<ArmRipperService> logger,
     ArmDbContext db,
-    MakeMkvService makeMkv,
+    IMakeMkvService makeMkv,
     IHandBrakeService handBrake,
     IFfmpegService ffmpeg,
     ICliProcessRunner runner,
