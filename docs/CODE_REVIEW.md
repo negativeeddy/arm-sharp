@@ -110,14 +110,14 @@ modelBuilder.Entity<Job>()
 
 Replaced the hand-rolled `GeneratedRegex` line-by-line parser with `YamlDotNet.RepresentationModel.YamlStream`. Now correctly handles comments, quoted values, empty documents, multi-line values, nested structures, and boolean/numeric type coercion.
 
-### 3.5 Error-Handling Strategy Is Inconsistent
+### 3.5 ✅ Error-Handling Strategy — FIXED
 
-- `Conductor.RunAsync` catches `Exception` and marks the job as `Failure` — good.
-- `ArmRipperService.RipVisualMediaAsync` throws after catching `Exception mkvError` with `throw;` — loses context from partial work.
-- `HandBrakeService.TranscodeMkvAsync` continues to next file on failure but `TranscodeMainFeatureAsync` throws — inconsistent.
-- `FfmpegService.TranscodeMkvAsync` throws on first file failure, skipping remaining files.
+All per-track operations now follow the same pattern: log, mark track/job as failed, **continue**. No `throw;` remains in any per-track catch block across `ArmRipperService`, `HandBrakeService`, or `FfmpegService`.
 
-**Recommendation:** Per-track operations should **never throw** on individual track failure — log, mark track as failed, continue. Only infrastructure failures should propagate.
+- **ArmRipperService** MakeMKV rip: partial failure survives — successful tracks get matched + processed; zero-output still throws as unrecoverable.
+- **HandBrakeService** `TranscodeMainFeatureAsync`: now returns `CliResult(-1)` instead of rethrowing.
+- **FfmpegService** `TranscodeMkvAsync`: already fixed — continues to next file.
+- **Conductor** `RunAsync`: correctly catches `Exception` at the top level and marks `Failure`.
 
 ---
 
@@ -261,6 +261,6 @@ builder.Services.AddDbContext<ArmDbContext>(options =>
 | **P3** | ✅ `JobLogger` implements `IAsyncDisposable` | File handle leak | Small |
 | **P3** | Break up `RipVisualMediaAsync` into smaller methods | Maintainability | Large |
 | **P3** | ✅ YAML regex loader replaced with YamlDotNet | Correctness | Medium |
-| **P3** | Standardize error-handling: per-track failures never throw | Resilience | Medium |
+| **P3** | ✅ Standardize error-handling: per-track failures never throw | Resilience | Medium |
 
 **Overall assessment:** The codebase is well-structured and follows modern C# conventions. All P0 and P1 issues have been resolved along with most P2 items. The remaining items are structural improvements (method decomposition, YAML parsing, error-handling standardization) and the mechanical `ConfigureAwait(false)` sweep. The codebase is production-ready.
