@@ -146,6 +146,7 @@ public sealed class ArmRipperService(
                 await db.SaveChangesAsync(ct);
                 BroadcastJobUpdate(job);
 
+                string? ripError = null;
                 try
                 {
                     if (!Directory.Exists(makeMkvOutPath))
@@ -189,43 +190,57 @@ public sealed class ArmRipperService(
                     }
 
                     logger.LogInformation("Ripped {Count} titles", ripCount);
-
-                    if (Directory.Exists(makeMkvOutPath))
-                    {
-                        var dbTracks = await db.Tracks.Where(t => t.JobId == job.Id).ToListAsync(ct);
-                        foreach (var file in Directory.EnumerateFiles(makeMkvOutPath, "*.mkv"))
-                        {
-                            var fileName = Path.GetFileName(file);
-                            var fileInfo = new FileInfo(file);
-
-                            var track = dbTracks.FirstOrDefault(t =>
-                                !string.IsNullOrEmpty(t.FileName) &&
-                                t.FileName.Equals(fileName, StringComparison.OrdinalIgnoreCase))
-                                ?? dbTracks.FirstOrDefault(t =>
-                                    !string.IsNullOrEmpty(t.TrackNumber) &&
-                                    fileName.Contains($"t{int.Parse(t.TrackNumber):D2}"));
-
-                            if (track is not null)
-                            {
-                                track.FileName = fileName;
-                                track.FileSize = fileInfo.Length;
-                                track.Ripped = true;
-                            }
-                        }
-                        await db.SaveChangesAsync(ct);
-
-                        if (dbTracks.Count > 0 && !dbTracks.Any(t => t.Ripped))
-                        {
-                            var msg = "MakeMKV rip produced no ripped tracks";
-                            logger.LogError(msg);
-                            throw new InvalidOperationException(msg);
-                        }
-                    }
                 }
                 catch (Exception mkvError)
                 {
                     logger.LogError(mkvError, "Error while running MakeMKV");
-                    throw;
+                    ripError = mkvError.Message;
+                }
+
+                // Match output files to tracks (runs even after partial rip failure)
+                if (Directory.Exists(makeMkvOutPath))
+                {
+                    var dbTracks = await db.Tracks.Where(t => t.JobId == job.Id).ToListAsync(ct);
+                    foreach (var file in Directory.EnumerateFiles(makeMkvOutPath, "*.mkv"))
+                    {
+                        var fileName = Path.GetFileName(file);
+                        var fileInfo = new FileInfo(file);
+
+                        var track = dbTracks.FirstOrDefault(t =>
+                            !string.IsNullOrEmpty(t.FileName) &&
+                            t.FileName.Equals(fileName, StringComparison.OrdinalIgnoreCase))
+                            ?? dbTracks.FirstOrDefault(t =>
+                                !string.IsNullOrEmpty(t.TrackNumber) &&
+                                fileName.Contains($"t{int.Parse(t.TrackNumber):D2}"));
+
+                        if (track is not null)
+                        {
+                            track.FileName = fileName;
+                            track.FileSize = fileInfo.Length;
+                            track.Ripped = true;
+                        }
+                    }
+                    await db.SaveChangesAsync(ct);
+
+                    if (dbTracks.Count > 0 && !dbTracks.Any(t => t.Ripped))
+                    {
+                        var msg = ripError is not null
+                            ? $"MakeMKV rip failed — no output files: {ripError}"
+                            : "MakeMKV rip produced no ripped tracks";
+                        logger.LogError(msg);
+                        job.Status = JobState.Failure;
+                        job.Errors = msg;
+                        await db.SaveChangesAsync(ct);
+                        throw new InvalidOperationException(msg);
+                    }
+                }
+
+                // Handle partial failure: some tracks succeeded, record the error
+                if (ripError is not null)
+                {
+                    job.Errors = $"MakeMKV rip errors (partial): {ripError}";
+                    job.Status = JobState.Failure;
+                    logger.LogWarning("MakeMKV rip completed with partial errors — continuing to transcode succeeded tracks");
                 }
 
                 if (job.Config?.NotifyRip ?? settings.Value.NotifyRip)

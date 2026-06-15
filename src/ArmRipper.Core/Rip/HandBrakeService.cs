@@ -153,7 +153,7 @@ public sealed partial class HandBrakeService(
             job.Errors = err;
             job.Status = JobState.Failure;
             await db.SaveChangesAsync(ct);
-            throw;
+            return new CliResult(-1, "", err, false);
         }
     }
 
