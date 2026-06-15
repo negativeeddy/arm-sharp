@@ -10,7 +10,7 @@ using Microsoft.Extensions.Options;
 namespace ArmRipper.Core.Rip;
 
 public sealed class ArmRipperService(
-    ILogger<ArmRipperService> logger,
+    ILoggerFactory loggerFactory,
     ArmDbContext db,
     IMakeMkvService makeMkv,
     IHandBrakeService handBrake,
@@ -20,6 +20,7 @@ public sealed class ArmRipperService(
     IOptions<ArmSettings> settings,
     IEnumerable<INotificationBroadcaster> broadcasters) : IArmRipperService
 {
+    private readonly ILogger logger = loggerFactory.CreateLogger("ArmRipperService");
     public async Task<string> RipVisualMediaAsync(Job job, string logFile, bool hasDupes, bool protection, CancellationToken ct = default)
     {
         // ── 1. Compute paths ──

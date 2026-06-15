@@ -22,15 +22,15 @@ public partial class MakeMkvService : IMakeMkvService
         ".MakeMKV", "settings.conf");
 
     private readonly ICliProcessRunner _runner;
-    private readonly ILogger<MakeMkvService> _logger;
+    private readonly ILogger _logger;
     private readonly IOptions<ArmSettings> _settings;
     private readonly ArmDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
 
-    public MakeMkvService(ICliProcessRunner runner, ILogger<MakeMkvService> logger, IOptions<ArmSettings> settings, ArmDbContext db, IHttpClientFactory httpClientFactory)
+    public MakeMkvService(ICliProcessRunner runner, ILoggerFactory loggerFactory, IOptions<ArmSettings> settings, ArmDbContext db, IHttpClientFactory httpClientFactory)
     {
         _runner = runner;
-        _logger = logger;
+        _logger = loggerFactory.CreateLogger("MakeMkvService");
         _settings = settings;
         _db = db;
         _httpClientFactory = httpClientFactory;

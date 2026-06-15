@@ -13,10 +13,11 @@ namespace ArmRipper.Core.Rip;
 
 public sealed partial class IdentifyService(
     ICliProcessRunner runner,
-    ILogger<IdentifyService> logger,
+    ILoggerFactory loggerFactory,
     ArmDbContext db,
     IOptions<ArmSettings> settings) : IIdentifyService
 {
+    private readonly ILogger logger = loggerFactory.CreateLogger("IdentifyService");
     public async Task IdentifyAsync(Job job, CancellationToken ct = default)
     {
         job.ProgressMessage = "Mounting disc...";

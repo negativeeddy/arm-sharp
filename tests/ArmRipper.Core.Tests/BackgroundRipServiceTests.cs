@@ -32,7 +32,7 @@ public sealed class BackgroundRipServiceTests
         var serviceProvider = new Mock<IServiceProvider>();
         serviceProvider.Setup(sp => sp.GetService(typeof(IConductor))).Returns(conductorMock.Object);
         serviceProvider.Setup(sp => sp.GetService(typeof(ILogger<BackgroundRipService>)))
-            .Returns(NullLogger<BackgroundRipService>.Instance);
+            .Returns(NullLoggerFactory.Instance);
 
         var scope = new Mock<IServiceScope>();
         scope.Setup(s => s.ServiceProvider).Returns(serviceProvider.Object);
@@ -40,7 +40,7 @@ public sealed class BackgroundRipServiceTests
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
-        var service = new BackgroundRipService(scopeFactory.Object, NullLogger<BackgroundRipService>.Instance);
+        var service = new BackgroundRipService(scopeFactory.Object, NullLoggerFactory.Instance);
         service.StartRip("/dev/sr0");
         await WaitForBackgroundTaskAsync(() => conductorRun);
 
@@ -59,7 +59,7 @@ public sealed class BackgroundRipServiceTests
         var serviceProvider = new Mock<IServiceProvider>();
         serviceProvider.Setup(sp => sp.GetService(typeof(IConductor))).Returns(conductorMock.Object);
         serviceProvider.Setup(sp => sp.GetService(typeof(ILogger<BackgroundRipService>)))
-            .Returns(NullLogger<BackgroundRipService>.Instance);
+            .Returns(NullLoggerFactory.Instance);
 
         var scope = new Mock<IServiceScope>();
         scope.Setup(s => s.ServiceProvider).Returns(serviceProvider.Object);
@@ -67,7 +67,7 @@ public sealed class BackgroundRipServiceTests
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
-        var service = new BackgroundRipService(scopeFactory.Object, NullLogger<BackgroundRipService>.Instance);
+        var service = new BackgroundRipService(scopeFactory.Object, NullLoggerFactory.Instance);
         service.StartRip("/dev/sr0");
         await WaitForBackgroundTaskAsync(() => true);
     }
@@ -83,7 +83,7 @@ public sealed class BackgroundRipServiceTests
         var serviceProvider = new Mock<IServiceProvider>();
         serviceProvider.Setup(sp => sp.GetService(typeof(IConductor))).Returns(conductorMock.Object);
         serviceProvider.Setup(sp => sp.GetService(typeof(ILogger<BackgroundRipService>)))
-            .Returns(NullLogger<BackgroundRipService>.Instance);
+            .Returns(NullLoggerFactory.Instance);
 
         var scope = new Mock<IServiceScope>();
         scope.Setup(s => s.ServiceProvider).Returns(serviceProvider.Object);
@@ -91,7 +91,7 @@ public sealed class BackgroundRipServiceTests
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
-        var service = new BackgroundRipService(scopeFactory.Object, NullLogger<BackgroundRipService>.Instance);
+        var service = new BackgroundRipService(scopeFactory.Object, NullLoggerFactory.Instance);
 
         using var cts = new CancellationTokenSource();
         cts.Cancel();

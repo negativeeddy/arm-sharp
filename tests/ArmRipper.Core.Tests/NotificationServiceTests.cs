@@ -16,8 +16,8 @@ public sealed class NotificationServiceTests : IDisposable
     public NotificationServiceTests()
     {
         _db = TestHelpers.CreateDbContext();
-        _runner = new CliProcessRunner(NullLogger<CliProcessRunner>.Instance);
-        _service = new NotificationService(NullLogger<NotificationService>.Instance, _db, _runner, Mock.Of<IHttpClientFactory>(), []);
+        _runner = new CliProcessRunner(NullLoggerFactory.Instance);
+        _service = new NotificationService(NullLoggerFactory.Instance, _db, _runner, Mock.Of<IHttpClientFactory>(), []);
     }
 
     public void Dispose()

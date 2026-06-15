@@ -4,8 +4,9 @@ using Microsoft.Extensions.Logging;
 
 namespace ArmRipper.Core.Metadata;
 
-public sealed class OmdbService(ILogger<OmdbService> logger, HttpClient httpClient)
+public sealed class OmdbService(ILoggerFactory loggerFactory, HttpClient httpClient)
 {
+    private readonly ILogger logger = loggerFactory.CreateLogger("OmdbService");
     public async Task<OmdbSearchResult?> SearchAsync(string apiKey, string title, string? year = null, string? plot = "short", CancellationToken ct = default)
     {
         var url = $"https://www.omdbapi.com/?s={Uri.EscapeDataString(title)}&plot={plot}&r=json&apikey={apiKey}";

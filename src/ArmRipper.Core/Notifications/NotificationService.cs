@@ -9,12 +9,13 @@ using Microsoft.Extensions.Logging;
 namespace ArmRipper.Core.Notifications;
 
 public sealed class NotificationService(
-    ILogger<NotificationService> logger,
+    ILoggerFactory loggerFactory,
     ArmDbContext db,
     ICliProcessRunner runner,
     IHttpClientFactory httpClientFactory,
     IEnumerable<INotificationBroadcaster> broadcasters)
 {
+    private readonly ILogger logger = loggerFactory.CreateLogger("NotificationService");
     public const string NotifyTitle = "ARM notification";
 
     public async Task NotifyAsync(Job? job, string title, string body, CancellationToken ct = default)

@@ -12,10 +12,11 @@ namespace ArmRipper.Core.Rip;
 
 public sealed partial class FfmpegService(
     ICliProcessRunner runner,
-    ILogger<FfmpegService> logger,
+    ILoggerFactory loggerFactory,
     ArmDbContext db,
     IOptions<ArmSettings> settings) : IFfmpegService
 {
+    private readonly ILogger logger = loggerFactory.CreateLogger("FfmpegService");
     public async Task<CliResult> TranscodeMkvAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         await SleepCheckAsync(ct);

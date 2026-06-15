@@ -11,10 +11,11 @@ namespace ArmRipper.Core.Rip;
 
 public sealed partial class HandBrakeService(
     ICliProcessRunner runner,
-    ILogger<HandBrakeService> logger,
+    ILoggerFactory loggerFactory,
     ArmDbContext db,
     IOptions<ArmSettings> settings) : IHandBrakeService
 {
+    private readonly ILogger logger = loggerFactory.CreateLogger("HandBrakeService");
     public async Task<CliResult> TranscodeMkvAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         await SleepCheckAsync(ct);
@@ -42,7 +43,7 @@ public sealed partial class HandBrakeService(
 
             logger.LogInformation("Transcoding {File} to {Output}", file, outputFile);
             var cmd = BuildCommand(file, outputFile, job, trackNumber: null, mainFeature: false);
-            lastResult = await RunHandBrakeCommandAsync(cmd, ct, progress, job.GetLogFilePath(settings.Value.LogPath));
+            lastResult = await RunHandBrakeCommandAsync(cmd, ct, progress);
 
             if (lastResult.ExitCode != 0)
             {
@@ -122,7 +123,7 @@ public sealed partial class HandBrakeService(
 
         try
         {
-            var result = await RunHandBrakeCommandAsync(cmd, ct, progress, job.GetLogFilePath(settings.Value.LogPath));
+            var result = await RunHandBrakeCommandAsync(cmd, ct, progress);
             if (result.ExitCode != 0)
             {
                 var err = $"HandBrake main feature transcoding failed with code {result.ExitCode}: {result.StdErr}";
@@ -194,7 +195,7 @@ public sealed partial class HandBrakeService(
 
             try
             {
-                lastResult = await RunHandBrakeCommandAsync(cmd, ct, progress, job.GetLogFilePath(settings.Value.LogPath));
+                lastResult = await RunHandBrakeCommandAsync(cmd, ct, progress);
                 if (lastResult.ExitCode != 0)
                 {
                     var err = $"HandBrake encoding of title {trackNo} failed with code {lastResult.ExitCode}: {lastResult.StdErr}";
@@ -298,7 +299,7 @@ public sealed partial class HandBrakeService(
         return (settings.Value.HbPresetDvd, settings.Value.HbArgsDvd);
     }
 
-    private async Task<CliResult> RunHandBrakeCommandAsync(string cmd, CancellationToken ct, IProgress<int>? progress = null, string? logFilePath = null)
+    private async Task<CliResult> RunHandBrakeCommandAsync(string cmd, CancellationToken ct, IProgress<int>? progress = null)
     {
         logger.LogDebug("Sending command: {Command}", cmd);
 
@@ -315,34 +316,23 @@ public sealed partial class HandBrakeService(
                 break;
             }
 
-            // Progress lines can come through either stdout or stderr depending on 2>&1
-            ParseHandBrakeProgress(line!, progress);
-
+            // Log each line live so it appears in the job log with proper formatting
             if (isErr)
             {
+                logger.LogWarning("HandBrake stderr: {Line}", line);
                 stderrLines.Add(line!);
             }
             else
             {
+                logger.LogDebug("HandBrake: {Line}", line);
                 lines.Add(line!);
             }
+
+            // Progress lines can come through either stdout or stderr depending on 2>&1
+            ParseHandBrakeProgress(line!, progress);
         }
 
         var result = new CliResult(exitCode, string.Join("\n", lines), string.Join("\n", stderrLines), exitCode != 0);
-
-        // Write output to log file
-        if (logFilePath is not null)
-        {
-            try
-            {
-                var dir = Path.GetDirectoryName(logFilePath);
-                if (dir is not null) Directory.CreateDirectory(dir);
-                var ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                var entry = $"\n[{ts}] $ {cmd}\n{string.Join("\n", lines)}\nSTDERR:\n{string.Join("\n", stderrLines)}\n";
-                await File.AppendAllTextAsync(logFilePath, entry, ct);
-            }
-            catch { }
-        }
 
         if (result.ExitCode != 0)
             logger.LogError("HandBrake failed with code {Code}: {Error}", result.ExitCode, result.StdErr);

@@ -55,14 +55,14 @@ public sealed class ConductorTests : IDisposable
         runner ??= CreateMockRunner().Object;
         var musicBrainzService = musicBrainz ?? new Mock<IMusicBrainzService>().Object;
         return new Conductor(
-            NullLogger<Conductor>.Instance,
+            NullLoggerFactory.Instance,
             _db,
             runner,
             options ?? CreateTestOptions(),
             identify ?? new MockIdentifyService(),
             ripper ?? new MockArmRipperService(),
             musicBrainzService,
-            new NotificationService(NullLogger<NotificationService>.Instance, _db, runner, Mock.Of<IHttpClientFactory>(), []),
+            new NotificationService(NullLoggerFactory.Instance, _db, runner, Mock.Of<IHttpClientFactory>(), []),
             []);
     }
 
