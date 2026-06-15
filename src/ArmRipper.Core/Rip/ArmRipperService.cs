@@ -22,6 +22,7 @@ public sealed class ArmRipperService(
 {
     public async Task<string> RipVisualMediaAsync(Job job, string logFile, bool hasDupes, bool protection, CancellationToken ct = default)
     {
+        // ── 1. Compute paths ──
         var typeSubFolder = ConvertJobType(job.VideoType);
         var jobTitle = FixJobTitle(job);
 
@@ -48,6 +49,7 @@ public sealed class ArmRipperService(
 
         logger.LogDebug("Using MakeMKV: {UseMakeMkv}", useMakeMkv);
 
+        // ── 2. MakeMKV rip (idempotent) ──
         if (useMakeMkv)
         {
             if (job.IsStageComplete(RipStage.Rip))
@@ -242,6 +244,7 @@ public sealed class ArmRipperService(
             }
 
 afterMakeMkv:
+        // ── 3. Test-mode trim (optional) ──
         if (settings.Value.TestMode && transcodeInPath is not null && Directory.Exists(transcodeInPath))
         {
             logger.LogInformation("Test mode: trimming raw MKV files to 30 seconds");
@@ -258,6 +261,7 @@ afterMakeMkv:
             }
         }
 
+        // ── 4. Transcode (idempotent) ──
         if (job.IsStageComplete(RipStage.Transcode))
         {
             logger.LogInformation("Stage 'transcode' already completed — skipping transcode");
@@ -270,6 +274,7 @@ afterMakeMkv:
             BroadcastJobUpdate(job);
         }
 
+        // ── 5. Finalize: manual title, file moves, Emby, cleanup ──
         job.Stage = RipStage.Finalize;
         job.ProgressMessage = "Finalizing...";
         await db.SaveChangesAsync(ct);

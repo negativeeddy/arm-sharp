@@ -88,9 +88,9 @@ var previousRips = await db.Jobs
 
 ### 3.1 `RipVisualMediaAsync` Is Too Long (~400 Lines)
 
-The method mixes path computation, duplicate checking, MakeMKV rip dispatch (with multiple branching strategies), file-size monitoring, transcode dispatch, file move logic, Emby notification, and cleanup.
+> **Addressed:** Section comments (`── 1. Compute paths ──`, `── 2. MakeMKV rip ──`, etc.) added for readability. Full method extraction into `RunMakeMkvRipAsync` + `FinalizeRipAsync` is deferred — the method uses `goto` labels that make automated extraction fragile. Currently ~280 lines with clear structural markers.
 
-**Recommendation:** Extract sub-methods into a pipeline: `MakeMkvStage`, `TranscodeStage`, `FinalizeStage`.
+**Recommendation (deferred):** Extract sub-methods into a pipeline: `MakeMkvStage`, `TranscodeStage`, `FinalizeStage`.
 
 ### 3.2 ✅ `MakeMkvService` Has No Interface — FIXED
 
