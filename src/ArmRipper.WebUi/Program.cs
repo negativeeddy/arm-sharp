@@ -14,8 +14,7 @@ var builder = WebApplication.CreateBuilder(args);
 var yamlValues = ArmYamlConfigLoader.LoadYamlValues("/etc/arm/config/arm.yaml");
 builder.Configuration.AddInMemoryCollection(yamlValues);
 
-var connectionString = (builder.Configuration.GetConnectionString("ArmDb") ?? "Data Source=/etc/arm/config/arm-sharp.db")
-    + ";Busy Timeout=5000;Pooling=True;";
+var connectionString = builder.Configuration.GetConnectionString("ArmDb") ?? "Data Source=/etc/arm/config/arm-sharp.db";
 builder.Services.AddDbContext<ArmDbContext>(options =>
     options.UseSqlite(connectionString));
 
@@ -99,6 +98,8 @@ using (var scope = app.Services.CreateScope())
             "INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('20260610044322_Initial', '10.0.0');");
         try { db.Database.ExecuteSqlRaw("INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('20260610053400_AddProgressMessage', '10.0.0');"); } catch { }
     }
+
+    db.Database.ExecuteSqlRaw("PRAGMA busy_timeout = 5000;");
 }
 
 var armSettings = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<ArmSettings>>().Value;

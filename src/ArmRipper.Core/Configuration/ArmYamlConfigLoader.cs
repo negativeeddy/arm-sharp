@@ -1,8 +1,8 @@
-using System.Text.RegularExpressions;
+using YamlDotNet.RepresentationModel;
 
 namespace ArmRipper.Core.Configuration;
 
-public static partial class ArmYamlConfigLoader
+public static class ArmYamlConfigLoader
 {
     private static readonly Dictionary<string, string> KeyMap = new()
     {
@@ -61,42 +61,44 @@ public static partial class ArmYamlConfigLoader
         ["DISABLE_LOGIN"] = "Arm:DisableLogin",
     };
 
-    private static readonly Regex YamlLineRegex = YamlLineRegexFactory();
-
     public static Dictionary<string, string?> LoadYamlValues(string yamlPath)
     {
         var result = new Dictionary<string, string?>();
         if (!File.Exists(yamlPath))
             return result;
 
-        foreach (var line in File.ReadLines(yamlPath))
+        try
         {
-            var trimmed = line.TrimStart();
-            if (trimmed.Length == 0 || trimmed.StartsWith('#'))
-                continue;
+            var yamlText = File.ReadAllText(yamlPath);
+            if (string.IsNullOrWhiteSpace(yamlText))
+                return result;
 
-            var match = YamlLineRegex.Match(trimmed);
-            if (!match.Success)
-                continue;
+            var yaml = new YamlStream();
+            using var reader = new StringReader(yamlText);
+            yaml.Load(reader);
 
-            var key = match.Groups[1].Value;
-            var value = match.Groups[2].Value.Trim();
+            if (yaml.Documents.Count == 0)
+                return result;
 
-            if (value.Length >= 2 && ((value[0] == '"' && value[^1] == '"') ||
-                (value[0] == '\'' && value[^1] == '\'')))
+            if (yaml.Documents[0].RootNode is not YamlMappingNode root)
+                return result;
+
+            foreach (var entry in root.Children)
             {
-                value = value[1..^1];
+                var key = ((YamlScalarNode)entry.Key).Value ?? "";
+                var value = ((YamlScalarNode)entry.Value).Value ?? "";
+
+                if (!KeyMap.TryGetValue(key, out var configKey))
+                    continue;
+
+                result[configKey] = value;
             }
-
-            if (!KeyMap.TryGetValue(key, out var configKey))
-                continue;
-
-            result[configKey] = value;
+        }
+        catch (Exception)
+        {
+            // YAML parse failure — return empty; fall back to appsettings.json defaults
         }
 
         return result;
     }
-
-    [GeneratedRegex(@"^([A-Z][A-Z_0-9]+)\s*:\s*(.*)")]
-    private static partial Regex YamlLineRegexFactory();
 }

@@ -14,8 +14,7 @@ var builder = Host.CreateApplicationBuilder(args);
 var yamlValues = ArmYamlConfigLoader.LoadYamlValues("/etc/arm/config/arm.yaml");
 builder.Configuration.AddInMemoryCollection(yamlValues);
 
-var connectionString = (builder.Configuration["ConnectionStrings:ArmDb"] ?? "Data Source=/etc/arm/config/arm-sharp.db")
-    + ";Busy Timeout=5000;Pooling=True;";
+var connectionString = builder.Configuration["ConnectionStrings:ArmDb"] ?? "Data Source=/etc/arm/config/arm-sharp.db";
 builder.Services.AddDbContext<ArmDbContext>(options =>
     options.UseSqlite(connectionString));
 
@@ -78,6 +77,8 @@ using (var initScope = host.Services.CreateScope())
         db.Database.ExecuteSqlRaw(
             "INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('20260610044322_Initial', '10.0.0');");
     }
+
+    db.Database.ExecuteSqlRaw("PRAGMA busy_timeout = 5000;");
 }
 
 var testMode = args.Any(a => a is "--test" or "-t");
