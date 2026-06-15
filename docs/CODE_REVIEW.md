@@ -106,11 +106,9 @@ modelBuilder.Entity<Job>()
     .OwnsOne(j => j.ConfigSnapshot, cfg => cfg.ToJson("ConfigJson"));
 ```
 
-### 3.4 `ArmYamlConfigLoader` Uses Regex, Not a YAML Parser
+### 3.4 ✅ `ArmYamlConfigLoader` Uses Regex — FIXED
 
-The hand-rolled regex parser handles only flat key-value YAML. It silently ignores nested structures, multi-line values, and boolean/numeric type coercion.
-
-**Recommendation:** Use `YamlDotNet` for proper YAML deserialization.
+Replaced the hand-rolled `GeneratedRegex` line-by-line parser with `YamlDotNet.RepresentationModel.YamlStream`. Now correctly handles comments, quoted values, empty documents, multi-line values, nested structures, and boolean/numeric type coercion.
 
 ### 3.5 Error-Handling Strategy Is Inconsistent
 
@@ -262,7 +260,7 @@ builder.Services.AddDbContext<ArmDbContext>(options =>
 | **P2** | Add `ConfigureAwait(false)` throughout Core library | Potential deadlocks | Medium |
 | **P3** | ✅ `JobLogger` implements `IAsyncDisposable` | File handle leak | Small |
 | **P3** | Break up `RipVisualMediaAsync` into smaller methods | Maintainability | Large |
-| **P3** | Replace YAML regex loader with YamlDotNet | Correctness | Medium |
+| **P3** | ✅ YAML regex loader replaced with YamlDotNet | Correctness | Medium |
 | **P3** | Standardize error-handling: per-track failures never throw | Resilience | Medium |
 
 **Overall assessment:** The codebase is well-structured and follows modern C# conventions. All P0 and P1 issues have been resolved along with most P2 items. The remaining items are structural improvements (method decomposition, YAML parsing, error-handling standardization) and the mechanical `ConfigureAwait(false)` sweep. The codebase is production-ready.
