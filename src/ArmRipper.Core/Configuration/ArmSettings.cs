@@ -28,10 +28,10 @@ public class ArmSettings
     public int MinLength { get; set; } = 600;
     public int MaxLength { get; set; } = 99999;
 
-    public string? HbPresetDvd { get; set; } = "HQ 480p30";
-    public string? HbPresetBd { get; set; } = "HQ 1080p30";
+    public string? HbPresetDvd { get; set; } = "HQ 480p30 Surround";
+    public string? HbPresetBd { get; set; } = "HQ 1080p30 Surround";
     public string? HbArgsDvd { get; set; } = "-e nvenc_h264 --encoder-preset slower --quality 18 --enable-hw-decoding nvdec --encopts spatial-aq=1:aq-strength=10:bf=4:cabac=1:g=50:keyint-min=23 --all-audio --all-subtitles --subtitle-burned=none --aencoder copy:ac3,ac3 --ab 640";
-    public string? HbArgsBd { get; set; } = "-e nvenc_h264 --encoder-preset slower --quality 18 --enable-hw-decoding nvdec --encopts spatial-aq=1:aq-strength=10:bf=4:cabac=1:g=50:keyint-min=23 --all-audio --all-subtitles --subtitle-burned=none --aencoder copy:ac3,ac3 --ab 640";
+    public string? HbArgsBd { get; set; } = "-e nvenc_h265 --encoder-preset slower --quality 18 --enable-hw-decoding nvdec --encopts spatial-aq=1:aq-strength=10:g=50:keyint-min=23 --all-audio --all-subtitles --subtitle-burned=none --aencoder copy:ac3,ac3 --ab 640";
     public string? DestExt { get; set; } = "mkv";
 
     public string? FfmpegCli { get; set; } = "ffmpeg";

@@ -35,16 +35,7 @@ public class NotificationHub(IOptions<ArmSettings> settings) : Hub
 
                 if (newText.Length > 0)
                 {
-                    if (mode == "arm")
-                    {
-                        var lines = newText.Split('\n');
-                        var filtered = lines.Where(l => l.Contains("ARM:"));
-                        yield return string.Join('\n', filtered) + "\n";
-                    }
-                    else
-                    {
-                        yield return newText;
-                    }
+                    yield return newText;
                 }
                 lastPos = fi.Length;
             }

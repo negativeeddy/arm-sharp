@@ -20,6 +20,12 @@
         .withAutomaticReconnect()
         .build();
 
+    // Auto-scroll tracking: stay pinned to bottom unless user scrolls up
+    var autoScroll = true;
+    output.addEventListener('scroll', function () {
+        autoScroll = (output.scrollTop + output.clientHeight >= output.scrollHeight - 20);
+    });
+
     connection.start()
         .then(() => {
             connection.stream('StreamLog', '@file', '@mode')
@@ -28,7 +34,7 @@
                         output.textContent += data;
                         @if (mode == "tail")
                         {
-                            <text>window.scrollTo(0, document.body.scrollHeight);</text>
+                            <text>if (autoScroll) output.scrollTop = output.scrollHeight;</text>
                         }
                     },
                     complete: () => {},

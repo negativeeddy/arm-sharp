@@ -5,6 +5,8 @@ public class CompletedFileInfo
     public string FilePath { get; set; } = "";
     public string FileName => Path.GetFileName(FilePath);
     public string RelativeDirectory { get; set; } = "";
+    public DateTime LastModified { get; set; }
+    public string LastModifiedFormatted => LastModified.ToString("yyyy-MM-dd HH:mm");
     public long SizeBytes { get; set; }
     public string SizeFormatted => SizeBytes switch
     {

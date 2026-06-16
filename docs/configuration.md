@@ -43,11 +43,11 @@ Configuration is read from two sources, merged in order (later wins):
 
 | Property | YAML Key | Default | Description |
 |----------|----------|---------|-------------|
-| `HbPresetDvd` | `HB_PRESET_DVD` | `Very Fast 1080p30` | HandBrake preset for DVD |
-| `HbPresetBd` | `HB_PRESET_BD` | `Very Fast 1080p30` | HandBrake preset for Blu-ray |
-| `HbArgsDvd` | `HB_ARGS_DVD` | — | Extra HandBrake args for DVD |
-| `HbArgsBd` | `HB_ARGS_BD` | — | Extra HandBrake args for Blu-ray |
-| `DestExt` | `DEST_EXT` | `mp4` | Output file extension |
+| `HbPresetDvd` | `HB_PRESET_DVD` | `HQ 480p30 Surround` | HandBrake preset for DVD |
+| `HbPresetBd` | `HB_PRESET_BD` | `HQ 1080p30 Surround` | HandBrake preset for Blu-ray |
+| `HbArgsDvd` | `HB_ARGS_DVD` | `-e nvenc_h264 --encoder-preset slower --quality 18 --enable-hw-decoding nvdec --encopts spatial-aq=1:aq-strength=10:bf=4:cabac=1:g=50:keyint-min=23 --all-audio --all-subtitles --subtitle-burned=none --aencoder copy:ac3,ac3 --ab 640` | Extra HandBrake args for DVD |
+| `HbArgsBd` | `HB_ARGS_BD` | `-e nvenc_h265 --encoder-preset slower --quality 18 --enable-hw-decoding nvdec --encopts spatial-aq=1:aq-strength=10:g=50:keyint-min=23 --all-audio --all-subtitles --subtitle-burned=none --aencoder copy:ac3,ac3 --ab 640` | Extra HandBrake args for Blu-ray |
+| `DestExt` | `DEST_EXT` | `mkv` | Output file extension |
 | `FfmpegCli` | `FFMPEG_CLI` | `ffmpeg` | ffmpeg binary path |
 | `FfmpegPreFileArgs` | `FFMPEG_PRE_FILE_ARGS` | — | ffmpeg args before input file |
 | `FfmpegPostFileArgs` | `FFMPEG_POST_FILE_ARGS` | — | ffmpeg args after input file |
@@ -104,20 +104,54 @@ Configuration is read from two sources, merged in order (later wins):
 |----------|----------|-------------|
 | `MakeMkvPermaKey` | `MAKEMKV_PERMA_KEY` | MakeMKV permanent registration key |
 
-## Example arm.yaml
+## Encoding Rationale
 
-```yaml
-RAW_PATH: /home/arm/media/raw
-TRANSCODE_PATH: /home/arm/media/transcode
-COMPLETED_PATH: /home/arm/media/completed
-LOGPATH: /home/arm/logs
-DBFILE: /etc/arm/config/arm.db
-RIPMETHOD: mkv
-MAINFEATURE: false
-SKIP_TRANSCODE: false
-HB_PRESET_DVD: Very Fast 1080p30
-HB_PRESET_BD: Very Fast 1080p30
-DEST_EXT: mp4
-OMDB_API_KEY: your_key_here
-WEBSERVER_PORT: 8080
-```
+The defaults are tuned for a system with a **NVIDIA GTX 1060 (Pascal, CUDA 6.1)** running **HandBrakeCLI 1.11.1**.
+
+### Encoder selection by resolution
+
+| Source | Encoder | Rationale |
+|--------|---------|----------|
+| DVD (480i/576i) | `nvenc_h264` | Pascal's HEVC encoder has no B-frame support. At DVD resolution, the codec efficiency gap between H.264 and HEVC is narrow — H.264 with `bf=4` achieves better compression than B-frame-less HEVC at these low resolutions. |
+| Blu-ray (720p/1080p) | `nvenc_h265` | HEVC is 30–50% more efficient than H.264 at 1080p+, so even without B-frames it delivers superior compression. |
+
+### Preset choice
+
+`HQ 480p30 Surround` / `HQ 1080p30 Surround` — these are the renamed equivalents of the legacy `HQ 480p30` / `HQ 1080p30` presets in HandBrake 1.11.1. The "Surround" suffix indicates the preset includes an AC-3 5.1 audio track alongside AAC stereo. The `--all-audio` and `--aencoder copy:ac3,ac3` overrides take precedence, preserving the original channel layout.
+
+### `--encoder-preset slower`
+
+NVENC quality/speed preset. `slower` enables the encoder's highest-quality tuning for maximum compression efficiency on the GTX 1060. Supported values: `fastest`, `faster`, `fast`, `medium`, `slow`, `slower`, `slowest` (available for both `nvenc_h264` and `nvenc_h265`).
+
+### `--quality 18`
+
+RF (Rate Factor) scale for NVENC — lower is better quality. 18 delivers visually lossless or near-lossless output for both H.264 and H.265.
+
+### `--encopts` breakdown
+
+| Option | DVD | BD | Description |
+|--------|:---:|:--:|-------------|
+| `spatial-aq=1` | ✓ | ✓ | Adaptive quantization (spatial) — improves detail retention in complex scenes |
+| `aq-strength=10` | ✓ | ✓ | AQ strength (0–15); 10 is a strong but not extreme setting |
+| `bf=4` | ✓ | ✗ | Max consecutive B-frames — H.264 only. Pascal HEVC encoder does not support B-frames |
+| `cabac=1` | ✓ | ✗ | CABAC entropy coding — H.264 only. HEVC always uses CABAC natively |
+| `g=50` | ✓ | ✓ | GOP size (keyframe interval). 50 ≈ 2s at 23.976 fps |
+| `keyint-min=23` | ✓ | ✓ | Minimum GOP size. Prevents keyframes from being placed too frequently |
+
+### `--all-audio --all-subtitles`
+
+Passthrough all available audio and subtitle tracks. `--subtitle-burned=none` prevents burning any subtitle into the video.
+
+### `--aencoder copy:ac3,ac3 --ab 640`
+
+- `copy:ac3` — passthrough any existing AC-3 track unchanged (preserves original 5.1/7.1 channel layout)
+- `ac3` — encode fallback audio to AC-3 at 640 kbps
+- AC-3 caps at 5.1 channels, preventing unintended format conversions
+
+### `--enable-hw-decoding nvdec`
+
+Requests NVDEC hardware decoding. **Note:** This HandBrake build does not include NVDEC support (`--enable-nvdec` was not compiled in), so this flag is silently ignored. Kept in the defaults for future compatibility.
+
+---
+
+> Settings can be overridden via `appsettings.json` (per-deployment) or `/etc/arm/config/arm.yaml` — see the [configuration hierarchy](#configuration).

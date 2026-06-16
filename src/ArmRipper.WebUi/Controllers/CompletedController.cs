@@ -61,7 +61,7 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         var results = await Task.WhenAll(tasks);
 
         return results.Where(r => r != null)
-            .OrderByDescending(r => r!.SizeBytes)
+            .OrderByDescending(r => r!.LastModified)
             .ToList()!;
     }
 
@@ -99,6 +99,7 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
             {
                 FilePath = filePath,
                 RelativeDirectory = GetRelativeDirectory(filePath),
+                LastModified = System.IO.File.GetLastWriteTimeUtc(filePath),
                 SizeBytes = sizeBytes,
                 DurationSeconds = duration,
                 BitrateKbps = bitrate / 1000.0

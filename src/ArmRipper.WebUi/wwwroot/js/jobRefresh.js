@@ -16,8 +16,36 @@ arm._refreshJobsTable = function () {
         .catch(function () {});
 };
 
-// SignalR-driven: debounced refresh on any JobUpdate
+// Direct DOM update: find the matching row and update title/disc type immediately
+arm._applyJobUpdateToDom = function (update) {
+    if (!update || !update.jobId) return;
+    var container = document.getElementById('activeJobsTable');
+    if (!container) return;
+    var tbody = container.querySelector('tbody');
+    if (!tbody) return;
+
+    // Walk rows looking for the job ID in the first cell
+    for (var i = 0; i < tbody.rows.length; i++) {
+        var row = tbody.rows[i];
+        if (row.cells.length > 0 && row.cells[0].textContent.trim() === String(update.jobId)) {
+            // Update title cell (2nd column)
+            if (update.title && row.cells[1]) {
+                row.cells[1].textContent = update.title;
+            }
+            // Update disc type cell (3rd column)
+            if (update.discType && row.cells[2]) {
+                row.cells[2].textContent = update.discType;
+            }
+            break;
+        }
+    }
+};
+
+// SignalR-driven: immediate DOM update + debounced full refresh
 arm._onJobUpdateForTable = function (update) {
+    // Apply visible changes instantly
+    arm._applyJobUpdateToDom(update);
+    // Schedule a full table refresh to sync pipeline, progress, etc.
     if (arm._jobTableDebounceTimer) clearTimeout(arm._jobTableDebounceTimer);
     arm._jobTableDebounceTimer = setTimeout(arm._refreshJobsTable, 500);
 };

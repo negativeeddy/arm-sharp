@@ -61,17 +61,6 @@ public class LogsController(IOptions<ArmSettings> settings) : Controller
         try
         {
             using var reader = new StreamReader(fullPath);
-            if (mode == "arm")
-            {
-                var lines = new List<string>();
-                while (reader.ReadLine() is { } line)
-                {
-                    if (line.Contains("ARM:"))
-                        lines.Add(line);
-                }
-                return Content(string.Join('\n', lines), "text/plain");
-            }
-
             var content = reader.ReadToEnd();
             return Content(content, "text/plain");
         }
