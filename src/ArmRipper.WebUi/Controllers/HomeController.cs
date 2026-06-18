@@ -110,11 +110,23 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner) : Control
     {
         try
         {
-            var dir = Directory.CreateDirectory(path);
-            var drive = new DriveInfo(dir.Root.FullName);
-            if (!drive.IsReady) return null;
-            var total = drive.TotalSize;
-            var free = drive.AvailableFreeSpace;
+            Directory.CreateDirectory(path);
+            // DriveInfo(root) always reports the root filesystem, not the actual mount.
+            // Use statvfs via df to get stats for the real mount point of this path.
+            var psi = new System.Diagnostics.ProcessStartInfo("df", $"--block-size=1 --output=size,avail \"{path}\"")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false
+            };
+            using var proc = System.Diagnostics.Process.Start(psi);
+            var output = proc?.StandardOutput.ReadToEnd() ?? "";
+            proc?.WaitForExit();
+            // Output: header line + data line with size and avail in bytes
+            var lines = output.Trim().Split('\n');
+            if (lines.Length < 2) return null;
+            var parts = lines[1].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2 || !long.TryParse(parts[0], out var total) || !long.TryParse(parts[1], out var free))
+                return null;
             var used = total - free;
             return new Dictionary<string, object>
             {

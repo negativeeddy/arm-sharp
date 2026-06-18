@@ -13,7 +13,7 @@
         "-v", "/mnt/docker/arm-sharp/scripts:/home/arm/scripts",
         "-v", "/mnt/docker/arm-sharp/music:/home/arm/music",
         "-v", "/mnt/docker/arm-sharp/logs:/home/arm/logs",
-        "-v", "/mnt/docker/arm-sharp/media:/home/arm/media",
+        "-v", "/mnt/data/docker/arm/media:/home/arm/media",
         "-v", "/mnt/docker/arm-sharp/config:/etc/arm/config"
     ],
     "mounts": [

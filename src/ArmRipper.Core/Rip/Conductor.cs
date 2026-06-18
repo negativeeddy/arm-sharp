@@ -185,6 +185,7 @@ public sealed class Conductor(
 
         job.MarkStageComplete(RipStage.Identify);
         await db.SaveChangesAsync(ct);
+        BroadcastJobUpdate(job);
 
         if (await IsCancelledAsync(job, ct))
             return 1;
