@@ -15,7 +15,8 @@ public sealed partial class IdentifyService(
     ICliProcessRunner runner,
     ILoggerFactory loggerFactory,
     ArmDbContext db,
-    IOptions<ArmSettings> settings) : IIdentifyService
+    IOptions<ArmSettings> settings,
+    IHttpClientFactory httpClientFactory) : IIdentifyService
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("IdentifyService");
     public async Task IdentifyAsync(Job job, CancellationToken ct = default)
@@ -285,7 +286,7 @@ public sealed partial class IdentifyService(
             if (crc64 is not null)
             {
                 var url = $"https://1337server.pythonanywhere.com/api/v1/?mode=s&crc64={crc64}";
-                using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+                var httpClient = httpClientFactory.CreateClient("IdentifyService");
                 var response = await httpClient.GetStringAsync(url, ct);
                 var armApiResult = JsonSerializer.Deserialize<ArmApiResponse>(response);
 
@@ -486,7 +487,7 @@ public sealed partial class IdentifyService(
                             var apiKey = settings.Value.OmdbApiKey;
                             if (!string.IsNullOrEmpty(apiKey))
                             {
-                                using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+                                var httpClient = httpClientFactory.CreateClient("IdentifyService");
                                 var detailUrl = $"https://www.omdbapi.com/?i={resultImdb}&apikey={apiKey}&plot=full";
                                 var detailJson = await httpClient.GetStringAsync(detailUrl, ct);
                                 var detailDoc = JsonDocument.Parse(detailJson);
@@ -575,7 +576,7 @@ public sealed partial class IdentifyService(
 
         try
         {
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            var httpClient = httpClientFactory.CreateClient("IdentifyService");
             var response = await httpClient.GetStringAsync(url, ct);
             var doc = JsonDocument.Parse(response);
             var root = doc.RootElement;
@@ -601,7 +602,7 @@ public sealed partial class IdentifyService(
 
         try
         {
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            var httpClient = httpClientFactory.CreateClient("IdentifyService");
 
             // Search movies
             var movieUrl = string.IsNullOrEmpty(year)

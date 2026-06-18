@@ -21,6 +21,11 @@ builder.Services.AddDbContext<ArmDbContext>(options =>
 builder.Services.Configure<ArmSettings>(builder.Configuration.GetSection(ArmSettings.SectionName));
 
 builder.Services.AddSingleton<ICliProcessRunner, CliProcessRunner>();
+builder.Services.AddHttpClient("IdentifyService", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("arm/1.0");
+});
 builder.Services.AddScoped<IIdentifyService, IdentifyService>();
 builder.Services.AddScoped<IHandBrakeService, HandBrakeService>();
 builder.Services.AddScoped<IFfmpegService, FfmpegService>();
@@ -64,21 +69,7 @@ if (!string.IsNullOrEmpty(dbDir) && !Directory.Exists(dbDir))
 using (var initScope = host.Services.CreateScope())
 {
     var db = initScope.ServiceProvider.GetRequiredService<ArmDbContext>();
-    try
-    {
-        db.Database.Migrate();
-    }
-    catch
-    {
-        db.Database.EnsureCreated();
-        db.Database.ExecuteSqlRaw(
-            "CREATE TABLE IF NOT EXISTS \"__EFMigrationsHistory\" (\"MigrationId\" TEXT NOT NULL, \"ProductVersion\" TEXT NOT NULL);");
-        try { db.Database.ExecuteSqlRaw("ALTER TABLE jobs ADD COLUMN Warnings TEXT NULL;"); } catch { }
-        db.Database.ExecuteSqlRaw(
-            "INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('20260610044322_Initial', '10.0.0');");
-    }
-
-    db.Database.ExecuteSqlRaw("PRAGMA busy_timeout = 5000;");
+    DatabaseHelper.EnsureMigrated(db);
 }
 
 var testMode = args.Any(a => a is "--test" or "-t");

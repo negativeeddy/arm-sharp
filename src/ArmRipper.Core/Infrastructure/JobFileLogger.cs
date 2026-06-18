@@ -42,6 +42,15 @@ public sealed class JobFileLoggerProvider : ILoggerProvider, ISupportExternalSco
         });
     }
 
+    /// <summary>Remove and close the writer for a specific log file path.</summary>
+    internal void RemoveWriter(string filePath)
+    {
+        if (_writers.TryRemove(filePath, out var sw))
+        {
+            try { sw.Flush(); sw.Dispose(); } catch { /* best effort */ }
+        }
+    }
+
     public void Dispose()
     {
         foreach (var w in _writers.Values) { w.Flush(); w.Dispose(); }

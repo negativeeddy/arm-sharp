@@ -34,7 +34,7 @@ public sealed class ArmRipperService(
         job.Stage = RipStage.Identify;  // transition stage
         job.ProgressMessage ??= "Preparing to rip...";
         await db.SaveChangesAsync(ct);
-        BroadcastJobUpdate(job);
+        await BroadcastJobUpdateAsync(job);
 
         transcodeOutPath = CheckForDupeFolder(hasDupes, transcodeOutPath, job);
         finalDirectory = CheckForDupeFolder(hasDupes, finalDirectory, job);
@@ -94,7 +94,7 @@ public sealed class ArmRipperService(
                     job.Status = JobState.VideoRipping;
                     job.ProgressMessage = "Starting rip...";
                     await db.SaveChangesAsync(ct);
-                    BroadcastJobUpdate(job);
+                    await BroadcastJobUpdateAsync(job);
 
                     if (!Directory.Exists(makeMkvOutPath))
                         Directory.CreateDirectory(makeMkvOutPath);
@@ -145,7 +145,7 @@ public sealed class ArmRipperService(
                 job.Status = JobState.VideoRipping;
                 job.ProgressMessage = "Starting rip...";
                 await db.SaveChangesAsync(ct);
-                BroadcastJobUpdate(job);
+                await BroadcastJobUpdateAsync(job);
 
                 string? ripError = null;
                 try
@@ -255,7 +255,7 @@ public sealed class ArmRipperService(
 
                 job.MarkStageComplete(RipStage.Rip);
                 await db.SaveChangesAsync(ct);
-                BroadcastJobUpdate(job);
+                await BroadcastJobUpdateAsync(job);
                 }
             }
 
@@ -287,14 +287,14 @@ afterMakeMkv:
             await StartTranscodeAsync(job, logFile, transcodeInPath!, transcodeOutPath, protection, ct);
             job.MarkStageComplete(RipStage.Transcode);
             await db.SaveChangesAsync(ct);
-            BroadcastJobUpdate(job);
+            await BroadcastJobUpdateAsync(job);
         }
 
         // ── 5. Finalize: manual title, file moves, Emby, cleanup ──
         job.Stage = RipStage.Finalize;
         job.ProgressMessage = "Finalizing...";
         await db.SaveChangesAsync(ct);
-        BroadcastJobUpdate(job);
+        await BroadcastJobUpdateAsync(job);
 
         logger.LogDebug("Transcode status: [{SkipTranscode}] and MakeMKV Status: [{UseMakeMkv}]",
             job.Config?.SkipTranscode ?? settings.Value.SkipTranscode, useMakeMkv);
@@ -330,7 +330,7 @@ afterMakeMkv:
         job.MarkStageComplete(RipStage.Finalize);
         job.ProgressMessage = null;
         await db.SaveChangesAsync(ct);
-        BroadcastJobUpdate(job);
+        await BroadcastJobUpdateAsync(job);
 
         logger.LogInformation("************* ARM processing complete *************");
         return finalDirectory;
@@ -349,7 +349,7 @@ afterMakeMkv:
         job.Status = JobState.TranscodeActive;
         job.ProgressMessage = "Starting transcode...";
         await db.SaveChangesAsync(ct);
-        BroadcastJobUpdate(job);
+        await BroadcastJobUpdateAsync(job);
 
         if (job.Config?.UseFfmpeg ?? settings.Value.UseFfmpeg)
         {
@@ -418,12 +418,39 @@ afterMakeMkv:
         RecordStageError(job, stage, $"Expected status {expectedStatus}, was {job.Status}");
     }
 
-    /// <summary>Fire-and-forget broadcast of job state to all connected UI clients.</summary>
-    private void BroadcastJobUpdate(Job job)
+    /// <summary>Broadcast job state to all connected UI clients with error handling.</summary>
+    private async Task BroadcastJobUpdateAsync(Job job)
     {
         var update = JobUpdate.FromJob(job);
         foreach (var b in broadcasters)
-            _ = b.BroadcastJobUpdateAsync(update);
+        {
+            try
+            {
+                await b.BroadcastJobUpdateAsync(update);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Broadcast failed for job {JobId}", job.Id);
+            }
+        }
+    }
+
+    /// <summary>Fire-and-forget variant for use inside synchronous IProgress callbacks.</summary>
+    private void BroadcastJobUpdateFireAndForget(Job job)
+    {
+        var update = JobUpdate.FromJob(job);
+        foreach (var b in broadcasters)
+        {
+            try
+            {
+                _ = b.BroadcastJobUpdateAsync(update).ContinueWith(t =>
+                {
+                    if (t.Exception is not null)
+                        logger.LogWarning(t.Exception, "Broadcast failed for job {JobId}", job.Id);
+                }, TaskContinuationOptions.OnlyOnFaulted);
+            }
+            catch { }
+        }
     }
 
     private IProgress<int> MkvProgress(Job job, string message, CancellationToken ct) =>
@@ -433,7 +460,7 @@ afterMakeMkv:
             job.ProgressMessage = message;
             // Progress percent flows over SignalR only — NOT persisted to DB.
             // Stage completions are written atomically by the Conductor on stage transitions.
-            BroadcastJobUpdate(job);
+            BroadcastJobUpdateFireAndForget(job);
         });
 
     private IProgress<int> TranscodeProgress(Job job, string message, CancellationToken ct) =>
@@ -443,7 +470,7 @@ afterMakeMkv:
             job.ProgressMessage = message;
             // Progress percent flows over SignalR only — NOT persisted to DB.
             // Stage completions are written atomically by the Conductor on stage transitions.
-            BroadcastJobUpdate(job);
+            BroadcastJobUpdateFireAndForget(job);
         });
 
     /// <summary>
