@@ -349,6 +349,34 @@ public class SettingsController(
     [HttpPost("start-rip")]
     public async Task<IActionResult> StartRip(string devPath)
     {
+        if (string.IsNullOrWhiteSpace(devPath) || !devPath.StartsWith("/dev/sr", StringComparison.Ordinal))
+        {
+            TempData["Message"] = "Invalid optical drive path.";
+            return RedirectToAction("Index");
+        }
+
+        if (!System.IO.File.Exists(devPath))
+            await TryCreateOpticalDeviceNodesAsync(devPath);
+
+        if (!System.IO.File.Exists(devPath))
+        {
+            TempData["Message"] = $"Drive {devPath} is not currently available. Rescan drives and try again.";
+            return RedirectToAction("Index");
+        }
+
+        var drive = await db.SystemDrives.FirstOrDefaultAsync(d => d.Mount == devPath);
+        if (drive is null)
+        {
+            TempData["Message"] = $"Drive {devPath} is not registered. Please scan drives first.";
+            return RedirectToAction("Index");
+        }
+
+        if (string.Equals(drive.DriveMode, "disabled", StringComparison.OrdinalIgnoreCase))
+        {
+            TempData["Message"] = $"Drive {devPath} is disabled. Enable it before starting a rip.";
+            return RedirectToAction("Index");
+        }
+
         // Check if a job is already running for this device
         var existingJob = await db.Jobs
             .Where(j => j.DevPath == devPath
@@ -381,6 +409,56 @@ public class SettingsController(
 
         TempData["Message"] = $"Rip started for {devPath}. Job page will appear shortly.";
         return RedirectToAction("Index");
+    }
+
+    private async Task TryCreateOpticalDeviceNodesAsync(string devPath)
+    {
+        try
+        {
+            var devName = Path.GetFileName(devPath);
+            if (string.IsNullOrWhiteSpace(devName) || !devName.StartsWith("sr", StringComparison.Ordinal))
+                return;
+
+            var sysDevPath = $"/sys/class/block/{devName}/dev";
+            if (!System.IO.File.Exists(sysDevPath))
+                return;
+
+            var nums = (await System.IO.File.ReadAllTextAsync(sysDevPath)).Trim();
+            var parts = nums.Split(':', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (parts.Length != 2)
+                return;
+
+            await runner.RunAsync("mknod", $"{devPath} b {parts[0]} {parts[1]}", timeoutMs: 5_000);
+            await runner.RunAsync("chgrp", $"cdrom {devPath}", timeoutMs: 5_000);
+            await runner.RunAsync("chmod", $"660 {devPath}", timeoutMs: 5_000);
+
+            var sgBase = $"/sys/class/block/{devName}/device/scsi_generic";
+            if (!Directory.Exists(sgBase))
+                return;
+
+            var sgEntry = Directory.EnumerateDirectories(sgBase).FirstOrDefault();
+            if (sgEntry is null)
+                return;
+
+            var sgName = Path.GetFileName(sgEntry);
+            var sgDevPath = $"/dev/{sgName}";
+            var sysSgDev = $"/sys/class/scsi_generic/{sgName}/dev";
+            if (!System.IO.File.Exists(sysSgDev))
+                return;
+
+            var sgNums = (await System.IO.File.ReadAllTextAsync(sysSgDev)).Trim();
+            var sgParts = sgNums.Split(':', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (sgParts.Length != 2)
+                return;
+
+            await runner.RunAsync("mknod", $"{sgDevPath} c {sgParts[0]} {sgParts[1]}", timeoutMs: 5_000);
+            await runner.RunAsync("chgrp", $"cdrom {sgDevPath}", timeoutMs: 5_000);
+            await runner.RunAsync("chmod", $"660 {sgDevPath}", timeoutMs: 5_000);
+        }
+        catch
+        {
+            // Best-effort recovery in devcontainers where udev is not running.
+        }
     }
 
     [HttpPost("save-ui")]

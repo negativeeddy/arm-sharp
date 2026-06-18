@@ -162,6 +162,12 @@ public sealed partial class IdentifyService(
     {
         try
         {
+            if (string.IsNullOrWhiteSpace(job.DevPath) || !File.Exists(job.DevPath))
+            {
+                logger.LogWarning("Fallback detection skipped: device path {DevPath} is not available", job.DevPath);
+                return DiscType.Unknown;
+            }
+
             // Use sysfs to read sector count — works even on encrypted discs
             var devName = Path.GetFileName(job.DevPath!.TrimEnd('/'));
             var sysfsPath = $"/sys/block/{devName}/size";
@@ -170,6 +176,9 @@ public sealed partial class IdentifyService(
 
             var content = await File.ReadAllTextAsync(sysfsPath, ct);
             if (!long.TryParse(content.Trim(), out var sectors))
+                return DiscType.Unknown;
+
+            if (sectors <= 0)
                 return DiscType.Unknown;
 
             var bytes = sectors * 512L;
@@ -344,7 +353,24 @@ public sealed partial class IdentifyService(
 
     private async Task<bool> IdentifyBlurayAsync(Job job, CancellationToken ct)
     {
-        var bdmtPath = Path.Combine(job.MountPoint!, "BDMV", "META", "DL", "bdmt_eng.xml");
+        if (string.IsNullOrWhiteSpace(job.MountPoint))
+        {
+            logger.LogWarning("Blu-ray identification skipped: mount point is unavailable for {DevPath}", job.DevPath);
+
+            if (!string.IsNullOrWhiteSpace(job.Label))
+            {
+                var blurayTitle = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(
+                    job.Label.Replace("_", " ").ToLowerInvariant());
+                job.Title = job.TitleAuto = blurayTitle;
+                job.Year = "";
+                await db.SaveChangesAsync(ct);
+                return true;
+            }
+
+            return false;
+        }
+
+        var bdmtPath = Path.Combine(job.MountPoint, "BDMV", "META", "DL", "bdmt_eng.xml");
 
         try
         {
