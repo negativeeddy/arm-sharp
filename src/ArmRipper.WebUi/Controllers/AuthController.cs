@@ -51,10 +51,17 @@ public class AuthController(ArmDbContext db) : Controller
         var hasher = new PasswordHasher<User>();
         var result = hasher.VerifyHashedPassword(user, user.PasswordHash, password);
 
-        if (result != PasswordVerificationResult.Success)
+        if (result == PasswordVerificationResult.Failed)
         {
             ViewBag.Error = "Invalid username or password.";
             return View();
+        }
+
+        // Rehash if the password hash format has been upgraded by ASP.NET Core
+        if (result == PasswordVerificationResult.SuccessRehashNeeded)
+        {
+            user.PasswordHash = hasher.HashPassword(user, password);
+            await db.SaveChangesAsync();
         }
 
         var claims = new List<Claim>
