@@ -18,7 +18,8 @@ public sealed class Conductor(
     IArmRipperService armRipperService,
     IMusicBrainzService musicBrainzService,
     NotificationService notificationService,
-    IEnumerable<INotificationBroadcaster> broadcasters) : IConductor
+    IEnumerable<INotificationBroadcaster> broadcasters,
+    JobFileLoggerProvider fileLogProvider) : IConductor
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("Conductor");
     /// <summary>Broadcast job state to all connected UI clients with error handling.</summary>
@@ -178,16 +179,18 @@ public sealed class Conductor(
             [JobFileLoggerProvider.LogFilePathKey] = job.GetLogFilePath()
         });
 
-        logger.LogInformation("Starting Disc identification");
-
-        if (job.Status != JobState.Active)
+        try
         {
-            var msg = $"Setup stage: expected status Active, was {job.Status}";
-            logger.LogWarning(msg);
-            job.Warnings = string.IsNullOrEmpty(job.Warnings) ? msg : $"{job.Warnings}; {msg}";
-        }
+            logger.LogInformation("Starting Disc identification");
 
-        // Identify the disc
+            if (job.Status != JobState.Active)
+            {
+                var msg = $"Setup stage: expected status Active, was {job.Status}";
+                logger.LogWarning(msg);
+                job.Warnings = string.IsNullOrEmpty(job.Warnings) ? msg : $"{job.Warnings}; {msg}";
+            }
+
+            // Identify the disc
         job.Stage = RipStage.Identify;
         await db.SaveChangesAsync(ct);
         await identifyService.IdentifyAsync(job, ct);
@@ -325,6 +328,11 @@ public sealed class Conductor(
         await BroadcastJobUpdateAsync(job);
         logger.LogInformation("************* ARM processing complete *************");
         return 0;
+        }
+        finally
+        {
+            fileLogProvider.RemoveWriter(job.GetLogFilePath());
+        }
     }
 
     private async Task RipMusicAsync(Job job, CancellationToken ct)

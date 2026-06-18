@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+
 namespace ArmRipper.Core.Infrastructure.Data;
 
 /// <summary>
