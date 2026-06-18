@@ -40,6 +40,11 @@ builder.Services.AddSignalR();
 builder.Services.AddMemoryCache();
 
 builder.Services.AddSingleton<ICliProcessRunner, CliProcessRunner>();
+builder.Services.AddHttpClient("IdentifyService", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("arm/1.0");
+});
 builder.Services.AddScoped<IIdentifyService, IdentifyService>();
 builder.Services.AddScoped<IHandBrakeService, HandBrakeService>();
 builder.Services.AddScoped<IFfmpegService, FfmpegService>();
