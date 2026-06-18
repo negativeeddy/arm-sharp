@@ -450,7 +450,7 @@ public sealed class Conductor(
             .Where(j => j.Label == job.Label && j.Status == JobState.Success)
             .OrderByDescending(j => j.StopTime)
             .Select(j => new { j.Title, j.Year, j.HasNiceTitle, j.VideoType, j.PosterUrl })
-            .Take(10)
+            .Take(2)
             .ToListAsync(ct);
 
         if (previousRips.Count == 1)
