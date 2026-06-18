@@ -145,6 +145,13 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
         }
 
         logger.LogInformation("Process exited ({Name}) code={Code}", fileName, process.ExitCode);
+
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"Process '{fileName}' exited with code {process.ExitCode}. " +
+                $"Arguments: {arguments}");
+        }
     }
 
     public async IAsyncEnumerable<(string? Line, bool IsStdErr, int? ExitCode)> RunStreamingAllAsync(
