@@ -476,7 +476,9 @@ public partial class MakeMkvService : IMakeMkvService
                     {
                         // Skip files that were already there before this rip started
                         if (preExisting.Contains(file)) continue;
-                        totalSize += new FileInfo(file).Length;
+                        try { totalSize += new FileInfo(file).Length; }
+                        catch (FileNotFoundException) { continue; }
+                        catch (IOException) { continue; }
                     }
                 }
                 catch (UnauthorizedAccessException) { continue; }
