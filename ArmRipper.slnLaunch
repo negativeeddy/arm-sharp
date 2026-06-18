@@ -1,0 +1,11 @@
+[
+  {
+    "Name": "WebUi",
+    "Projects": [
+      {
+        "Path": "src/ArmRipper.WebUi/ArmRipper.WebUi.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]

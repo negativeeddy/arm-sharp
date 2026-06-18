@@ -34,7 +34,8 @@
             "extensions": [
                 "ms-dotnettools.csdevkit",
                 "ms-vscode.PowerShell",
-                "EditorConfig.EditorConfig"
+                "EditorConfig.EditorConfig",
+                "SantiagoRomanChillon.opencode-zen-copilot"
             ]
         }
     },
