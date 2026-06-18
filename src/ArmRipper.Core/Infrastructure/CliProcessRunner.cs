@@ -214,27 +214,4 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
         yield return (null, false, exitCode);
     }
 
-    private async Task AppendToLogAsync(string logFilePath, string stdOut, string stdErr, string fileName, string arguments)
-    {
-        try
-        {
-            var dir = Path.GetDirectoryName(logFilePath);
-            if (dir is not null)
-                Directory.CreateDirectory(dir);
-
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-            var header = $"\n[{timestamp}] $ {fileName} {arguments}\n";
-            var body = header;
-            if (!string.IsNullOrEmpty(stdOut))
-                body += stdOut + "\n";
-            if (!string.IsNullOrEmpty(stdErr))
-                body += "STDERR:\n" + stdErr + "\n";
-
-            await File.AppendAllTextAsync(logFilePath, body);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed to write to log file {Path}", logFilePath);
-        }
-    }
 }
