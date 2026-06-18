@@ -21,12 +21,21 @@ public sealed class Conductor(
     IEnumerable<INotificationBroadcaster> broadcasters) : IConductor
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("Conductor");
-    /// <summary>Fire-and-forget broadcast of job state to all connected UI clients.</summary>
-    private void BroadcastJobUpdate(Job job)
+    /// <summary>Broadcast job state to all connected UI clients with error handling.</summary>
+    private async Task BroadcastJobUpdateAsync(Job job)
     {
         var update = JobUpdate.FromJob(job);
         foreach (var b in broadcasters)
-            _ = b.BroadcastJobUpdateAsync(update);
+        {
+            try
+            {
+                await b.BroadcastJobUpdateAsync(update);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Broadcast failed for job {JobId}", job.Id);
+            }
+        }
     }
 
     public async Task<int> RunAsync(string devicePath, CancellationToken ct = default)
@@ -47,7 +56,7 @@ public sealed class Conductor(
                 job.Errors = ex.Message;
                 job.ProgressMessage = null;
                 try { await db.SaveChangesAsync(ct); } catch { /* best effort */ }
-                BroadcastJobUpdate(job);
+                await BroadcastJobUpdateAsync(job);
             }
             return 1;
         }
@@ -185,7 +194,7 @@ public sealed class Conductor(
 
         job.MarkStageComplete(RipStage.Identify);
         await db.SaveChangesAsync(ct);
-        BroadcastJobUpdate(job);
+        await BroadcastJobUpdateAsync(job);
 
         if (await IsCancelledAsync(job, ct))
             return 1;
@@ -203,7 +212,7 @@ public sealed class Conductor(
             job.Status = JobState.ManualWaitStarted;
             job.ProgressMessage = $"Manual wait: {waitTime}s remaining";
             await db.SaveChangesAsync(ct);
-            BroadcastJobUpdate(job);
+            await BroadcastJobUpdateAsync(job);
 
             var waited = 0;
             while (waited < waitTime)
@@ -231,7 +240,7 @@ public sealed class Conductor(
                     logger.LogInformation("Manual wait resumed by user");
                     job.ManualWaitResume = false;
                     await db.SaveChangesAsync(ct);
-                    BroadcastJobUpdate(job);
+                    await BroadcastJobUpdateAsync(job);
                     break;
                 }
 
@@ -241,7 +250,7 @@ public sealed class Conductor(
                 {
                     job.ProgressMessage = $"Manual wait: {remaining}s remaining";
                     await db.SaveChangesAsync(ct);
-                    BroadcastJobUpdate(job);
+                    await BroadcastJobUpdateAsync(job);
                 }
             }
 
@@ -251,7 +260,7 @@ public sealed class Conductor(
             job.Status = JobState.Active;
             job.ProgressMessage = "Starting rip...";
             await db.SaveChangesAsync(ct);
-            BroadcastJobUpdate(job);
+            await BroadcastJobUpdateAsync(job);
         }
 
         // Notify entry
@@ -287,7 +296,7 @@ public sealed class Conductor(
                 logger.LogCritical("Couldn't identify the disc type. Exiting without any action.");
                 job.Status = JobState.Failure;
                 await db.SaveChangesAsync(ct);
-                BroadcastJobUpdate(job);
+                await BroadcastJobUpdateAsync(job);
                 return 1;
         }
 
@@ -313,7 +322,7 @@ public sealed class Conductor(
         }
 
         await db.SaveChangesAsync(ct);
-        BroadcastJobUpdate(job);
+        await BroadcastJobUpdateAsync(job);
         logger.LogInformation("************* ARM processing complete *************");
         return 0;
     }
@@ -332,7 +341,7 @@ public sealed class Conductor(
         job.Stage = RipStage.Rip;
         job.Status = JobState.AudioRipping;
         await db.SaveChangesAsync(ct);
-        BroadcastJobUpdate(job);
+        await BroadcastJobUpdateAsync(job);
 
         try
         {
@@ -350,7 +359,7 @@ public sealed class Conductor(
         }
 
         await db.SaveChangesAsync(ct);
-        BroadcastJobUpdate(job);
+        await BroadcastJobUpdateAsync(job);
     }
 
     private async Task RipDataAsync(Job job, CancellationToken ct)
@@ -386,7 +395,7 @@ public sealed class Conductor(
 
         job.Stage = RipStage.Rip;
         await db.SaveChangesAsync(ct);
-        BroadcastJobUpdate(job);
+        await BroadcastJobUpdateAsync(job);
 
         try
         {
@@ -408,7 +417,7 @@ public sealed class Conductor(
         }
 
         await db.SaveChangesAsync(ct);
-        BroadcastJobUpdate(job);
+        await BroadcastJobUpdateAsync(job);
 
         try
         {
