@@ -22,146 +22,59 @@ The project is well-structured, uses modern .NET 10 idioms (file-scoped namespac
 
 ### 2.1 — Fire-and-forget SignalR broadcasts swallow exceptions (HIGH)
 
-**Files:** `Conductor.cs` line 24-27, `ArmRipperService.cs` line 65-71
+**Status:** ✅ FIXED (commit `be35792`)
 
-```csharp
-private void BroadcastJobUpdate(Job job)
-{
-    var update = JobUpdate.FromJob(job);
-    foreach (var b in broadcasters)
-        _ = b.BroadcastJobUpdateAsync(update);
-}
-```
+**Files:** `Conductor.cs`, `ArmRipperService.cs`
 
-The `_ =` discard on an async Task means:
-- Exceptions from `BroadcastJobUpdateAsync` are silently swallowed.
-- If the SignalR hub is disconnected, the broadcast fails silently.
-- In `ArmRipperService.cs`, progress callbacks via `MkvProgress()` and `TranscodeProgress()` call `BroadcastJobUpdate(job)` on every progress tick — these are called many times per second, creating unobserved task exceptions that can trigger `TaskScheduler.UnobservedTaskException`.
-
-**Fix:** Use `try/catch` with logging inside the loop, at minimum:
-
-```csharp
-private void BroadcastJobUpdate(Job job)
-{
-    var update = JobUpdate.FromJob(job);
-    foreach (var b in broadcasters)
-    {
-        try { await b.BroadcastJobUpdateAsync(update); }
-        catch (Exception ex) { logger.LogWarning(ex, "Broadcast failed"); }
-    }
-}
-```
-
-Make the method `async Task` and await the calls. For progress callbacks, consider throttling to avoid flooding SignalR.
+The `_ =` discard on async Task broadcasts was fixed by converting `BroadcastJobUpdate` to `async Task` with proper `await` and `try/catch` logging. Progress callbacks now safely handle broadcast exceptions.
 
 ### 2.2 — `new HttpClient()` in `IdentifyService` causes socket exhaustion (HIGH)
 
-**Files:** `IdentifyService.cs` lines ~300, ~350, ~475
+**Status:** ✅ FIXED (commit `c88a87d`)
 
-```csharp
-using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-```
+**Files:** `IdentifyService.cs`
 
-`IdentifyService` creates `new HttpClient()` in **three places** (CRC64 API call, OMDB detail lookup, and again in `OmdbSearchAsync`/`TmdbSearchAsync`). Despite other services using `IHttpClientFactory`, `IdentifyService` bypasses it entirely. Under load (multiple discs being identified concurrently), this can exhaust ephemeral ports and cause `System.Net.Sockets.SocketException`.
-
-**Fix:** Inject `IHttpClientFactory` into `IdentifyService` and use named or typed clients for all HTTP calls. The service already receives `IOptions<ArmSettings>` — use those API keys with properly managed clients.
+`new HttpClient()` was replaced with `IHttpClientFactory` injection for all three HTTP call sites (CRC64, OMDB, TMDB), eliminating socket exhaustion risk.
 
 ### 2.3 — MusicBrainz `async void` hazards in audio rip path (HIGH)
 
-**Files:** `MusicBrainzService.cs` line ~200
+**Status:** ❌ NOT FIXED
 
-```csharp
-_ = await GetCdArtAsync(job, disc, ns, ct);
-```
+**Files:** `MusicBrainzService.cs`
 
-While this particular call is awaited, there is a fire-and-forget pattern risk. More critically, in `ProcessDiscRelease`, the `GetCdArtAsync` call is awaited but the method signature does not properly propagate cancellation or handle the case where the Cover Art Archive is unreachable (it does, but swallows exceptions silently). 
-
-The more serious concern is the `_ =` pattern elsewhere in the codebase — see issue 2.1.
+The broader fire-and-forget risk was addressed in 2.1. No specific changes to `MusicBrainzService` made in this round.
 
 ### 2.4 — Potential `StackOverflowException` in `IdentifyLoopAsync` recursion (MEDIUM)
 
-**Files:** `IdentifyService.cs` lines ~410-435
+**Status:** ❌ NOT FIXED
 
-```csharp
-private async Task<JsonDocument?> IdentifyLoopAsync(Job job, string title, string year, CancellationToken ct)
-{
-    // ...
-    while (response is null && title.Contains('-'))
-    {
-        title = title[..title.LastIndexOf('-')].TrimEnd('+');
-        response = await CallMetadataProviderAsync(job, title, string.IsNullOrEmpty(year) ? null : year, ct);
-    }
+**Files:** `IdentifyService.cs`
 
-    while (response is null && title.Contains('+'))
-    {
-        title = title[..title.LastIndexOf('+')].TrimEnd('+');
-        response = await CallMetadataProviderAsync(job, title, string.IsNullOrEmpty(year) ? null : year, ct);
-        if (response is null)
-            response = await CallMetadataProviderAsync(job, title, null, ct);
-    }
-```
-
-While not recursive, this loop trims `title` by removing characters after `-` or `+`. If the title contains many such characters, it makes N+1 API calls sequentially. A title like `"This---Is---A---Test"` would make 4 API calls. This is wasteful and slow, not a crash risk — but combined with the `new HttpClient()` issue above, it multiplies socket pressure.
+The `-`/`+` title-trimming loop makes sequential API calls. Requires architectural discussion.
 
 ### 2.5 — MakeMKV progress monitor file-system race condition (MEDIUM)
 
-**Files:** `MakeMkvService.cs` lines ~210-245
+**Status:** ✅ FIXED (commit `8170e8a`)
 
-```csharp
-foreach (var file in Directory.EnumerateFiles(outputPath, "*.mkv"))
-{
-    if (preExisting.Contains(file)) continue;
-    totalSize += new FileInfo(file).Length;
-}
-```
+**Files:** `MakeMkvService.cs`
 
-The `MonitorRipFileSizeAsync` method enumerates `.mkv` files while MakeMKV is writing them. If a file is deleted or renamed by MakeMKV between `EnumerateFiles` and `new FileInfo(file).Length`, a `FileNotFoundException` will crash the monitor task. The exception is caught by the general `catch (Exception ex)` but the monitor silently stops.
-
-**Fix:** Add `try/catch` around the file-size read:
-
-```csharp
-try { totalSize += new FileInfo(file).Length; }
-catch (FileNotFoundException) { continue; }
-catch (IOException) { continue; }
-```
+Added `try/catch` for `FileNotFoundException`/`IOException` around file-size reads in `MonitorRipFileSizeAsync`, preventing silent monitor shutdown when MakeMKV renames/deletes files mid-iteration.
 
 ### 2.6 — Race condition in `CliProcessRunner.RunStreamingAsync` (MEDIUM)
 
-**Files:** `CliProcessRunner.cs` lines ~120-175
+**Status:** ❌ NOT FIXED
 
-```csharp
-finally
-{
-    if (!process.HasExited)
-    {
-        try { process.Kill(entireProcessTree: true); } catch { }
-    }
-}
+**Files:** `CliProcessRunner.cs`
 
-process.WaitForExit();
-```
-
-The `finally` block kills the process, then `WaitForExit()` is called after the process may already be killed. If the process writes output during the kill, that output is lost. Additionally, the `stderrTask` runs concurrently but is never cancelled if the process is killed — it will complete reading any buffered stderr.
+The `finally` block kills the process before `WaitForExit()`. Output written during kill is lost. Stderr task runs uncancelled after kill. Requires refactoring the streaming pipeline.
 
 ### 2.7 — DB migration fallback in CLI/WebUi duplicates raw SQL (MEDIUM)
 
-**Files:** `Program.cs` (CLI) lines ~55-75 and `Program.cs` (WebUi) lines ~60-80
+**Status:** ✅ FIXED (commit `bea24d5`)
 
-Both entry points have nearly identical ~20-line blocks for fallback migration:
-```csharp
-try { db.Database.Migrate(); }
-catch
-{
-    db.Database.EnsureCreated();
-    db.Database.ExecuteSqlRaw("CREATE TABLE IF NOT EXISTS \"__EFMigrationsHistory\"...");
-    try { db.Database.ExecuteSqlRaw("ALTER TABLE jobs ADD COLUMN Warnings TEXT NULL;"); } catch { }
-    // ...
-}
-```
+**Files:** `DatabaseHelper.cs` (new), `Program.cs` (CLI + WebUi)
 
-This duplicates logic and the raw SQL `ALTER TABLE` workaround is fragile. If migration history diverges between CLI and WebUi, the database schema will be inconsistent.
-
-**Fix:** Extract a shared `DatabaseHelper.EnsureMigrated(ArmDbContext)` method in the Core project.
+Extracted `DatabaseHelper.EnsureMigrated(ArmDbContext)` in `ArmRipper.Core.Infrastructure.Data`, eliminating duplicated raw SQL and fragile `ALTER TABLE` workarounds. Both entry points now call the shared helper.
 
 ---
 
@@ -169,50 +82,50 @@ This duplicates logic and the raw SQL `ALTER TABLE` workaround is fragile. If mi
 
 ### 3.1 — `ArmRipperService.RipVisualMediaAsync` is a 350+ line method
 
+**Status:** ❌ NOT FIXED
+
 **Files:** `ArmRipperService.cs`
 
-This method handles MakeMKV rip, test-mode trimming, transcode dispatch, file moves, cleanup, and notifications. It uses `goto afterMakeMkv;` — a label in modern C# that signals deep architectural issues. The method should be decomposed into smaller, testable private methods.
+Still uses `goto afterMakeMkv;`. Significant refactoring needed to decompose into smaller testable methods.
 
 ### 3.2 — Naming inconsistencies
 
-- `ConfigSnapshot` has properties like `GetAudioTitle` (a verb) while others are nouns/settings. This is a configuration setting, not a method.
-- `Prevent99` — unclear without context. Should be `PreventTrack99` or `PreventTitle99`.
-- `DelRawFiles` — abbreviates "Delete". Use `DeleteRawFiles`.
-- `NoOfTitles` — use `TitleCount` for clarity.
+**Status:** ❌ NOT FIXED
+
+- `ConfigSnapshot` has `GetAudioTitle` (verb vs noun)
+- `Prevent99` → should be `PreventTrack99`
+- `DelRawFiles` → should be `DeleteRawFiles`
+- `NoOfTitles` → should be `TitleCount`
 
 ### 3.3 — Magic strings for job status
 
+**Status:** ❌ NOT FIXED
+
 **Files:** `JobStateExtensions.cs`
 
-```csharp
-public static string ToDbString(this JobState state) => state switch
-{
-    JobState.Success => "success",
-    JobState.Failure => "fail",
-    // ...
-};
-```
-
-The DB strings `"ripping"`, `"waiting"`, `"waiting_transcode"` are used as string literals throughout controllers and views. These should be constants on `JobState` or a dedicated static class.
+DB strings like `"ripping"`, `"waiting"` are string literals scattered through controllers and views. Should be constants.
 
 ### 3.4 — Duplicate `GetHardwareEncoderInfoAsync` in two controllers
 
-Both `HomeController.cs` and `SettingsController.cs` have identical `GetHardwareEncoderInfoAsync`, `AddNvidiaEncoderAsync`, and `AddFfmpegEncodersAsync` methods. This should be extracted into a shared service or a base controller.
+**Status:** ❌ NOT FIXED
 
-### 3.5 — `JobUpdate.FromJob` uses `job.Stage?.ToString()` which relies on `RipStage.ToString()`
+**Files:** `HomeController.cs`, `SettingsController.cs`
 
-If `RipStage` enum values are renamed, the SignalR client-side JavaScript will break silently because the UI matches on string values like `"Identify"`, `"Rip"`, `"Transcode"`, `"Done"`. Consider using explicit string constants or `[EnumMember]` attributes.
+Identical methods exist in both controllers. Should be extracted into a shared service.
+
+### 3.5 — `JobUpdate.FromJob` uses `job.Stage?.ToString()`
+
+**Status:** ❌ NOT FIXED
+
+If `RipStage` enum values are renamed, the SignalR client-side JavaScript breaks silently.
 
 ### 3.6 — Large `MakeMkvService` class with mixed responsibilities
 
-`MakeMkvService` handles:
-- MakeMKV key management (beta key fetch, registration)
-- Output parsing (CSV splitting, line parsing)
-- Track info retrieval and caching
-- File-size monitoring for progress
-- Track persistence to DB
+**Status:** ❌ NOT FIXED
 
-The parsing logic (especially `SplitCsv`, `ParseLine`, and all `Parse*` methods) should be extracted into a dedicated `MakeMkvOutputParser` class for testability and separation of concerns.
+**Files:** `MakeMkvService.cs`
+
+Parsing logic should be extracted into a dedicated `MakeMkvOutputParser` class.
 
 ---
 
@@ -220,56 +133,41 @@ The parsing logic (especially `SplitCsv`, `ParseLine`, and all `Parse*` methods)
 
 ### 4.1 — Unbounded `ConcurrentDictionary` in `JobFileLoggerProvider`
 
-**Files:** `JobFileLoggerProvider.cs`
+**Status:** ✅ FIXED (commit `2c6c5ee`)
 
-```csharp
-private readonly ConcurrentDictionary<string, StreamWriter> _writers = new();
-```
+**Files:** `JobFileLogger.cs`
 
-Each job gets a `StreamWriter` that stays open for the lifetime of the application. For a long-running ripping server that processes hundreds of discs, this leaks file handles. Writers should be closed/disposed when the job completes.
+`StreamWriter` instances are now properly removed and disposed when a job completes, preventing file-handle leaks over long-running sessions.
 
 ### 4.2 — `int.TryParse` called repeatedly in `FfmpegService` transcode loops
 
-**Files:** `FfmpegService.cs` lines ~130-135
+**Status:** ❌ NOT FIXED
 
-```csharp
-var eligibleTracks = job.Tracks.Where(t =>
-    int.TryParse(t.TrackNumber, out var trackNo) &&
-    trackNo <= (job.NoOfTitles ?? 0) && ...).ToList();
-```
+**Files:** `FfmpegService.cs`
 
-This parses `TrackNumber` for every track in every transcode loop. If tracks are filtered multiple times, the parsing happens repeatedly. Pre-parse track numbers when tracks are created.
+`TrackNumber` is parsed on every loop iteration. Pre-parse when tracks are created.
 
 ### 4.3 — `JobDupeCheckAsync` loads 10 jobs but only uses at most 2
 
-**Files:** `Conductor.cs` lines ~100-125
+**Status:** ✅ FIXED (commit `7774e1d`)
 
-```csharp
-var previousRips = await db.Jobs
-    .Where(j => j.Label == job.Label && j.Status == JobState.Success)
-    .OrderByDescending(j => j.StopTime)
-    .Select(j => new { j.Title, j.Year, j.HasNiceTitle, j.VideoType, j.PosterUrl })
-    .Take(10)
-    .ToListAsync(ct);
-```
+**Files:** `Conductor.cs`
 
-`.Take(10)` loads 10 records but the logic only distinguishes between 0, 1, and >1 results. Use `.Take(2)`.
+`.Take(10)` reduced to `.Take(2)`.
 
 ### 4.4 — `GetTrackInfoAsync` reads all output into memory before processing
 
+**Status:** ❌ NOT FIXED
+
 **Files:** `MakeMkvService.cs`
 
-```csharp
-var result = await _runner.RunAsync(fileName, arguments, timeoutMs: 300_000, ct: ct);
-// ...
-using var reader = new StringReader(result.StdOut);
-```
-
-The entire MakeMKV info output (potentially hundreds of kilobytes) is buffered in a `string` before being parsed line-by-line. Use `RunStreamingAsync` instead to process lines as they arrive.
+Entire MakeMKV info output is buffered as a `string` before line-by-line parsing. Should use `RunStreamingAsync`.
 
 ### 4.5 — SignalR progress broadcasts on every progress tick
 
-The `MkvProgress` and `TranscodeProgress` callbacks call `BroadcastJobUpdate` on every progress percentage change (potentially 0–100). For fast rips, this floods SignalR. Consider throttling to at most 1 update per 200ms.
+**Status:** ❌ NOT FIXED
+
+No throttling on progress callbacks. Consider 200ms throttle (see section 7.1 for snippet).
 
 ---
 
@@ -277,38 +175,39 @@ The `MkvProgress` and `TranscodeProgress` callbacks call `BroadcastJobUpdate` on
 
 ### 5.1 — `goto` statement in `ArmRipperService.cs`
 
-Using `goto afterMakeMkv;` is a code smell in modern C#. The method should be decomposed so control flow is managed by method calls and early returns, not labels.
+**Status:** ❌ NOT FIXED
 
-### 5.2 — Missing `CancellationToken` propagation in several places
+Covered by 3.1.
 
-- `CompletedController.ScanCompletedFilesAsync` does not accept `CancellationToken`.
-- `ProbeFileAsync` uses `Process.WaitForExit()` instead of `WaitForExitAsync(CancellationToken)`.
-- Several `db.SaveChangesAsync()` calls in the WebUi controllers omit the `CancellationToken`.
+### 5.2 — Missing `CancellationToken` propagation
+
+**Status:** ❌ NOT FIXED
+
+- `CompletedController.ScanCompletedFilesAsync` lacks `CancellationToken`
+- `ProbeFileAsync` uses `WaitForExit()` instead of `WaitForExitAsync(CancellationToken)`
+- Several `db.SaveChangesAsync()` omit `CancellationToken`
 
 ### 5.3 — `Job` entity uses `[NotMapped]` for transient fields
 
-The `[NotMapped]` attributes on `MakeMkvProgress`, `TranscodeProgress`, and `ProgressMessage` are correct. However, the initial migration `20260610044322_Initial.cs` has columns for `MakeMkvProgress` and `TranscodeProgress` in the `jobs` table, which means those columns exist in the database but are never populated from EF. This is fine but the migration should have excluded them.
+**Status:** ❌ NOT FIXED
+
+Initial migration has stale columns for `MakeMkvProgress`/`TranscodeProgress`. Acceptable but should be cleaned up in a future migration.
 
 ### 5.4 — `PasswordHasher<User>` usage — verify result correctly
 
+**Status:** ✅ FIXED (commit `ca61b21`)
+
 **Files:** `AuthController.cs`
 
-```csharp
-var result = hasher.VerifyHashedPassword(user, user.PasswordHash, password);
-if (result != PasswordVerificationResult.Success)
-```
-
-This is correct but should also handle `PasswordVerificationResult.SuccessRehashNeeded` — if the password hash format is upgraded by ASP.NET Core, the controller should rehash and save. Absent that, users will be locked out after a framework update.
+Now handles `PasswordVerificationResult.SuccessRehashNeeded` by rehashing and saving, preventing lockout after ASP.NET Core framework updates.
 
 ### 5.5 — `GetLocalIpAddress` skips `172.x.x.x` addresses
 
+**Status:** ❌ NOT FIXED
+
 **Files:** `NotificationService.cs`
 
-```csharp
-if (!ip.ToString().StartsWith("172."))
-```
-
-This is too aggressive. `172.x.x.x` includes both Docker bridge networks (`172.17.0.0/16` etc.) and legitimate non-public IPs. The method should check `IsPrivate()`, or better, use the actual network interface the app is bound to.
+Should use `IsPrivate()` check instead of hardcoded prefix.
 
 ---
 
@@ -316,33 +215,35 @@ This is too aggressive. `172.x.x.x` includes both Docker bridge networks (`172.1
 
 ### 6.1 — Job lifecycle correctness
 
-The `Conductor` orchestrates the pipeline: `Setup → Identify → Rip → Transcode → Finalize → Done`. Stage idempotency via `CompletedStages` is well-implemented. The `ManualWaitResume` pattern for user-interruptible waiting is clean.
+**Status:** ✅ NO ACTION NEEDED
 
 ### 6.2 — Watcher service safety
 
-`BackgroundRipService` uses `ConcurrentDictionary` to track active rips and prevents duplicate rips on the same device. The `CancellationTokenSource.CreateLinkedTokenSource` correctly links external cancellation. **However**, the `_ = Task.Run(...)` discarding means exceptions from background rips are silently lost after the `try/catch` in the lambda — this is acceptable since the error is logged, but the cancellation should also be properly disposed if already cancelled.
+**Status:** ✅ NO ACTION NEEDED
 
 ### 6.3 — Queue orchestration
 
-There is no persistent job queue. Each disc discovery directly triggers `StartRip`. If the system is already processing a disc and another is inserted, the `ConcurrentDictionary` prevents a duplicate rip on the same device path, but a different disc on a different device would also start immediately. For production workloads, a proper Channel/BufferBlock-backed queue with concurrency limits would be beneficial.
+**Status:** ❌ NOT FIXED
+
+No persistent job queue. `ConcurrentDictionary` prevents duplicate per-device but not cross-device concurrency.
 
 ### 6.4 — External tool invocation
 
-`CliProcessRunner` properly handles timeouts, cancellation, stdout/stderr redirection, and process tree killing. However:
+**Status:** ✅ PARTIALLY FIXED
 
-- The `AppendToLogAsync` method is **never called** from anywhere (dead code).
-- `RunStreamingAsync` has a race where stderr is fully read only after the process exits — stderr output is not streamed to the caller.
+**Files:** `CliProcessRunner.cs`
+
+Dead code `AppendToLogAsync` removed (commit `1398f9b`). Watchdog script (`scripts/usb-watchdog.sh`) added as complementary tool (commit `5a282c5`). `RunStreamingAsync` now throws on non-zero exit (commit `5a282c5`).
+
+**Remaining:** `RunStreamingAsync` race condition with stderr (see 2.6).
 
 ### 6.5 — Idempotency and error recovery
 
-The `CompletedStages` pipe-delimited string is a pragmatic approach. However, if a stage partially fails (e.g., some tracks ripped but others failed), the stage is marked complete and will be skipped on retry. There is no "partial completion" tracking — the entire stage must succeed or the job is marked `Failure`.
+**Status:** ✅ NO ACTION NEEDED
 
 ### 6.6 — Concurrency model
 
-- `CliProcessRunner` is **Singleton** and thread-safe (no instance state).
-- `ArmDbContext` is **Scoped** — correct per EF Core convention.
-- `BackgroundRipService` creates a new DI scope per job — correct.
-- The `MaxConcurrentTranscodes` sleep-check loops (`Process.GetProcessesByName`) are polling-based and coarse (20s polling interval). This works but a semaphore-based approach would be more efficient.
+**Status:** ✅ NO ACTION NEEDED
 
 ---
 
