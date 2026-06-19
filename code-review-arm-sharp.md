@@ -46,11 +46,11 @@ The broader fire-and-forget risk was addressed in 2.1. No specific changes to `M
 
 ### 2.4 — Potential `StackOverflowException` in `IdentifyLoopAsync` recursion (MEDIUM)
 
-**Status:** ❌ NOT FIXED
+**Status:** ✅ FIXED (commit `387aa7f`)
 
 **Files:** `IdentifyService.cs`
 
-The `-`/`+` title-trimming loop makes sequential API calls. Requires architectural discussion.
+Added `maxAttempts = 8` guard to `IdentifyLoopAsync`, preventing runaway recursion regardless of API response patterns.
 
 ### 2.5 — MakeMKV progress monitor file-system race condition (MEDIUM)
 
@@ -62,11 +62,11 @@ Added `try/catch` for `FileNotFoundException`/`IOException` around file-size rea
 
 ### 2.6 — Race condition in `CliProcessRunner.RunStreamingAsync` (MEDIUM)
 
-**Status:** ❌ NOT FIXED
+**Status:** ✅ FIXED (commit `05bff95`)
 
 **Files:** `CliProcessRunner.cs`
 
-The `finally` block kills the process before `WaitForExit()`. Output written during kill is lost. Stderr task runs uncancelled after kill. Requires refactoring the streaming pipeline.
+Linked CTS decouples process cancellation from stderr reading; stderr uses `CancellationToken.None`; replaced sync `WaitForExit()` with `WaitForExitAsync(linkedCts.Token)`.
 
 ### 2.7 — DB migration fallback in CLI/WebUi duplicates raw SQL (MEDIUM)
 
@@ -82,50 +82,39 @@ Extracted `DatabaseHelper.EnsureMigrated(ArmDbContext)` in `ArmRipper.Core.Infra
 
 ### 3.1 — `ArmRipperService.RipVisualMediaAsync` is a 350+ line method
 
-**Status:** ❌ NOT FIXED
+**Status:** ✅ FIXED
 
 **Files:** `ArmRipperService.cs`
 
-Still uses `goto afterMakeMkv;`. Significant refactoring needed to decompose into smaller testable methods.
+The `goto`-heavy method was decomposed into smaller focused methods. No `goto` remains.
 
 ### 3.2 — Naming inconsistencies
 
-**Status:** ❌ NOT FIXED
+**Status:** ✅ FIXED
 
-- `ConfigSnapshot` has `GetAudioTitle` (verb vs noun)
-- `Prevent99` → should be `PreventTrack99`
-- `DelRawFiles` → should be `DeleteRawFiles`
-- `NoOfTitles` → should be `TitleCount`
+Backward-compatible aliases added to `ArmSettings`: `PreventTrack99` ↔ `Prevent99`, `AudioMetadataProvider` ↔ `GetAudioTitle`, `DeleteRawFiles` ↔ `DelRawFiles`. `Job.TitleCount` is a `[NotMapped]` alias for `NoOfTitles`. Existing usage across the codebase remains valid.### 3.3 — Magic strings for job status
 
-### 3.3 — Magic strings for job status
+**Status:** ✅ FIXED
 
-**Status:** ❌ NOT FIXED
+**Files:** `JobState.cs`
 
-**Files:** `JobStateExtensions.cs`
+Extracted `JobStateDbValues` constants class with named constants (`Success`, `Failure`, `Active`, `Ripping`, `Waiting`, `Info`, `Transcoding`, `WaitingTranscode`, `Cancelled`). All DB interactions use these constants via `ToDbString()`/`FromDbString()`.### 3.4 — Duplicate `GetHardwareEncoderInfoAsync` in two controllers
 
-DB strings like `"ripping"`, `"waiting"` are string literals scattered through controllers and views. Should be constants.
+**Status:** ✅ FIXED
 
-### 3.4 — Duplicate `GetHardwareEncoderInfoAsync` in two controllers
+**Files:** `HardwareEncoderInfoService.cs`
 
-**Status:** ❌ NOT FIXED
+Extracted into a shared `HardwareEncoderInfoService` registered in DI. Both `HomeController` and `SettingsController` now inject and delegate to it.### 3.5 — `JobUpdate.FromJob` uses `job.Stage?.ToString()`
 
-**Files:** `HomeController.cs`, `SettingsController.cs`
+**Status:** ✅ FIXED
 
-Identical methods exist in both controllers. Should be extracted into a shared service.
+`JobUpdate.FromJob` now uses `job.Stage.Value.ToClientString()` which returns a stable client-facing string independent of the enum member name.### 3.6 — Large `MakeMkvService` class with mixed responsibilities
 
-### 3.5 — `JobUpdate.FromJob` uses `job.Stage?.ToString()`
+**Status:** ✅ FIXED (commit `073f38a`)
 
-**Status:** ❌ NOT FIXED
+**Files:** `MakeMkvOutputParser.cs` (new), `MakeMkvService.cs`
 
-If `RipStage` enum values are renamed, the SignalR client-side JavaScript breaks silently.
-
-### 3.6 — Large `MakeMkvService` class with mixed responsibilities
-
-**Status:** ❌ NOT FIXED
-
-**Files:** `MakeMkvService.cs`
-
-Parsing logic should be extracted into a dedicated `MakeMkvOutputParser` class.
+All MakeMKV robot-output parsing logic extracted into a dedicated static `MakeMkvOutputParser` class with `ParseLine()` dispatch. `MakeMkvService` delegates to it, reducing from ~757 to ~570 lines.
 
 ---
 
