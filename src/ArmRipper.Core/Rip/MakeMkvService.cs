@@ -123,13 +123,6 @@ public partial class MakeMkvService : IMakeMkvService
         var fileName = "makemkvcon";
         var arguments = $"--robot --messages=-stdout info dev:{job.DevPath} --minlength={minLength}";
 
-        var result = await _runner.RunAsync(fileName, arguments, timeoutMs: 300_000, ct: ct);
-        if (result.TimedOut)
-        {
-            _logger.LogWarning("makemkvcon info timed out");
-            return tracks;
-        }
-
         var currentTid = -1;
         var seconds = 0;
         var aspect = "";
@@ -142,79 +135,98 @@ public partial class MakeMkvService : IMakeMkvService
         var streamAccums = new Dictionary<int, StreamAccum>();
 
         var lineCount = 0;
-        using var reader = new StringReader(result.StdOut);
-        while (await reader.ReadLineAsync(ct) is { } line)
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(TimeSpan.FromMinutes(5));
+
+        try
         {
-            lineCount++;
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            var parsed = ParseLine(line);
-            if (parsed is null) continue;
-
-            switch (parsed.Data)
+            await foreach (var (line, isStdErr, exitCode) in _runner.RunStreamingAllAsync(fileName, arguments, ct: timeoutCts.Token))
             {
-                case SinFo sinfo:
-                    switch ((StreamId)sinfo.Id)
-                    {
-                        case StreamId.Type:
-                            streamType = sinfo.Code;
-                            GetOrCreateAccum(streamAccums, sinfo.Sid).StreamTypeCode = sinfo.Code;
-                            break;
-                        case StreamId.LanguageCode:
-                            GetOrCreateAccum(streamAccums, sinfo.Sid).LanguageCode = sinfo.Value.Trim();
-                            break;
-                        case StreamId.CodecId:
-                            GetOrCreateAccum(streamAccums, sinfo.Sid).Codec = sinfo.Value.Trim();
-                            break;
-                        case StreamId.Channels:
-                            if (int.TryParse(sinfo.Value.Trim(), out var ch))
-                                GetOrCreateAccum(streamAccums, sinfo.Sid).Channels = ch;
-                            break;
-                        case StreamId.Forced:
-                            GetOrCreateAccum(streamAccums, sinfo.Sid).Forced = sinfo.Value.Trim() is "1";
-                            break;
-                        case StreamId.Resolution:
-                            resolution = sinfo.Value.Trim();
-                            break;
-                        case StreamId.Aspect:
-                            if (streamType == MakeMkvStreamCodes.Video)
-                                aspect = sinfo.Value.Trim();
-                            break;
-                        case StreamId.Fps:
-                            if (streamType == MakeMkvStreamCodes.Video)
-                            {
-                                var fpsParts = sinfo.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                                if (fpsParts.Length > 0)
-                                    double.TryParse(fpsParts[0], out fps);
-                            }
-                            break;
-                    }
+                if (exitCode.HasValue)
+                {
+                    if (exitCode.Value != 0)
+                        _logger.LogWarning("makemkvcon info exited with non-zero code: {ExitCode}", exitCode.Value);
                     break;
+                }
 
-                case TInfo tinfo:
-                    if (currentTid >= 0 && tinfo.Tid != currentTid)
-                        FinalizeTrack(job, baseName, tracks, discTracks, currentTid, ref seconds, ref aspect, ref fps, ref filename, ref chapters, ref filesize, ref streamType, ref resolution, streamAccums);
-                    currentTid = tinfo.Tid;
-                    switch ((TrackId)tinfo.Id)
-                    {
-                        case TrackId.Filename:
-                            filename = StripQuotes(tinfo.Value);
-                            break;
-                        case TrackId.Duration:
-                            seconds = HmsToSeconds(tinfo.Value);
-                            break;
-                        case TrackId.Chapters:
-                            int.TryParse(tinfo.Value, out chapters);
-                            break;
-                        case TrackId.Filesize:
-                            long.TryParse(tinfo.Value, out filesize);
-                            break;
-                    }
-                    break;
+                if (isStdErr || string.IsNullOrWhiteSpace(line))
+                    continue;
 
-                case Titles titles:
-                    _logger.LogInformation("Found {Count} titles on disc", titles.Count);
-                    break;
+                lineCount++;
+                var parsed = ParseLine(line);
+                if (parsed is null) continue;
+
+                switch (parsed.Data)
+                {
+                    case SinFo sinfo:
+                        switch ((StreamId)sinfo.Id)
+                        {
+                            case StreamId.Type:
+                                streamType = sinfo.Code;
+                                GetOrCreateAccum(streamAccums, sinfo.Sid).StreamTypeCode = sinfo.Code;
+                                break;
+                            case StreamId.LanguageCode:
+                                GetOrCreateAccum(streamAccums, sinfo.Sid).LanguageCode = sinfo.Value.Trim();
+                                break;
+                            case StreamId.CodecId:
+                                GetOrCreateAccum(streamAccums, sinfo.Sid).Codec = sinfo.Value.Trim();
+                                break;
+                            case StreamId.Channels:
+                                if (int.TryParse(sinfo.Value.Trim(), out var ch))
+                                    GetOrCreateAccum(streamAccums, sinfo.Sid).Channels = ch;
+                                break;
+                            case StreamId.Forced:
+                                GetOrCreateAccum(streamAccums, sinfo.Sid).Forced = sinfo.Value.Trim() is "1";
+                                break;
+                            case StreamId.Resolution:
+                                resolution = sinfo.Value.Trim();
+                                break;
+                            case StreamId.Aspect:
+                                if (streamType == MakeMkvStreamCodes.Video)
+                                    aspect = sinfo.Value.Trim();
+                                break;
+                            case StreamId.Fps:
+                                if (streamType == MakeMkvStreamCodes.Video)
+                                {
+                                    var fpsParts = sinfo.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                                    if (fpsParts.Length > 0)
+                                        double.TryParse(fpsParts[0], out fps);
+                                }
+                                break;
+                        }
+                        break;
+
+                    case TInfo tinfo:
+                        if (currentTid >= 0 && tinfo.Tid != currentTid)
+                            FinalizeTrack(job, baseName, tracks, discTracks, currentTid, ref seconds, ref aspect, ref fps, ref filename, ref chapters, ref filesize, ref streamType, ref resolution, streamAccums);
+                        currentTid = tinfo.Tid;
+                        switch ((TrackId)tinfo.Id)
+                        {
+                            case TrackId.Filename:
+                                filename = StripQuotes(tinfo.Value);
+                                break;
+                            case TrackId.Duration:
+                                seconds = HmsToSeconds(tinfo.Value);
+                                break;
+                            case TrackId.Chapters:
+                                int.TryParse(tinfo.Value, out chapters);
+                                break;
+                            case TrackId.Filesize:
+                                long.TryParse(tinfo.Value, out filesize);
+                                break;
+                        }
+                        break;
+
+                    case Titles titles:
+                        _logger.LogInformation("Found {Count} titles on disc", titles.Count);
+                        break;
+                }
             }
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("makemkvcon info timed out");
+            return tracks;
         }
 
         if (currentTid >= 0)

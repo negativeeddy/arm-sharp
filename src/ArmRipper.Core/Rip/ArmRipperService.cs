@@ -3,6 +3,7 @@ using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
 using ArmRipper.Core.Notifications;
+using System.Collections.Concurrent;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -21,6 +22,8 @@ public sealed class ArmRipperService(
     IEnumerable<INotificationBroadcaster> broadcasters) : IArmRipperService
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("ArmRipperService");
+    private static readonly TimeSpan ProgressBroadcastInterval = TimeSpan.FromMilliseconds(200);
+    private readonly ConcurrentDictionary<string, (int Percent, DateTime LastBroadcastUtc)> progressBroadcastState = new();
     public async Task<string> RipVisualMediaAsync(Job job, string logFile, bool hasDupes, bool protection, CancellationToken ct = default)
     {
         // ── 1. Compute paths ──
@@ -459,7 +462,8 @@ public sealed class ArmRipperService(
             job.ProgressMessage = message;
             // Progress percent flows over SignalR only — NOT persisted to DB.
             // Stage completions are written atomically by the Conductor on stage transitions.
-            BroadcastJobUpdateFireAndForget(job);
+            if (ShouldBroadcastProgress(job, "mkv", pct))
+                BroadcastJobUpdateFireAndForget(job);
         });
 
     private IProgress<int> TranscodeProgress(Job job, string message, CancellationToken ct) =>
@@ -469,8 +473,35 @@ public sealed class ArmRipperService(
             job.ProgressMessage = message;
             // Progress percent flows over SignalR only — NOT persisted to DB.
             // Stage completions are written atomically by the Conductor on stage transitions.
-            BroadcastJobUpdateFireAndForget(job);
+            if (ShouldBroadcastProgress(job, "transcode", pct))
+                BroadcastJobUpdateFireAndForget(job);
         });
+
+    private bool ShouldBroadcastProgress(Job job, string progressType, int percent)
+    {
+        var key = $"{job.Id}:{progressType}";
+        var now = DateTime.UtcNow;
+        var force = percent is <= 0 or >= 100;
+
+        while (true)
+        {
+            if (!progressBroadcastState.TryGetValue(key, out var current))
+            {
+                if (progressBroadcastState.TryAdd(key, (percent, now)))
+                    return true;
+                continue;
+            }
+
+            if (!force && percent == current.Percent)
+                return false;
+
+            if (!force && now - current.LastBroadcastUtc < ProgressBroadcastInterval)
+                return false;
+
+            if (progressBroadcastState.TryUpdate(key, (percent, now), current))
+                return true;
+        }
+    }
 
     /// <summary>
     /// A simple IProgress&lt;T&gt; implementation that invokes the handler
