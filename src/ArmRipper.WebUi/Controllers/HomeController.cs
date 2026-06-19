@@ -14,17 +14,17 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardware
 {
     [HttpGet("")]
     [HttpGet("index")]
-    public async Task<IActionResult> Index()
+    public async Task<IActionResult> Index(CancellationToken ct = default)
     {
         var activeRips = await db.Jobs
             .Include(j => j.Config)
             .Where(j => j.Status != JobState.Success && j.Status != JobState.Failure && j.Status != JobState.Cancelled)
             .OrderByDescending(j => j.StartTime)
             .Take(10)
-            .ToListAsync();
+            .ToListAsync(ct);
 
         // Pass drives and active job device paths for the Drives widget
-        ViewBag.Drives = await db.SystemDrives.ToListAsync();
+        ViewBag.Drives = await db.SystemDrives.ToListAsync(ct);
         ViewBag.ActiveJobDevPaths = activeRips
             .Where(j => !string.IsNullOrEmpty(j.DevPath))
             .Select(j => j.DevPath!)
@@ -35,7 +35,7 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardware
 
         try
         {
-            ViewBag.CpuModel = (await System.IO.File.ReadAllTextAsync("/proc/cpuinfo"))
+            ViewBag.CpuModel = (await System.IO.File.ReadAllTextAsync("/proc/cpuinfo", ct))
                 .Split('\n')
                 .FirstOrDefault(l => l.StartsWith("model name"))
                 ?.Split(':')[1]
@@ -51,7 +51,7 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardware
                     && System.IO.File.ReadAllText(Path.Combine(Path.GetDirectoryName(f)!, "type")).Trim() == "x86_pkg_temp");
             if (tempPath is not null)
             {
-                var raw = await System.IO.File.ReadAllTextAsync(tempPath);
+                var raw = await System.IO.File.ReadAllTextAsync(tempPath, ct);
                 if (int.TryParse(raw.Trim(), out var millideg))
                     ViewBag.CpuTemp = millideg / 1000.0;
             }
@@ -77,7 +77,7 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardware
 
         try
         {
-            var memInfo = await System.IO.File.ReadAllTextAsync("/proc/meminfo");
+            var memInfo = await System.IO.File.ReadAllTextAsync("/proc/meminfo", ct);
             long ParseMem(string prefix) =>
                 memInfo.Split('\n')
                     .FirstOrDefault(l => l.StartsWith(prefix))

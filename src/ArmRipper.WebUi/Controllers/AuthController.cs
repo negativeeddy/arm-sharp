@@ -41,7 +41,7 @@ public class AuthController(ArmDbContext db) : Controller
             return View();
         }
 
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Username == username);
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Username == username, ct);
         if (user is null)
         {
             ViewBag.Error = "Invalid username or password.";

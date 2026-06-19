@@ -10,7 +10,7 @@ namespace ArmRipper.WebUi.Controllers;
 public class NotificationsController(ArmDbContext db) : Controller
 {
     [HttpGet("")]
-    public async Task<IActionResult> Index(string? filter = "unread")
+    public async Task<IActionResult> Index(string? filter = "unread", CancellationToken ct = default)
     {
         var query = db.Notifications.AsQueryable();
 
@@ -22,23 +22,23 @@ public class NotificationsController(ArmDbContext db) : Controller
         var notifications = await query
             .OrderByDescending(n => n.Timestamp)
             .Take(50)
-            .ToListAsync();
+            .ToListAsync(ct);
 
         ViewBag.CurrentFilter = filter;
         return View(notifications);
     }
 
     [HttpGet("~/api/notifications/unread")]
-    public async Task<IActionResult> UnreadCount()
+    public async Task<IActionResult> UnreadCount(CancellationToken ct = default)
     {
-        var count = await db.Notifications.CountAsync(n => !n.Read);
+        var count = await db.Notifications.CountAsync(n => !n.Read, ct);
         return Json(new { count });
     }
 
     [HttpPost("markread/{id}")]
     public async Task<IActionResult> MarkRead(int id, CancellationToken ct = default)
     {
-        var notification = await db.Notifications.FindAsync(id);
+        var notification = await db.Notifications.FirstOrDefaultAsync(n => n.Id == id, ct);
         if (notification is not null)
         {
             notification.Read = true;
@@ -49,11 +49,11 @@ public class NotificationsController(ArmDbContext db) : Controller
     }
 
     [HttpPost("markallread")]
-    public async Task<IActionResult> MarkAllRead()
+    public async Task<IActionResult> MarkAllRead(CancellationToken ct = default)
     {
         await db.Notifications
             .Where(n => !n.Read)
-            .ExecuteUpdateAsync(setters => setters.SetProperty(n => n.Read, true));
+            .ExecuteUpdateAsync(setters => setters.SetProperty(n => n.Read, true), ct);
 
         return RedirectToAction("Index");
     }

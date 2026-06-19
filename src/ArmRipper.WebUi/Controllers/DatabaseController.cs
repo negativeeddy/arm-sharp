@@ -13,7 +13,7 @@ public class DatabaseController(ArmDbContext db) : Controller
     private const int PageSize = 20;
 
     [HttpGet("")]
-    public async Task<IActionResult> Index(int page = 1, string? filter = null, string? search = null)
+    public async Task<IActionResult> Index(int page = 1, string? filter = null, string? search = null, CancellationToken ct = default)
     {
         var query = db.Jobs
             .Include(j => j.Config)
@@ -38,7 +38,7 @@ public class DatabaseController(ArmDbContext db) : Controller
                 (j.Label != null && j.Label.Contains(search)));
         }
 
-        var totalJobs = await query.CountAsync();
+        var totalJobs = await query.CountAsync(ct);
         var totalPages = Math.Max(1, (int)Math.Ceiling(totalJobs / (double)PageSize));
         page = Math.Clamp(page, 1, totalPages);
 
@@ -46,7 +46,7 @@ public class DatabaseController(ArmDbContext db) : Controller
             .OrderByDescending(j => j.Id)
             .Skip((page - 1) * PageSize)
             .Take(PageSize)
-            .ToListAsync();
+            .ToListAsync(ct);
 
         ViewBag.CurrentPage = page;
         ViewBag.TotalPages = totalPages;
@@ -65,16 +65,16 @@ public class DatabaseController(ArmDbContext db) : Controller
 
     [HttpPost("update")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Update(string action)
+    public async Task<IActionResult> Update(string action, CancellationToken ct = default)
     {
         if (action == "migrate")
         {
-            await db.Database.MigrateAsync();
+            await db.Database.MigrateAsync(ct);
             TempData["Message"] = "Database migration successful!";
         }
         else if (action == "create")
         {
-            await db.Database.EnsureCreatedAsync();
+            await db.Database.EnsureCreatedAsync(ct);
             TempData["Message"] = "Database created successfully!";
         }
 
@@ -105,7 +105,7 @@ public class DatabaseController(ArmDbContext db) : Controller
             var title = match.Groups[1].Value.Trim();
             var year = match.Groups[2].Value;
 
-            var exists = await db.Jobs.AnyAsync(j => j.Title == title && j.Year == year);
+            var exists = await db.Jobs.AnyAsync(j => j.Title == title && j.Year == year, ct);
             if (exists)
                 continue;
 
@@ -131,7 +131,7 @@ public class DatabaseController(ArmDbContext db) : Controller
     [HttpPost("delete/{id}")]
     public async Task<IActionResult> Delete(int id, CancellationToken ct = default)
     {
-        var job = await db.Jobs.FindAsync(id);
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, ct);
         if (job is null)
             return NotFound();
 

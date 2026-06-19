@@ -15,12 +15,12 @@ namespace ArmRipper.WebUi.Controllers;
 public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSettings> settings, IBackgroundRipService backgroundRip) : Controller
 {
     [HttpGet("jobdetail")]
-    public async Task<IActionResult> JobDetail(int jobId)
+    public async Task<IActionResult> JobDetail(int jobId, CancellationToken ct = default)
     {
         var job = await db.Jobs
             .Include(j => j.Tracks)
             .Include(j => j.Config)
-            .FirstOrDefaultAsync(j => j.Id == jobId);
+            .FirstOrDefaultAsync(j => j.Id == jobId, ct);
 
         if (job is null)
             return NotFound();
@@ -39,13 +39,13 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
     }
 
     [HttpGet("activerips")]
-    public async Task<IActionResult> ActiveRips()
+    public async Task<IActionResult> ActiveRips(CancellationToken ct = default)
     {
         var jobs = await db.Jobs
             .Include(j => j.Config)
             .Where(j => j.Status != JobState.Success && j.Status != JobState.Failure && j.Status != JobState.Cancelled)
             .OrderByDescending(j => j.StartTime)
-            .ToListAsync();
+            .ToListAsync(ct);
 
         return View(jobs);
     }
@@ -53,7 +53,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
     [HttpPost("update-identification")]
     public async Task<IActionResult> UpdateIdentification(int jobId, string? title, string? year, string? videoType, string? imdbId, string? posterUrl, CancellationToken ct = default)
     {
-        var job = await db.Jobs.FindAsync(jobId);
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job is null)
             return NotFound();
 
@@ -70,7 +70,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
     [HttpPost("set-title")]
     public async Task<IActionResult> SetTitle(int jobId, string title, string? returnUrl = null, CancellationToken ct = default)
     {
-        var job = await db.Jobs.FindAsync(jobId);
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job is null)
             return NotFound();
 
@@ -82,9 +82,9 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
     }
 
     [HttpGet("log-tail")]
-    public async Task<IActionResult> LogTail(int jobId, int lines = 50)
+    public async Task<IActionResult> LogTail(int jobId, int lines = 50, CancellationToken ct = default)
     {
-        var job = await db.Jobs.FindAsync(jobId);
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job is null)
             return NotFound();
 
@@ -107,7 +107,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
             if (fileInfo.Length > readSize)
                 fs.Seek(-readSize, System.IO.SeekOrigin.End);
             using var reader = new System.IO.StreamReader(fs);
-            content = await reader.ReadToEndAsync();
+            content = await reader.ReadToEndAsync(ct);
         }
 
         // Trim to last N lines
@@ -120,7 +120,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
     [HttpPost("cancel")]
     public async Task<IActionResult> Cancel(int jobId, CancellationToken ct = default)
     {
-        var job = await db.Jobs.FindAsync(jobId);
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job is null)
             return NotFound();
 
@@ -139,12 +139,12 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
     }
 
     [HttpGet("titlesearch")]
-    public async Task<IActionResult> TitleSearch(string query, int? jobId)
+    public async Task<IActionResult> TitleSearch(string query, int? jobId, CancellationToken ct = default)
     {
         ViewBag.Jobs = await db.Jobs
             .OrderByDescending(j => j.StartTime)
             .Take(20)
-            .ToListAsync();
+            .ToListAsync(ct);
         ViewBag.SelectedJobId = jobId;
 
         if (string.IsNullOrWhiteSpace(query))
@@ -162,9 +162,9 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
     }
 
     [HttpGet("select-title")]
-    public async Task<IActionResult> SelectTitle(string imdbId, int jobId)
+    public async Task<IActionResult> SelectTitle(string imdbId, int jobId, CancellationToken ct = default)
     {
-        var job = await db.Jobs.FindAsync(jobId);
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job is null)
             return NotFound();
 
@@ -189,7 +189,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
     [HttpPost("assign-movie")]
     public async Task<IActionResult> AssignMovie(int jobId, string title, string? year, string? imdbId, string? posterUrl, string? videoType, CancellationToken ct = default)
     {
-        var job = await db.Jobs.FindAsync(jobId);
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job is null)
             return NotFound();
 
@@ -215,7 +215,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
     [HttpPost("continue-wait")]
     public async Task<IActionResult> ContinueWait(int jobId, CancellationToken ct = default)
     {
-        var job = await db.Jobs.FindAsync(jobId);
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job is null)
             return NotFound();
 

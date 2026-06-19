@@ -32,7 +32,7 @@ public partial class ApiController(
         });
     }
     [HttpGet("jobs")]
-    public async Task<IActionResult> GetJobs()
+    public async Task<IActionResult> GetJobs(CancellationToken ct = default)
     {
         var jobs = await db.Jobs
             .OrderByDescending(j => j.StartTime)
@@ -49,39 +49,39 @@ public partial class ApiController(
                 j.StopTime,
                 j.Path
             })
-            .ToListAsync();
+            .ToListAsync(ct);
 
         return Json(jobs);
     }
 
     [HttpGet("jobs/active")]
-    public async Task<IActionResult> ActiveJobs()
+    public async Task<IActionResult> ActiveJobs(CancellationToken ct = default)
     {
         var jobs = await db.Jobs
             .Include(j => j.Config)
             .Where(j => j.Status != JobState.Success && j.Status != JobState.Failure && j.Status != JobState.Cancelled)
             .OrderByDescending(j => j.StartTime)
-            .ToListAsync();
+            .ToListAsync(ct);
 
         return PartialView("~/Views/Jobs/_ActiveJobRows.cshtml", jobs);
     }
 
     [HttpGet("jobs/{id:int}/pipeline")]
-    public async Task<IActionResult> JobPipeline(int id)
+    public async Task<IActionResult> JobPipeline(int id, CancellationToken ct = default)
     {
-        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id);
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, ct);
         if (job is null)
             return NotFound();
         return PartialView("~/Views/Shared/_Pipeline.cshtml", job);
     }
 
     [HttpGet("jobs/{id}")]
-    public async Task<IActionResult> GetJob(int id)
+    public async Task<IActionResult> GetJob(int id, CancellationToken ct = default)
     {
         var job = await db.Jobs
             .Include(j => j.Tracks)
             .Include(j => j.Config)
-            .FirstOrDefaultAsync(j => j.Id == id);
+            .FirstOrDefaultAsync(j => j.Id == id, ct);
 
         if (job is null)
             return NotFound();
@@ -90,17 +90,17 @@ public partial class ApiController(
     }
 
     [HttpGet("drives")]
-    public async Task<IActionResult> GetDrives()
+    public async Task<IActionResult> GetDrives(CancellationToken ct = default)
     {
-        var drives = await db.SystemDrives.ToListAsync();
+        var drives = await db.SystemDrives.ToListAsync(ct);
         return Json(drives);
     }
 
     [HttpGet("stats")]
-    public async Task<IActionResult> GetStats()
+    public async Task<IActionResult> GetStats(CancellationToken ct = default)
     {
-        var totalJobs = await db.Jobs.CountAsync();
-        var successJobs = await db.Jobs.CountAsync(j => j.Status == JobState.Success);
+        var totalJobs = await db.Jobs.CountAsync(ct);
+        var successJobs = await db.Jobs.CountAsync(j => j.Status == JobState.Success, ct);
 
         return Json(new
         {
@@ -114,7 +114,7 @@ public partial class ApiController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Abandon(int id, CancellationToken ct = default)
     {
-        var job = await db.Jobs.Include(j => j.Config).FirstOrDefaultAsync(j => j.Id == id);
+        var job = await db.Jobs.Include(j => j.Config).FirstOrDefaultAsync(j => j.Id == id, ct);
         if (job is null)
             return NotFound(new { success = false, error = "Job not found" });
 
@@ -155,7 +155,7 @@ public partial class ApiController(
         int jobId, string? disctype = null, int? minLength = null,
         int? maxLength = null, string? ripMethod = null, bool? mainFeature = null, CancellationToken ct = default)
     {
-        var job = await db.Jobs.Include(j => j.Config).FirstOrDefaultAsync(j => j.Id == jobId);
+        var job = await db.Jobs.Include(j => j.Config).FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job?.Config is null)
             return NotFound(new { success = false, error = "Job or config not found" });
 
@@ -184,9 +184,9 @@ public partial class ApiController(
     }
 
     [HttpGet("log")]
-    public async Task<IActionResult> GetLog(int jobId)
+    public async Task<IActionResult> GetLog(int jobId, CancellationToken ct = default)
     {
-        var job = await db.Jobs.FindAsync(jobId);
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job?.LogFile is null)
             return Json(new { success = false, error = "Job or log file not found" });
 
@@ -196,7 +196,7 @@ public partial class ApiController(
         if (!System.IO.File.Exists(fullPath))
             return Json(new { success = false, error = "Log file not found" });
 
-        var logContent = await System.IO.File.ReadAllTextAsync(fullPath);
+        var logContent = await System.IO.File.ReadAllTextAsync(fullPath, ct);
         return Json(new { success = true, job = jobId, log = logContent });
     }
 
@@ -208,7 +208,7 @@ public partial class ApiController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ContinueManualWait(int id, string? title = null, CancellationToken ct = default)
     {
-        var job = await db.Jobs.FindAsync(id);
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, ct);
         if (job is null)
             return NotFound(new { success = false, error = "Job not found" });
 

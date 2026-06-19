@@ -83,7 +83,7 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
 
             using var process = new Process { StartInfo = startInfo };
             process.Start();
-            var json = await process.StandardOutput.ReadToEndAsync();
+            var json = await process.StandardOutput.ReadToEndAsync(ct);
             await process.WaitForExitAsync(ct);
 
             if (process.ExitCode != 0)
