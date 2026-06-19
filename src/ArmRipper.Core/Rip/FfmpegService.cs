@@ -173,16 +173,19 @@ public sealed partial class FfmpegService(
         var ext = settings.Value.DestExt ?? "mp4";
 
         var anySuccess = false;
-        var eligibleTracks = job.Tracks.Where(t =>
-            int.TryParse(t.TrackNumber, out var trackNo) &&
-            trackNo <= (job.NoOfTitles ?? 0) &&
-            (t.Length ?? 0) >= minLength &&
-            (t.Length ?? 0) <= maxLength).ToList();
+        var eligibleTracks = job.Tracks
+            .Select(t => new { Track = t, Parsed = int.TryParse(t.TrackNumber, out var trackNo) ? (int?)trackNo : null })
+            .Where(x => x.Parsed.HasValue &&
+                        x.Parsed.Value <= (job.NoOfTitles ?? 0) &&
+                        (x.Track.Length ?? 0) >= minLength &&
+                        (x.Track.Length ?? 0) <= maxLength)
+            .Select(x => new { x.Track, TrackNo = x.Parsed!.Value })
+            .ToList();
         var processedCount = 0;
-        foreach (var track in eligibleTracks)
+        foreach (var eligible in eligibleTracks)
         {
-            if (!int.TryParse(track.TrackNumber, out var trackNo))
-                continue;
+            var track = eligible.Track;
+            var trackNo = eligible.TrackNo;
 
             processedCount++;
             job.ProgressMessage = $"Transcoding track {trackNo} ({processedCount} of {eligibleTracks.Count})";
