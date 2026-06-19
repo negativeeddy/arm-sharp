@@ -111,13 +111,14 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
 
         logger.LogDebug("Process started ({Name}): {Arguments}", fileName, arguments);
 
+        // Use CancellationToken.None for stderr so it drains fully even after ct fires.
+        var stderrTask = ReadAllLinesAsync(process.StandardError, CancellationToken.None);
+
         using var ctReg = ct.Register(() =>
         {
             try { process.Kill(entireProcessTree: true); } catch { }
             logger.LogWarning("Process cancelled ({Name})", fileName);
         });
-
-        var stderrTask = ReadAllLinesAsync(process.StandardError, ct);
 
         try
         {
@@ -135,14 +136,12 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
             }
         }
 
-        process.WaitForExit();
-
+        // Drain stderr before checking exit code — process may have been killed or exited.
         var stderr = await stderrTask;
-        if (stderr.Count > 0)
-        {
-            foreach (var errLine in stderr)
-                logger.LogDebug("STDERR {FileName}: {Line}", fileName, errLine);
-        }
+        foreach (var errLine in stderr)
+            logger.LogDebug("STDERR {FileName}: {Line}", fileName, errLine);
+
+        process.WaitForExit();
 
         logger.LogInformation("Process exited ({Name}) code={Code}", fileName, process.ExitCode);
 
