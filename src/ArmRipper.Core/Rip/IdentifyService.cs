@@ -517,6 +517,8 @@ public sealed partial class IdentifyService(
     private async Task<JsonDocument?> IdentifyLoopAsync(Job job, string title, string year, CancellationToken ct)
     {
         JsonDocument? response = null;
+        const int maxAttempts = 8;
+        var attempts = 0;
 
         if (!string.IsNullOrEmpty(year))
         {
@@ -531,18 +533,25 @@ public sealed partial class IdentifyService(
         if (response is null)
             response = await CallMetadataProviderAsync(job, title, null, ct);
 
-        while (response is null && title.Contains('-'))
+        while (response is null && title.Contains('-') && attempts < maxAttempts)
         {
+            attempts++;
             title = title[..title.LastIndexOf('-')].TrimEnd('+');
             response = await CallMetadataProviderAsync(job, title, string.IsNullOrEmpty(year) ? null : year, ct);
         }
 
-        while (response is null && title.Contains('+'))
+        while (response is null && title.Contains('+') && attempts < maxAttempts)
         {
+            attempts++;
             title = title[..title.LastIndexOf('+')].TrimEnd('+');
             response = await CallMetadataProviderAsync(job, title, string.IsNullOrEmpty(year) ? null : year, ct);
             if (response is null)
                 response = await CallMetadataProviderAsync(job, title, null, ct);
+        }
+
+        if (response is null && attempts >= maxAttempts)
+        {
+            logger.LogDebug("IdentifyLoopAsync: reached max {MaxAttempts} attempts for title={Title}", maxAttempts, title);
         }
 
         return response;
