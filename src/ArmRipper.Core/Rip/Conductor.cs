@@ -155,6 +155,7 @@ public sealed class Conductor(
             EmbyServer = armSettings.EmbyServer,
             EmbyPort = armSettings.EmbyPort,
             EmbyApiKey = armSettings.EmbyApiKey,
+            MaxConcurrentRips = armSettings.MaxConcurrentRips,
             MaxConcurrentTranscodes = armSettings.MaxConcurrentTranscodes,
             MaxConcurrentMakemkvInfo = armSettings.MaxConcurrentMakemkvInfo
         };

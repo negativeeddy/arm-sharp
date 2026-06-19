@@ -224,19 +224,19 @@ Refactored inline IP-range checks into a dedicated `IsPrivateIpAddress(IPAddress
 
 ### 6.3 — Queue orchestration
 
-**Status:** ❌ NOT FIXED
+**Status:** ✅ FIXED
 
-No persistent job queue. `ConcurrentDictionary` prevents duplicate per-device but not cross-device concurrency.
+**Files:** `ArmSettings.cs`, `ConfigSnapshot.cs`, `Conductor.cs`, `BackgroundRipService.cs`
+
+Added `MaxConcurrentRips` setting (default 1) to `ArmSettings` and `ConfigSnapshot`. `BackgroundRipService` now uses a `SemaphoreSlim` initialized with `MaxConcurrentRips` to limit total concurrent rips across all devices. Per-device deduplication via `ConcurrentDictionary` is preserved as the first guard.
 
 ### 6.4 — External tool invocation
 
-**Status:** ✅ PARTIALLY FIXED
+**Status:** ✅ FIXED
 
 **Files:** `CliProcessRunner.cs`
 
-Dead code `AppendToLogAsync` removed (commit `1398f9b`). Watchdog script (`scripts/usb-watchdog.sh`) added as complementary tool (commit `5a282c5`). `RunStreamingAsync` now throws on non-zero exit (commit `5a282c5`).
-
-**Remaining:** `RunStreamingAsync` race condition with stderr (see 2.6).
+Dead code `AppendToLogAsync` removed (commit `1398f9b`). Watchdog script (`scripts/usb-watchdog.sh`) added (commit `5a282c5`). `RunStreamingAsync` now throws on non-zero exit (commit `5a282c5`). `RunStreamingAsync` stderr race condition fixed (commit `05bff95`, see 2.6).
 
 ### 6.5 — Idempotency and error recovery
 

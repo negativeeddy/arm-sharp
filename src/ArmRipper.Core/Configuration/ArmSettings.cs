@@ -63,6 +63,7 @@ public class ArmSettings
     public int? EmbyPort { get; set; }
     public string? EmbyApiKey { get; set; }
 
+    public int MaxConcurrentRips { get; set; } = 1;
     public int MaxConcurrentTranscodes { get; set; }
     public int MaxConcurrentMakemkvInfo { get; set; }
 

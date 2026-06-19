@@ -1,14 +1,21 @@
+using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Rip;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 
 namespace ArmRipper.Core.Tests;
 
 public sealed class BackgroundRipServiceTests
 {
+    private static IOptions<ArmSettings> CreateSettings(int maxConcurrentRips = 1)
+    {
+        return Options.Create(new ArmSettings { MaxConcurrentRips = maxConcurrentRips });
+    }
+
     private static async Task WaitForBackgroundTaskAsync(Func<bool> condition, int timeoutMs = 5000)
     {
         var start = Environment.TickCount;
@@ -40,7 +47,7 @@ public sealed class BackgroundRipServiceTests
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
-        var service = new BackgroundRipService(scopeFactory.Object, NullLoggerFactory.Instance);
+        var service = new BackgroundRipService(scopeFactory.Object, NullLoggerFactory.Instance, CreateSettings());
         service.StartRip("/dev/sr0");
         await WaitForBackgroundTaskAsync(() => conductorRun);
 
@@ -67,7 +74,7 @@ public sealed class BackgroundRipServiceTests
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
-        var service = new BackgroundRipService(scopeFactory.Object, NullLoggerFactory.Instance);
+        var service = new BackgroundRipService(scopeFactory.Object, NullLoggerFactory.Instance, CreateSettings());
         service.StartRip("/dev/sr0");
         await WaitForBackgroundTaskAsync(() => true);
     }
@@ -91,7 +98,7 @@ public sealed class BackgroundRipServiceTests
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
-        var service = new BackgroundRipService(scopeFactory.Object, NullLoggerFactory.Instance);
+        var service = new BackgroundRipService(scopeFactory.Object, NullLoggerFactory.Instance, CreateSettings());
 
         using var cts = new CancellationTokenSource();
         cts.Cancel();
