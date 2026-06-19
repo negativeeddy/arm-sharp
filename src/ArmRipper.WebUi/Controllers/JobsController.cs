@@ -51,7 +51,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
     }
 
     [HttpPost("update-identification")]
-    public async Task<IActionResult> UpdateIdentification(int jobId, string? title, string? year, string? videoType, string? imdbId, string? posterUrl)
+    public async Task<IActionResult> UpdateIdentification(int jobId, string? title, string? year, string? videoType, string? imdbId, string? posterUrl, CancellationToken ct = default)
     {
         var job = await db.Jobs.FindAsync(jobId);
         if (job is null)
@@ -63,12 +63,12 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
         if (imdbId is not null) { job.ImdbIdManual = imdbId; job.ImdbId = imdbId; }
         if (posterUrl is not null) { job.PosterUrlManual = posterUrl; job.PosterUrl = posterUrl; }
 
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
         return RedirectToAction("JobDetail", new { jobId });
     }
 
     [HttpPost("set-title")]
-    public async Task<IActionResult> SetTitle(int jobId, string title, string? returnUrl = null)
+    public async Task<IActionResult> SetTitle(int jobId, string title, string? returnUrl = null, CancellationToken ct = default)
     {
         var job = await db.Jobs.FindAsync(jobId);
         if (job is null)
@@ -76,7 +76,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
 
         job.TitleManual = title;
         job.Title = title;
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
 
         return Redirect(returnUrl ?? Url.Action("TitleSearch")!);
     }
@@ -118,7 +118,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
     }
 
     [HttpPost("cancel")]
-    public async Task<IActionResult> Cancel(int jobId)
+    public async Task<IActionResult> Cancel(int jobId, CancellationToken ct = default)
     {
         var job = await db.Jobs.FindAsync(jobId);
         if (job is null)
@@ -129,7 +129,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
             job.Status = JobState.Cancelled;
             job.Errors = "Cancelled by user";
             job.ProgressMessage = "Cancelled";
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(ct);
         }
 
         if (!string.IsNullOrEmpty(job.DevPath))
@@ -187,7 +187,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
     }
 
     [HttpPost("assign-movie")]
-    public async Task<IActionResult> AssignMovie(int jobId, string title, string? year, string? imdbId, string? posterUrl, string? videoType)
+    public async Task<IActionResult> AssignMovie(int jobId, string title, string? year, string? imdbId, string? posterUrl, string? videoType, CancellationToken ct = default)
     {
         var job = await db.Jobs.FindAsync(jobId);
         if (job is null)
@@ -207,13 +207,13 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
             job.VideoType = videoType;
         }
 
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
 
         return RedirectToAction("JobDetail", new { jobId });
     }
 
     [HttpPost("continue-wait")]
-    public async Task<IActionResult> ContinueWait(int jobId)
+    public async Task<IActionResult> ContinueWait(int jobId, CancellationToken ct = default)
     {
         var job = await db.Jobs.FindAsync(jobId);
         if (job is null)
@@ -222,7 +222,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
         if (job.Status == JobState.ManualWaitStarted)
         {
             job.ManualWaitResume = true;
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(ct);
         }
 
         return RedirectToAction("JobDetail", new { jobId });

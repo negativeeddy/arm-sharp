@@ -99,7 +99,7 @@ public class SettingsController(
     }
 
     [HttpPost("save-ripper")]
-    public async Task<IActionResult> SaveRipper(ArmSettings posted)
+    public async Task<IActionResult> SaveRipper(ArmSettings posted, CancellationToken ct = default)
     {
         var json = System.Text.Json.JsonSerializer.Serialize(posted);
         var existing = await db.RipperSettings.FirstOrDefaultAsync();
@@ -111,14 +111,14 @@ public class SettingsController(
         {
             existing.SettingsJson = json;
         }
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
 
         TempData["Message"] = "Ripper settings saved to database.";
         return RedirectToAction("Index");
     }
 
     [HttpGet("scan")]
-    public async Task<IActionResult> ScanDrives()
+    public async Task<IActionResult> ScanDrives(CancellationToken ct = default)
     {
         var found = 0;
         for (int i = 0; i <= 25; i++)
@@ -171,7 +171,7 @@ public class SettingsController(
             found++;
         }
 
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
         TempData["Message"] = $"Found {found} new drive(s).";
         return RedirectToAction("Index");
     }
@@ -179,7 +179,7 @@ public class SettingsController(
     private static readonly string[] DriveModes = ["autodetect", "manual", "disabled"];
 
     [HttpPost("drive-toggle-mode/{id:int}")]
-    public async Task<IActionResult> ToggleDriveMode(int id)
+    public async Task<IActionResult> ToggleDriveMode(int id, CancellationToken ct = default)
     {
         var drive = await db.SystemDrives.FindAsync(id);
         if (drive is null)
@@ -187,26 +187,26 @@ public class SettingsController(
 
         var idx = Array.IndexOf(DriveModes, drive.DriveMode);
         drive.DriveMode = DriveModes[(idx + 1) % DriveModes.Length];
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
         TempData["Message"] = $"Drive {drive.Mount} mode → {drive.DriveMode}";
         return RedirectToAction("Index");
     }
 
     [HttpPost("drive-remove/{id:int}")]
-    public async Task<IActionResult> RemoveDrive(int id)
+    public async Task<IActionResult> RemoveDrive(int id, CancellationToken ct = default)
     {
         var drive = await db.SystemDrives.FindAsync(id);
         if (drive is null)
             return NotFound();
 
         db.SystemDrives.Remove(drive);
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
         TempData["Message"] = $"Removed drive {drive.Mount}";
         return RedirectToAction("Index");
     }
 
     [HttpPost("start-rip")]
-    public async Task<IActionResult> StartRip(string devPath)
+    public async Task<IActionResult> StartRip(string devPath, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(devPath) || !devPath.StartsWith("/dev/sr", StringComparison.Ordinal))
         {
@@ -256,7 +256,7 @@ public class SettingsController(
         // Poll for the new job to appear in DB (up to 5 seconds)
         for (var i = 0; i < 20; i++)
         {
-            await Task.Delay(250);
+            await Task.Delay(250, ct);
             var job = await db.Jobs
                 .Where(j => j.Id > maxIdBefore && j.DevPath == devPath)
                 .OrderByDescending(j => j.Id)
@@ -322,7 +322,7 @@ public class SettingsController(
 
     [HttpPost("save-ui")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> SaveUi(string theme, int refreshRate, string iconStyle)
+    public async Task<IActionResult> SaveUi(string theme, int refreshRate, string iconStyle, CancellationToken ct = default)
     {
         var ui = await db.UiSettings.FirstOrDefaultAsync();
         if (ui is null)
@@ -336,7 +336,7 @@ public class SettingsController(
             ui.RefreshRate = refreshRate;
             ui.IconStyle = iconStyle;
         }
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
         TempData["Message"] = "UI settings saved.";
         return RedirectToAction("Index");
     }
@@ -383,7 +383,7 @@ public class SettingsController(
     }
 
     [HttpGet("sysinfo")]
-    public async Task<IActionResult> RefreshSysInfo()
+    public async Task<IActionResult> RefreshSysInfo(CancellationToken ct = default)
     {
         var existing = await db.SystemInfos.FirstOrDefaultAsync();
         if (existing is null)
@@ -405,7 +405,7 @@ public class SettingsController(
             existing.RamInfo = $"{GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / (1024 * 1024 * 1024)} GB";
             existing.OsInfo = RuntimeInformation.OSDescription;
         }
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
         TempData["Message"] = "System info updated.";
         return RedirectToAction("Index");
     }

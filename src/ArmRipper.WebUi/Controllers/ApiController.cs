@@ -112,7 +112,7 @@ public partial class ApiController(
 
     [HttpPost("abandon/{id}")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Abandon(int id)
+    public async Task<IActionResult> Abandon(int id, CancellationToken ct = default)
     {
         var job = await db.Jobs.Include(j => j.Config).FirstOrDefaultAsync(j => j.Id == id);
         if (job is null)
@@ -124,7 +124,7 @@ public partial class ApiController(
             {
                 var process = System.Diagnostics.Process.GetProcessById(pid);
                 process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync();
+                await process.WaitForExitAsync(ct);
             }
             catch (Exception)
             {
@@ -139,13 +139,13 @@ public partial class ApiController(
         {
             try
             {
-                await runner.RunAsync("umount", job.DevPath, timeoutMs: 10_000);
-                await runner.RunAsync("eject", job.DevPath, timeoutMs: 10_000);
+                await runner.RunAsync("umount", job.DevPath, timeoutMs: 10_000, ct: ct);
+                await runner.RunAsync("eject", job.DevPath, timeoutMs: 10_000, ct: ct);
             }
             catch { }
         }
 
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
         return Json(new { success = true, job = id, mode = "abandon" });
     }
 
@@ -153,7 +153,7 @@ public partial class ApiController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ChangeParams(
         int jobId, string? disctype = null, int? minLength = null,
-        int? maxLength = null, string? ripMethod = null, bool? mainFeature = null)
+        int? maxLength = null, string? ripMethod = null, bool? mainFeature = null, CancellationToken ct = default)
     {
         var job = await db.Jobs.Include(j => j.Config).FirstOrDefaultAsync(j => j.Id == jobId);
         if (job?.Config is null)
@@ -172,7 +172,7 @@ public partial class ApiController(
         if (mainFeature.HasValue)
             config.MainFeature = mainFeature.Value;
 
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
         return Json(new
         {
             success = true,
@@ -206,7 +206,7 @@ public partial class ApiController(
     /// </summary>
     [HttpPost("jobs/{id}/continue")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ContinueManualWait(int id, string? title = null)
+    public async Task<IActionResult> ContinueManualWait(int id, string? title = null, CancellationToken ct = default)
     {
         var job = await db.Jobs.FindAsync(id);
         if (job is null)
@@ -222,7 +222,7 @@ public partial class ApiController(
         }
 
         job.ManualWaitResume = true;
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
 
         return Json(new { success = true, job = id, message = "Manual wait will resume" });
     }

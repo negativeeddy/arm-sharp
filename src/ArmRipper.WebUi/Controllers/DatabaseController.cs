@@ -82,7 +82,7 @@ public class DatabaseController(ArmDbContext db) : Controller
     }
 
     [HttpGet("import")]
-    public async Task<IActionResult> Import()
+    public async Task<IActionResult> Import(CancellationToken ct = default)
     {
         var completedPath = "/home/arm/media";
         if (!Directory.Exists(completedPath))
@@ -124,19 +124,19 @@ public class DatabaseController(ArmDbContext db) : Controller
             added++;
         }
 
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
         return Json(new { added, notFound = errors });
     }
 
     [HttpPost("delete/{id}")]
-    public async Task<IActionResult> Delete(int id)
+    public async Task<IActionResult> Delete(int id, CancellationToken ct = default)
     {
         var job = await db.Jobs.FindAsync(id);
         if (job is null)
             return NotFound();
 
         db.Jobs.Remove(job);
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(ct);
         TempData["Message"] = $"Job {id} deleted.";
         return RedirectToAction("Index");
     }

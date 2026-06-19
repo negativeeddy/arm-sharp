@@ -36,13 +36,13 @@ public class NotificationsController(ArmDbContext db) : Controller
     }
 
     [HttpPost("markread/{id}")]
-    public async Task<IActionResult> MarkRead(int id)
+    public async Task<IActionResult> MarkRead(int id, CancellationToken ct = default)
     {
         var notification = await db.Notifications.FindAsync(id);
         if (notification is not null)
         {
             notification.Read = true;
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(ct);
         }
 
         return RedirectToAction("Index");

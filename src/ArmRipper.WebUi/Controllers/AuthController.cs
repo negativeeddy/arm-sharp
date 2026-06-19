@@ -33,7 +33,7 @@ public class AuthController(ArmDbContext db) : Controller
     [AllowAnonymous]
     [HttpPost("login")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Login(string username, string password)
+    public async Task<IActionResult> Login(string username, string password, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
         {
@@ -61,7 +61,7 @@ public class AuthController(ArmDbContext db) : Controller
         if (result == PasswordVerificationResult.SuccessRehashNeeded)
         {
             user.PasswordHash = hasher.HashPassword(user, password);
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(ct);
         }
 
         var claims = new List<Claim>
