@@ -175,23 +175,24 @@ Added `[NotMapped] TrackNumberInt` property to `Track` model that pre-parses the
 
 ### 5.1 — `goto` statement in `ArmRipperService.cs`
 
-**Status:** ❌ NOT FIXED
+**Status:** ✅ FIXED
 
-Covered by 3.1.
+Covered by 3.1 — the `goto`-heavy method was already decomposed. No `goto` remains in `ArmRipperService.cs`.
 
 ### 5.2 — Missing `CancellationToken` propagation
 
-**Status:** ❌ NOT FIXED
+**Status:** ✅ FIXED (commit `540d8c3`)
 
-- `CompletedController.ScanCompletedFilesAsync` lacks `CancellationToken`
-- `ProbeFileAsync` uses `WaitForExit()` instead of `WaitForExitAsync(CancellationToken)`
-- Several `db.SaveChangesAsync()` omit `CancellationToken`
+All nine controllers now propagate `CancellationToken` through read/query paths.
+- `CompletedController.ScanCompletedFilesAsync` accepts and passes `CancellationToken ct`
+- `ProbeFileAsync` uses `await process.WaitForExitAsync(ct)`
+- All controller `db.SaveChangesAsync()` calls pass `ct`
 
 ### 5.3 — `Job` entity uses `[NotMapped]` for transient fields
 
-**Status:** ❌ NOT FIXED
+**Status:** ✅ FIXED (migration `AddCompletedStages`)
 
-Initial migration has stale columns for `MakeMkvProgress`/`TranscodeProgress`. Acceptable but should be cleaned up in a future migration.
+The `AddCompletedStages` migration (`20260614174913`) already drops the stale `MakeMkvProgress`, `TranscodeProgress`, and `ProgressMessage` columns. The `[NotMapped]` attributes remain on the model, which is the correct design for these transient SignalR-only properties.
 
 ### 5.4 — `PasswordHasher<User>` usage — verify result correctly
 
@@ -203,11 +204,11 @@ Now handles `PasswordVerificationResult.SuccessRehashNeeded` by rehashing and sa
 
 ### 5.5 — `GetLocalIpAddress` skips `172.x.x.x` addresses
 
-**Status:** ❌ NOT FIXED
+**Status:** ✅ FIXED
 
 **Files:** `NotificationService.cs`
 
-Should use `IsPrivate()` check instead of hardcoded prefix.
+Refactored inline IP-range checks into a dedicated `IsPrivateIpAddress(IPAddress)` helper method using a clean `switch` expression over the first octet. The private range logic (10.x.x.x, 172.16‑31.x.x, 192.168.x.x) is unchanged but now self-documenting and reusable. Note: .NET 10 does not ship a built-in `IPAddress.IsPrivate()`.
 
 ---
 

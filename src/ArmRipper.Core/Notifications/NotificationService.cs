@@ -191,12 +191,7 @@ public sealed class NotificationService(
                     System.Net.IPAddress.IsLoopback(ip))
                     continue;
 
-                var bytes = ip.GetAddressBytes();
-                var isPrivate = bytes[0] == 10 ||
-                                (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) ||
-                                (bytes[0] == 192 && bytes[1] == 168);
-
-                if (isPrivate)
+                if (IsPrivateIpAddress(ip))
                     return ip.ToString();
 
                 fallback ??= ip.ToString();
@@ -208,5 +203,18 @@ public sealed class NotificationService(
         catch { }
 
         return "127.0.0.1";
+    }
+
+    /// <summary>Returns true if the IPv4 address is in a private range (10.x.x.x, 172.16‑31.x.x, or 192.168.x.x).</summary>
+    private static bool IsPrivateIpAddress(System.Net.IPAddress ip)
+    {
+        var bytes = ip.GetAddressBytes();
+        return bytes[0] switch
+        {
+            10 => true,
+            172 => bytes[1] is >= 16 and <= 31,
+            192 => bytes[1] == 168,
+            _ => false,
+        };
     }
 }
