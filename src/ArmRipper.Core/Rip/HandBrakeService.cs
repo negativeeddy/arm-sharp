@@ -301,7 +301,7 @@ public sealed partial class HandBrakeService(
 
     private async Task<CliResult> RunHandBrakeCommandAsync(string cmd, CancellationToken ct, IProgress<int>? progress = null)
     {
-        logger.LogDebug("Sending command: {Command}", cmd);
+        logger.LogInformation("HandBrake command: {Command}", cmd);
 
         var lines = new List<string>();
         var stderrLines = new List<string>();
@@ -324,7 +324,7 @@ public sealed partial class HandBrakeService(
             }
             else
             {
-                logger.LogDebug("HandBrake: {Line}", line);
+                logger.LogInformation("HandBrake: {Line}", line);
                 lines.Add(line!);
             }
 
