@@ -27,6 +27,7 @@ builder.Services.AddHttpClient("IdentifyService", client =>
     client.DefaultRequestHeaders.UserAgent.ParseAdd("arm/1.0");
 });
 builder.Services.AddScoped<IIdentifyService, IdentifyService>();
+builder.Services.AddSingleton<ITranscodeSlotLimiter, TranscodeSlotLimiter>();
 builder.Services.AddScoped<IHandBrakeService, HandBrakeService>();
 builder.Services.AddScoped<IFfmpegService, FfmpegService>();
 builder.Services.AddScoped<IArmRipperService, ArmRipperService>();

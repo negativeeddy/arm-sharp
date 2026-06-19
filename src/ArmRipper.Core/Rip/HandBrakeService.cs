@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.RegularExpressions;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
@@ -13,12 +12,12 @@ public sealed partial class HandBrakeService(
     ICliProcessRunner runner,
     ILoggerFactory loggerFactory,
     ArmDbContext db,
-    IOptions<ArmSettings> settings) : IHandBrakeService
+    IOptions<ArmSettings> settings,
+    ITranscodeSlotLimiter transcodeSlotLimiter) : IHandBrakeService
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("HandBrakeService");
     public async Task<CliResult> TranscodeMkvAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
-        await SleepCheckAsync(ct);
         logger.LogInformation("Starting HandBrake for MKV files");
 
         if (!Directory.Exists(rawPath))
@@ -96,7 +95,6 @@ public sealed partial class HandBrakeService(
 
     public async Task<CliResult> TranscodeMainFeatureAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
-        await SleepCheckAsync(ct);
         logger.LogInformation("Starting DVD/BluRay main feature transcoding");
 
         var ext = settings.Value.DestExt ?? "mp4";
@@ -159,7 +157,6 @@ public sealed partial class HandBrakeService(
 
     public async Task<CliResult> TranscodeAllAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
-        await SleepCheckAsync(ct);
         logger.LogInformation("Starting BluRay/DVD transcoding - All titles");
 
         await GetTrackInfoAsync(rawPath, job, ct);
@@ -244,27 +241,6 @@ public sealed partial class HandBrakeService(
         return lastResult ?? new CliResult(0, "", "", false);
     }
 
-    private async Task SleepCheckAsync(CancellationToken ct)
-    {
-        var maxTranscodes = settings.Value.MaxConcurrentTranscodes;
-        if (maxTranscodes <= 0)
-            return;
-
-        logger.LogInformation("Starting sleep check of HandBrakeCLI");
-        while (true)
-        {
-            ct.ThrowIfCancellationRequested();
-            var count = Process.GetProcessesByName("HandBrakeCLI").Length;
-            if (count < maxTranscodes)
-                break;
-
-            logger.LogDebug("{Count} processes running. Sleeping 20s.", count);
-            await Task.Delay(TimeSpan.FromSeconds(20), ct);
-        }
-
-        logger.LogInformation("Exiting sleep check of HandBrakeCLI");
-    }
-
     private string BuildCommand(string inputPath, string outputPath, Job job, int? trackNumber, bool mainFeature)
     {
         var cmd = $"nice HandBrakeCLI -i \"{inputPath}\" -o \"{outputPath}\"";
@@ -304,6 +280,8 @@ public sealed partial class HandBrakeService(
 
     private async Task<CliResult> RunHandBrakeCommandAsync(string cmd, CancellationToken ct, IProgress<int>? progress = null)
     {
+        await using var slot = await transcodeSlotLimiter.AcquireAsync(ct);
+
         logger.LogInformation("HandBrake command: {Command}", cmd);
 
         var lines = new List<string>();

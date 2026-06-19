@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using ArmRipper.Core.Configuration;
@@ -14,12 +13,12 @@ public sealed partial class FfmpegService(
     ICliProcessRunner runner,
     ILoggerFactory loggerFactory,
     ArmDbContext db,
-    IOptions<ArmSettings> settings) : IFfmpegService
+    IOptions<ArmSettings> settings,
+    ITranscodeSlotLimiter transcodeSlotLimiter) : IFfmpegService
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("FfmpegService");
     public async Task<CliResult> TranscodeMkvAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
-        await SleepCheckAsync(ct);
         logger.LogInformation("Starting FFmpeg for MKV files");
 
         var allStdOut = new List<string>();
@@ -104,7 +103,6 @@ public sealed partial class FfmpegService(
 
     public async Task<CliResult> TranscodeMainFeatureAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
-        await SleepCheckAsync(ct);
         logger.LogInformation("Starting DVD/BluRay main feature transcoding");
 
         var allStdOut = new List<string>();
@@ -159,7 +157,6 @@ public sealed partial class FfmpegService(
 
     public async Task<CliResult> TranscodeAllAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
-        await SleepCheckAsync(ct);
         logger.LogInformation("Starting BluRay/DVD transcoding - All titles");
 
         var allStdOut = new List<string>();
@@ -227,29 +224,10 @@ public sealed partial class FfmpegService(
         return new CliResult(0, string.Join("\n", allStdOut), string.Join("\n", allStdErr), false);
     }
 
-    private async Task SleepCheckAsync(CancellationToken ct)
-    {
-        var maxTranscodes = settings.Value.MaxConcurrentTranscodes;
-        if (maxTranscodes <= 0)
-            return;
-
-        logger.LogInformation("Starting sleep check of ffmpeg");
-        while (true)
-        {
-            ct.ThrowIfCancellationRequested();
-            var count = Process.GetProcessesByName("ffmpeg").Length;
-            if (count < maxTranscodes)
-                break;
-
-            logger.LogDebug("{Count} processes running. Sleeping 20s.", count);
-            await Task.Delay(TimeSpan.FromSeconds(20), ct);
-        }
-
-        logger.LogInformation("Exiting sleep check of ffmpeg");
-    }
-
     private async Task RunTranscodeAsync(string inputFile, string outputFile, Job job, int? totalSeconds, List<string> stdOut, List<string> stdErr, IProgress<int>? progress, CancellationToken ct)
     {
+        await using var slot = await transcodeSlotLimiter.AcquireAsync(ct);
+
         var (ffPreArgs, ffPostArgs) = GetFfSettings(job);
 
         var cmd = $"ffmpeg {ffPreArgs} -i \"{inputFile}\" {ffPostArgs} \"{outputFile}\"";
