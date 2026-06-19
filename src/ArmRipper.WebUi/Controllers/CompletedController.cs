@@ -17,7 +17,7 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
     private const string CacheKey = "CompletedFiles";
 
     [HttpGet("")]
-    public async Task<IActionResult> Index(bool refresh = false)
+    public async Task<IActionResult> Index(bool refresh = false, CancellationToken ct = default)
     {
         if (refresh)
             cache.Remove(CacheKey);
@@ -25,26 +25,26 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         var files = await cache.GetOrCreateAsync(CacheKey, async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = CacheDuration;
-            return await ScanCompletedFilesAsync();
+            return await ScanCompletedFilesAsync(ct);
         });
 
         return View(files);
     }
 
     [HttpGet("probe")]
-    public async Task<IActionResult> Probe(string filePath)
+    public async Task<IActionResult> Probe(string filePath, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath))
             return NotFound();
 
-        var info = await ProbeFileAsync(filePath);
+        var info = await ProbeFileAsync(filePath, ct);
         if (info == null)
             return NotFound();
 
         return View("Detail", info);
     }
 
-    private async Task<List<CompletedFileInfo>> ScanCompletedFilesAsync()
+    private async Task<List<CompletedFileInfo>> ScanCompletedFilesAsync(CancellationToken ct)
     {
         var completedPath = settings.Value.CompletedPath ?? "/home/arm/media";
         if (!Directory.Exists(completedPath))
@@ -57,7 +57,7 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
             .Where(f => videoExtensions.Contains(Path.GetExtension(f)))
             .ToList();
 
-        var tasks = files.Select(file => ProbeFileAsync(file));
+        var tasks = files.Select(file => ProbeFileAsync(file, ct));
         var results = await Task.WhenAll(tasks);
 
         return results.Where(r => r != null)
@@ -65,10 +65,12 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
             .ToList()!;
     }
 
-    private async Task<CompletedFileInfo?> ProbeFileAsync(string filePath)
+    private async Task<CompletedFileInfo?> ProbeFileAsync(string filePath, CancellationToken ct)
     {
         try
         {
+            ct.ThrowIfCancellationRequested();
+
             var startInfo = new ProcessStartInfo
             {
                 FileName = "ffprobe",
@@ -82,7 +84,7 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
             using var process = new Process { StartInfo = startInfo };
             process.Start();
             var json = await process.StandardOutput.ReadToEndAsync();
-            await process.WaitForExitAsync();
+            await process.WaitForExitAsync(ct);
 
             if (process.ExitCode != 0)
                 return null;

@@ -184,15 +184,26 @@ public sealed class NotificationService(
         try
         {
             var host = System.Net.Dns.GetHostEntry(System.Net.Dns.GetHostName());
+            string? fallback = null;
             foreach (var ip in host.AddressList)
             {
-                if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
-                    !System.Net.IPAddress.IsLoopback(ip) &&
-                    !ip.ToString().StartsWith("172."))
-                {
+                if (ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork ||
+                    System.Net.IPAddress.IsLoopback(ip))
+                    continue;
+
+                var bytes = ip.GetAddressBytes();
+                var isPrivate = bytes[0] == 10 ||
+                                (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) ||
+                                (bytes[0] == 192 && bytes[1] == 168);
+
+                if (isPrivate)
                     return ip.ToString();
-                }
+
+                fallback ??= ip.ToString();
             }
+
+            if (!string.IsNullOrEmpty(fallback))
+                return fallback;
         }
         catch { }
 
