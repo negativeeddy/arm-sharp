@@ -5,6 +5,7 @@ using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Metadata;
 using ArmRipper.Core.Notifications;
 using ArmRipper.Core.Rip;
+using ArmRipper.WebUi.Services;
 using ArmRipper.WebUi.Hubs;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
@@ -40,6 +41,7 @@ builder.Services.AddSignalR();
 builder.Services.AddMemoryCache();
 
 builder.Services.AddSingleton<ICliProcessRunner, CliProcessRunner>();
+builder.Services.AddSingleton<IHardwareEncoderInfoService, HardwareEncoderInfoService>();
 builder.Services.AddHttpClient("IdentifyService", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(15);

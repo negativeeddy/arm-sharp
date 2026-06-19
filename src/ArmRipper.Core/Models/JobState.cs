@@ -15,22 +15,35 @@ public enum JobState
     Cancelled
 }
 
+public static class JobStateDbValues
+{
+    public const string Success = "success";
+    public const string Failure = "fail";
+    public const string Active = "active";
+    public const string Ripping = "ripping";
+    public const string Waiting = "waiting";
+    public const string Info = "info";
+    public const string Transcoding = "transcoding";
+    public const string WaitingTranscode = "waiting_transcode";
+    public const string Cancelled = "cancelled";
+}
+
 public static class JobStateExtensions
 {
     public static string ToDbString(this JobState state) => state switch
     {
-        JobState.Success => "success",
-        JobState.Failure => "fail",
-        JobState.Active => "active",
-        JobState.VideoRipping => "ripping",
-        JobState.VideoWaiting => "waiting",
-        JobState.VideoInfo => "info",
-        JobState.AudioRipping => "ripping",
-        JobState.TranscodeActive => "transcoding",
-        JobState.TranscodeWaiting => "waiting_transcode",
-        JobState.ManualWaitStarted => "waiting",
-        JobState.Cancelled => "cancelled",
-        _ => "active"
+        JobState.Success => JobStateDbValues.Success,
+        JobState.Failure => JobStateDbValues.Failure,
+        JobState.Active => JobStateDbValues.Active,
+        JobState.VideoRipping => JobStateDbValues.Ripping,
+        JobState.VideoWaiting => JobStateDbValues.Waiting,
+        JobState.VideoInfo => JobStateDbValues.Info,
+        JobState.AudioRipping => JobStateDbValues.Ripping,
+        JobState.TranscodeActive => JobStateDbValues.Transcoding,
+        JobState.TranscodeWaiting => JobStateDbValues.WaitingTranscode,
+        JobState.ManualWaitStarted => JobStateDbValues.Waiting,
+        JobState.Cancelled => JobStateDbValues.Cancelled,
+        _ => JobStateDbValues.Active
     };
 
     public static bool IsTerminal(this JobState state) =>
@@ -38,15 +51,15 @@ public static class JobStateExtensions
 
     public static JobState FromDbString(string value) => value switch
     {
-        "success" => JobState.Success,
-        "fail" => JobState.Failure,
-        "active" => JobState.Active,
-        "ripping" => JobState.VideoRipping,
-        "waiting" => JobState.VideoWaiting,
-        "info" => JobState.VideoInfo,
-        "transcoding" => JobState.TranscodeActive,
-        "waiting_transcode" => JobState.TranscodeWaiting,
-        "cancelled" => JobState.Cancelled,
+        JobStateDbValues.Success => JobState.Success,
+        JobStateDbValues.Failure => JobState.Failure,
+        JobStateDbValues.Active => JobState.Active,
+        JobStateDbValues.Ripping => JobState.VideoRipping,
+        JobStateDbValues.Waiting => JobState.VideoWaiting,
+        JobStateDbValues.Info => JobState.VideoInfo,
+        JobStateDbValues.Transcoding => JobState.TranscodeActive,
+        JobStateDbValues.WaitingTranscode => JobState.TranscodeWaiting,
+        JobStateDbValues.Cancelled => JobState.Cancelled,
         _ => JobState.Active
     };
 }

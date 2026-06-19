@@ -57,7 +57,7 @@ public class JobUpdate
     {
         JobId = job.Id,
         Status = job.Status.ToDbString(),
-        Stage = job.Stage?.ToString(),
+        Stage = job.Stage.HasValue ? job.Stage.Value.ToClientString() : null,
         MakeMkvProgress = job.MakeMkvProgress,
         TranscodeProgress = job.TranscodeProgress,
         ProgressMessage = job.ProgressMessage,

@@ -1,6 +1,7 @@
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
+using ArmRipper.WebUi.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -9,7 +10,7 @@ namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("")]
-public class HomeController(ArmDbContext db, ICliProcessRunner runner) : Controller
+public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardwareEncoderInfoService hardwareEncoderInfoService) : Controller
 {
     [HttpGet("")]
     [HttpGet("index")]
@@ -101,7 +102,7 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner) : Control
         }
         catch { }
 
-        ViewBag.HardwareEncoders = await GetHardwareEncoderInfoAsync();
+        ViewBag.HardwareEncoders = await hardwareEncoderInfoService.GetHardwareEncoderInfoAsync();
 
         return View(activeRips);
     }
@@ -138,85 +139,6 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner) : Control
             };
         }
         catch { return null; }
-    }
-
-    private async Task<IReadOnlyList<Dictionary<string, object>>> GetHardwareEncoderInfoAsync()
-    {
-        var encoders = new List<Dictionary<string, object>>();
-        await AddNvidiaEncoderAsync(encoders);
-        await AddFfmpegEncodersAsync(encoders);
-        if (encoders.Count == 0)
-            encoders.Add(new Dictionary<string, object> { ["available"] = false });
-        return encoders;
-    }
-
-    private async Task AddNvidiaEncoderAsync(List<Dictionary<string, object>> encoders)
-    {
-        try
-        {
-            var gpuResult = await runner.RunAsync("nvidia-smi",
-                "--query-gpu=index,name --format=csv,noheader",
-                timeoutMs: 5000);
-
-            if (gpuResult.ExitCode != 0 || string.IsNullOrWhiteSpace(gpuResult.StdOut))
-                return;
-
-            foreach (var line in gpuResult.StdOut.Trim().Split('\n', StringSplitOptions.RemoveEmptyEntries))
-            {
-                var parts = line.Split(',');
-                var nv = new Dictionary<string, object>
-                {
-                    ["vendor"] = "NVIDIA",
-                    ["type"] = "NVENC",
-                    ["available"] = true
-                };
-                if (parts.Length > 0) nv["index"] = parts[0].Trim();
-                if (parts.Length > 1) nv["gpu"] = parts[1].Trim();
-                encoders.Add(nv);
-            }
-        }
-        catch { }
-    }
-
-    private async Task AddFfmpegEncodersAsync(List<Dictionary<string, object>> encoders)
-    {
-        try
-        {
-            var result = await runner.RunAsync("ffmpeg", "-hide_banner -encoders", timeoutMs: 10_000);
-            if (result.ExitCode != 0) return;
-
-            var seen = new HashSet<string>();
-            foreach (var line in result.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-            {
-                var trimmed = line.Trim();
-                if (!trimmed.StartsWith("V")) continue;
-
-                var match = System.Text.RegularExpressions.Regex.Match(trimmed, @"\s(\w+)$");
-                if (!match.Success) continue;
-
-                var encoderName = match.Groups[1].Value;
-
-                if (encoderName.EndsWith("_nvenc") || encoderName == "nvenc" || encoderName.EndsWith("_nvenc_hevc"))
-                { if (seen.Add("nvidia")) AddEncoder(encoders, "NVIDIA", "NVENC"); }
-                else if (encoderName.EndsWith("_qsv"))
-                { if (seen.Add("intel")) AddEncoder(encoders, "Intel", "QuickSync"); }
-                else if (encoderName.EndsWith("_amf"))
-                { if (seen.Add("amd")) AddEncoder(encoders, "AMD", "AMF"); }
-                else if (encoderName.EndsWith("_vaapi"))
-                { if (seen.Add("vaapi")) AddEncoder(encoders, "VA-API", "VA-API"); }
-            }
-        }
-        catch { }
-    }
-
-    private static void AddEncoder(List<Dictionary<string, object>> encoders, string vendor, string type)
-    {
-        encoders.Add(new Dictionary<string, object>
-        {
-            ["vendor"] = vendor,
-            ["type"] = type,
-            ["available"] = true
-        });
     }
 
     [AllowAnonymous]
