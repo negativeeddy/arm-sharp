@@ -168,12 +168,11 @@ public sealed partial class HandBrakeService(
 
         var anySuccess = false;
         var eligibleTracks = job.Tracks
-            .Select(t => new { Track = t, Parsed = int.TryParse(t.TrackNumber, out var trackNo) ? (int?)trackNo : null })
-            .Where(x => x.Parsed.HasValue &&
-                        x.Parsed.Value <= (job.NoOfTitles ?? 0) &&
-                        (x.Track.Length ?? 0) >= minLength &&
-                        (x.Track.Length ?? 0) <= maxLength)
-            .Select(x => new { x.Track, TrackNo = x.Parsed!.Value })
+            .Where(t => t.TrackNumberInt.HasValue &&
+                        t.TrackNumberInt.Value <= (job.NoOfTitles ?? 0) &&
+                        (t.Length ?? 0) >= minLength &&
+                        (t.Length ?? 0) <= maxLength)
+            .Select(t => (Track: t, TrackNo: t.TrackNumberInt!.Value))
             .ToList();
         var processedCount = 0;
         foreach (var eligible in eligibleTracks)

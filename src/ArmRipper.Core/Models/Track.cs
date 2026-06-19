@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace ArmRipper.Core.Models;
 
 public class Track
@@ -5,6 +7,10 @@ public class Track
     public int Id { get; init; }
     public int JobId { get; set; }
     public string? TrackNumber { get; set; }
+
+    /// <summary>Pre-parsed track number for efficient numeric access.</summary>
+    [NotMapped]
+    public int? TrackNumberInt => int.TryParse(TrackNumber, out var n) ? n : null;
     public int? Length { get; set; }
     public string? AspectRatio { get; set; }
     public double? Fps { get; set; }

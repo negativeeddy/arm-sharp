@@ -139,13 +139,13 @@ Parsing logic should be extracted into a dedicated `MakeMkvOutputParser` class.
 
 `StreamWriter` instances are now properly removed and disposed when a job completes, preventing file-handle leaks over long-running sessions.
 
-### 4.2 — `int.TryParse` called repeatedly in `FfmpegService` transcode loops
+### 4.2 — `int.TryParse` called repeatedly in transcode loops
 
-**Status:** ❌ NOT FIXED
+**Status:** ✅ FIXED
 
-**Files:** `FfmpegService.cs`
+**Files:** `Track.cs`, `FfmpegService.cs`, `HandBrakeService.cs`
 
-`TrackNumber` is parsed on every loop iteration. Pre-parse when tracks are created.
+Added `[NotMapped] TrackNumberInt` property to `Track` model that pre-parses the string `TrackNumber`. Both `FfmpegService.TranscodeAllAsync` and `HandBrakeService.TranscodeAllAsync` now use `TrackNumberInt` instead of calling `int.TryParse` in a LINQ projection.
 
 ### 4.3 — `JobDupeCheckAsync` loads 10 jobs but only uses at most 2
 
@@ -157,17 +157,17 @@ Parsing logic should be extracted into a dedicated `MakeMkvOutputParser` class.
 
 ### 4.4 — `GetTrackInfoAsync` reads all output into memory before processing
 
-**Status:** ❌ NOT FIXED
+**Status:** ✅ FIXED
 
 **Files:** `MakeMkvService.cs`
 
-Entire MakeMKV info output is buffered as a `string` before line-by-line parsing. Should use `RunStreamingAsync`.
+`MakeMkvService.GetTrackInfoAsync` already uses `RunStreamingAllAsync` (async streaming via `IAsyncEnumerable`), processing lines one-by-one without buffering the entire output.
 
 ### 4.5 — SignalR progress broadcasts on every progress tick
 
-**Status:** ❌ NOT FIXED
+**Status:** ✅ FIXED
 
-No throttling on progress callbacks. Consider 200ms throttle (see section 7.1 for snippet).
+`ArmRipperService.ShouldBroadcastProgress` enforces a 200ms throttle via `ProgressBroadcastInterval`. Progress percent updates (MakeMKV & transcode) are filtered through this throttle; only state transitions bypass it.
 
 ---
 
