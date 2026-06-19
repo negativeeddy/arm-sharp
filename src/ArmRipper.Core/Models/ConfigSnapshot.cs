@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace ArmRipper.Core.Models;
 
 public class ConfigSnapshot
@@ -65,6 +67,27 @@ public class ConfigSnapshot
 
     public int? MaxConcurrentTranscodes { get; set; }
     public int? MaxConcurrentMakemkvInfo { get; set; }
+
+    [NotMapped]
+    public bool PreventTrack99
+    {
+        get => Prevent99;
+        set => Prevent99 = value;
+    }
+
+    [NotMapped]
+    public string? AudioMetadataProvider
+    {
+        get => GetAudioTitle;
+        set => GetAudioTitle = value;
+    }
+
+    [NotMapped]
+    public bool DeleteRawFiles
+    {
+        get => DelRawFiles;
+        set => DelRawFiles = value;
+    }
 
     public Job Job { get; set; } = null!;
 }

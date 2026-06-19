@@ -49,6 +49,13 @@ public class JobUpdate
     /// <summary>Number of tracks/titles.</summary>
     public int? NoOfTitles { get; set; }
 
+    /// <summary>Alias of NoOfTitles for clearer naming in new clients.</summary>
+    public int? TitleCount
+    {
+        get => NoOfTitles;
+        set => NoOfTitles = value;
+    }
+
     /// <summary>Whether the tray was ejected.</summary>
     public bool Ejected { get; set; }
 

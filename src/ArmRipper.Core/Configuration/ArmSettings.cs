@@ -69,4 +69,23 @@ public class ArmSettings
     public string? MakeMkvPermaKey { get; set; }
     public bool TestMode { get; set; }
     public bool DisableLogin { get; set; } = true;
+
+    // Backward-compatible naming aliases.
+    public bool PreventTrack99
+    {
+        get => Prevent99;
+        set => Prevent99 = value;
+    }
+
+    public string? AudioMetadataProvider
+    {
+        get => GetAudioTitle;
+        set => GetAudioTitle = value;
+    }
+
+    public bool DeleteRawFiles
+    {
+        get => DelRawFiles;
+        set => DelRawFiles = value;
+    }
 }

@@ -63,6 +63,13 @@ public class Job
 
     public string? StageErrors { get; set; }
 
+    [NotMapped]
+    public int? TitleCount
+    {
+        get => NoOfTitles;
+        set => NoOfTitles = value;
+    }
+
     /// <summary>
     /// Pipe-delimited list of completed stage names (e.g. "setup|identify|rip").
     /// Used for idempotency — before running a stage, check if it is already in this list.
