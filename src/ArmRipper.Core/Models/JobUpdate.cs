@@ -56,6 +56,12 @@ public class JobUpdate
         set => NoOfTitles = value;
     }
 
+    /// <summary>Poster URL fetched during identification.</summary>
+    public string? PosterUrl { get; set; }
+
+    /// <summary>Year fetched during identification.</summary>
+    public string? Year { get; set; }
+
     /// <summary>Whether the tray was ejected.</summary>
     public bool Ejected { get; set; }
 
@@ -74,6 +80,8 @@ public class JobUpdate
         JobLength = job.JobLength,
         Path = job.Path,
         Title = job.Title,
+        PosterUrl = job.PosterUrl,
+        Year = job.Year,
         DiscType = job.DiscType.ToString(),
         NoOfTitles = job.NoOfTitles,
         Ejected = job.Ejected,

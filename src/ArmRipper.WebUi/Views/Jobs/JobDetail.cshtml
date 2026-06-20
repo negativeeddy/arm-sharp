@@ -20,7 +20,7 @@
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
         <a class="text-decoration-none" data-bs-toggle="collapse" href="#logCollapse" role="button" id="logToggle">Live Log ▾</a>
-        <a href="/logs?jobId=@Model.Id" class="btn btn-outline-secondary btn-sm">View Full Log</a>
+        <a href="/logs/view?file=@(Model.Id).log" class="btn btn-outline-secondary btn-sm">View Full Log</a>
     </div>
     <div class="collapse show" id="logCollapse">
         <div class="card-body p-0">
@@ -37,11 +37,11 @@
                 <div class="row">
                     @if (Model.PosterUrl is not null)
                     {
-                        <div class="col-md-2 mb-3">
-                            <img src="@Model.PosterUrl" alt="Poster" class="img-fluid rounded shadow-sm" />
+                        <div class="col-md-2 mb-3" id="poster-container">
+                            <img id="poster-image" src="@Model.PosterUrl" alt="Poster" class="img-fluid rounded shadow-sm" />
                         </div>
                     }
-                    <div class="@(Model.PosterUrl is not null ? "col-md-10" : "col-12")">
+                    <div class="@(Model.PosterUrl is not null ? "col-md-10" : "col-12")" id="job-info-dl">
                         <dl class="row mb-0">
                             <dt class="col-sm-2">Disc Type</dt>
                             <dd class="col-sm-4">@Model.DiscType</dd>
@@ -421,6 +421,38 @@ else
             spinners.forEach(function (s) { s.style.display = show ? '' : 'none'; });
         }
 
+        function updatePoster(posterUrl) {
+            var container = document.getElementById('poster-container');
+            var img = document.getElementById('poster-image');
+            var infoDl = document.getElementById('job-info-dl');
+            if (!infoDl) return;
+
+            if (posterUrl) {
+                if (!container) {
+                    // Create poster container and image from scratch
+                    container = document.createElement('div');
+                    container.id = 'poster-container';
+                    container.className = 'col-md-2 mb-3';
+                    img = document.createElement('img');
+                    img.id = 'poster-image';
+                    img.className = 'img-fluid rounded shadow-sm';
+                    img.alt = 'Poster';
+                    container.appendChild(img);
+                    // Insert before the info dl
+                    infoDl.parentNode.insertBefore(container, infoDl);
+                }
+                if (img && img.src !== posterUrl) {
+                    img.src = posterUrl;
+                }
+                infoDl.className = 'col-md-10';
+            } else {
+                if (container) {
+                    container.parentNode.removeChild(container);
+                }
+                infoDl.className = 'col-12';
+            }
+        }
+
         function setText(dd, text) {
             if (!dd || text == null) return;
             dd.textContent = text;
@@ -489,6 +521,32 @@ else
 
             setProgress(findDd('Rip Progress'), update.makeMkvProgress);
             setProgress(findDd('Transcode Progress'), update.transcodeProgress);
+
+            // Update poster image when identification completes
+            if (update.posterUrl !== undefined) {
+                updatePoster(update.posterUrl);
+            }
+
+            // Update title when identification completes
+            if (update.title != null) {
+                var h1 = document.querySelector('h1');
+                if (h1) h1.textContent = 'Job ' + jobId + ': ' + update.title;
+            }
+
+            // Update year when identification completes
+            if (update.year !== undefined && update.year != null) {
+                setText(findDd('Year'), update.year);
+            }
+
+            // Update disc type when identification completes
+            if (update.discType != null) {
+                setText(findDd('Disc Type'), update.discType);
+            }
+
+            // Update title count when ripping starts
+            if (update.titleCount != null) {
+                setText(findDd('Titles'), String(update.titleCount));
+            }
 
             // Refresh pipeline when progress or stage changes
             if (update.makeMkvProgress != null || update.transcodeProgress != null || (update.stage != null && update.stage !== lastStage)) {

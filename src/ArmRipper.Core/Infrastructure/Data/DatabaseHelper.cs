@@ -31,6 +31,7 @@ public static class DatabaseHelper
             TryAlterColumn(db, "jobs", "StageErrors");
             TryAlterColumn(db, "jobs", "ManualWaitResume");
             TryAlterColumn(db, "jobs", "CompletedStages");
+            TryAlterColumn(db, "config", "MaxConcurrentRips");
 
             db.Database.ExecuteSqlRaw(
                 "INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('20260610044322_Initial', '10.0.0');");

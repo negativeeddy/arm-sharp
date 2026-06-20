@@ -110,6 +110,9 @@ public sealed class ArmRipperService(
             DeleteRawFiles(new[] { finalDirectory });
             jobTitle = FixJobTitle(job);
             finalDirectory = Path.Combine(job.Config?.CompletedPath ?? settings.Value.CompletedPath!, typeSubFolder, jobTitle);
+            // Re-apply dupe folder suffix — CheckForDupeFolder already determined a suffix
+            // was needed, but the path recalculation above dropped it.
+            finalDirectory = CheckForDupeFolder(hasDupes, finalDirectory, job);
             job.Path = finalDirectory;
             await db.SaveChangesAsync(ct);
         }
@@ -654,27 +657,30 @@ public sealed class ArmRipperService(
             var destExt = job.Config?.DestExt ?? settings.Value.DestExt ?? "mp4";
             var movieFile = Path.Combine(moviePath, $"{videoTitle}.{destExt}");
             logger.LogInformation("Track is the Main Title. Moving '{Src}' to '{Dst}'", Path.Combine(basePath, filename), movieFile);
-            MoveFileMain(Path.Combine(basePath, filename), movieFile);
+            MoveFileMain(Path.Combine(basePath, filename), movieFile, logger);
         }
         else
         {
             EnsureDirectory(extrasPath);
             logger.LogInformation("Moving '{Src}' to '{Dst}'", Path.Combine(basePath, filename), extrasPath);
-            MoveFileMain(Path.Combine(basePath, filename), Path.Combine(extrasPath, filename));
+            MoveFileMain(Path.Combine(basePath, filename), Path.Combine(extrasPath, filename), logger);
         }
     }
 
-    private static void MoveFileMain(string oldFile, string newFile)
+    private static void MoveFileMain(string oldFile, string newFile, ILogger? logger = null)
     {
-        if (File.Exists(newFile))
-            return;
-
         if (!File.Exists(oldFile))
             return;
 
         var dir = Path.GetDirectoryName(newFile);
         if (dir is not null && !Directory.Exists(dir))
             Directory.CreateDirectory(dir);
+
+        if (File.Exists(newFile))
+        {
+            logger?.LogWarning("Destination already exists — skipping move. Source file will be cleaned up: {Src} -> {Dst}", oldFile, newFile);
+            return;
+        }
 
         File.Move(oldFile, newFile);
     }
