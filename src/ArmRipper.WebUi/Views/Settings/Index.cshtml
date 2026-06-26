@@ -216,6 +216,7 @@
                 ["SkipTranscode"] = "Skip video transcoding; keep raw MakeMKV output",
                 ["UseFfmpeg"] = "Use FFmpeg instead of HandBrake for transcoding",
                 ["AutoEject"] = "Automatically eject disc after processing",
+                ["DelRawFiles"] = "Delete raw MakeMKV files after transcoding completes",
                 ["HbPresetDvd"] = "HandBrake preset name for DVD encodes",
                 ["HbPresetBd"] = "HandBrake preset name for Blu-ray encodes",
                 ["DestExt"] = "Output file extension (mp4, mkv, etc.)",
@@ -234,6 +235,7 @@
                 <tr><td><label>Skip Transcode:</label>@Html.Raw(tip("SkipTranscode", tips))</td><td><input type="checkbox" name="SkipTranscode" value="true" checked="@armSettings?.SkipTranscode" /></td></tr>
                 <tr><td><label>Use FFmpeg:</label>@Html.Raw(tip("UseFfmpeg", tips))</td><td><input type="checkbox" name="UseFfmpeg" value="true" checked="@armSettings?.UseFfmpeg" /></td></tr>
                 <tr><td><label>Auto Eject:</label>@Html.Raw(tip("AutoEject", tips))</td><td><input type="checkbox" name="AutoEject" value="true" checked="@armSettings?.AutoEject" /></td></tr>
+                <tr><td><label>Delete Raw Files:</label>@Html.Raw(tip("DelRawFiles", tips))</td><td><input type="checkbox" name="DelRawFiles" value="true" checked="@armSettings?.DelRawFiles" /></td></tr>
                 <tr><td><label>HB Preset DVD:</label>@Html.Raw(tip("HbPresetDvd", tips))</td><td><input type="text" name="HbPresetDvd" value="@armSettings?.HbPresetDvd" class="form-control" /></td></tr>
                 <tr><td><label>HB Preset BD:</label>@Html.Raw(tip("HbPresetBd", tips))</td><td><input type="text" name="HbPresetBd" value="@armSettings?.HbPresetBd" class="form-control" /></td></tr>
                 <tr><td><label>Dest Ext:</label>@Html.Raw(tip("DestExt", tips))</td><td><input type="text" name="DestExt" value="@armSettings?.DestExt" class="form-control" /></td></tr>
