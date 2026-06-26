@@ -1,12 +1,12 @@
 # Known Bugs
 
-## `DelRawFiles` setting is never checked before final cleanup
+## `DelRawFiles` setting is never checked before final cleanup ✅ FIXED
 
 **Severity:** Low (temp dirs get cleaned up regardless, which is usually desired behavior)
 
 **Location:** `src/ArmRipper.Core/Rip/ArmRipperService.cs` — `RipVisualMediaAsync()`, line ~325
 
-**Description:**
+**Status:** ✅ **FIXED** — The final cleanup call now checks `job.Config?.DelRawFiles ?? settings.Value.DelRawFiles` before calling `DeleteRawFiles()`. When `DelRawFiles` is `false`, the raw rip directories are preserved and a log message indicates the paths kept.
 `ArmSettings.DelRawFiles` (YAML key `DELRAWFILES`, default `true`) stores a user preference to control whether raw MakeMKV output directories are deleted after transcoding. However, the final cleanup call on line 325 is unconditional:
 
 ```csharp

@@ -25,7 +25,10 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         var files = await cache.GetOrCreateAsync(CacheKey, async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = CacheDuration;
-            return await ScanCompletedFilesAsync(ct);
+            var completed = await ScanFilesAsync(settings.Value.CompletedPath ?? "/home/arm/media", "Output", ct);
+            var raw = await ScanFilesAsync(settings.Value.RawPath ?? "/home/arm/media/raw", "Raw", ct);
+            var transcode = await ScanFilesAsync(settings.Value.TranscodePath ?? "/home/arm/media/transcode", "Transcode", ct);
+            return completed.Concat(raw).Concat(transcode).ToList();
         });
 
         return View(files);
@@ -37,27 +40,63 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath))
             return NotFound();
 
-        var info = await ProbeFileAsync(filePath, ct);
+        var (basePath, source) = ResolveSource(filePath);
+        var info = await ProbeFileAsync(filePath, basePath, source, ct);
         if (info == null)
             return NotFound();
 
         return View("Detail", info);
     }
 
-    private async Task<List<CompletedFileInfo>> ScanCompletedFilesAsync(CancellationToken ct)
+    [HttpPost("delete")]
+    public IActionResult Delete(string filePath)
     {
-        var completedPath = settings.Value.CompletedPath ?? "/home/arm/media";
-        if (!Directory.Exists(completedPath))
+        if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath))
+        {
+            TempData["ErrorMessage"] = "File not found.";
+            return RedirectToAction("Index");
+        }
+
+        try
+        {
+            System.IO.File.Delete(filePath);
+            cache.Remove(CacheKey);
+            TempData["SuccessMessage"] = $"Deleted {Path.GetFileName(filePath)}";
+        }
+        catch (Exception ex)
+        {
+            TempData["ErrorMessage"] = $"Failed to delete: {ex.Message}";
+        }
+
+        return RedirectToAction("Index");
+    }
+
+    private (string basePath, string source) ResolveSource(string filePath)
+    {
+        var completed = (settings.Value.CompletedPath ?? "/home/arm/media").TrimEnd('/');
+        var raw = (settings.Value.RawPath ?? "/home/arm/media/raw").TrimEnd('/');
+        var transcode = (settings.Value.TranscodePath ?? "/home/arm/media/transcode").TrimEnd('/');
+
+        if (filePath.StartsWith(raw, StringComparison.OrdinalIgnoreCase))
+            return (raw, "Raw");
+        if (filePath.StartsWith(transcode, StringComparison.OrdinalIgnoreCase))
+            return (transcode, "Transcode");
+        return (completed, "Output");
+    }
+
+    private async Task<List<CompletedFileInfo>> ScanFilesAsync(string basePath, string source, CancellationToken ct)
+    {
+        if (!Directory.Exists(basePath))
             return [];
 
         var videoExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { ".mkv", ".mp4", ".m4v", ".avi", ".mov" };
 
-        var files = Directory.EnumerateFiles(completedPath, "*.*", SearchOption.AllDirectories)
+        var files = Directory.EnumerateFiles(basePath, "*.*", SearchOption.AllDirectories)
             .Where(f => videoExtensions.Contains(Path.GetExtension(f)))
             .ToList();
 
-        var tasks = files.Select(file => ProbeFileAsync(file, ct));
+        var tasks = files.Select(file => ProbeFileAsync(file, basePath, source, ct));
         var results = await Task.WhenAll(tasks);
 
         return results.Where(r => r != null)
@@ -65,7 +104,7 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
             .ToList()!;
     }
 
-    private async Task<CompletedFileInfo?> ProbeFileAsync(string filePath, CancellationToken ct)
+    private async Task<CompletedFileInfo?> ProbeFileAsync(string filePath, string basePath, string source, CancellationToken ct)
     {
         try
         {
@@ -100,7 +139,8 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
             var info = new CompletedFileInfo
             {
                 FilePath = filePath,
-                RelativeDirectory = GetRelativeDirectory(filePath),
+                RelativeDirectory = GetRelativeDirectory(filePath, basePath),
+                Source = source,
                 LastModified = System.IO.File.GetLastWriteTimeUtc(filePath),
                 SizeBytes = sizeBytes,
                 DurationSeconds = duration,
@@ -176,13 +216,12 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         };
     }
 
-    private string GetRelativeDirectory(string filePath)
+    private string GetRelativeDirectory(string filePath, string basePath)
     {
-        var completedPath = settings.Value.CompletedPath ?? "/home/arm/media";
         var dir = Path.GetDirectoryName(filePath);
         if (dir == null) return "";
-        return dir.StartsWith(completedPath, StringComparison.OrdinalIgnoreCase)
-            ? dir[completedPath.Length..].TrimStart(Path.DirectorySeparatorChar)
+        return dir.StartsWith(basePath, StringComparison.OrdinalIgnoreCase)
+            ? dir[basePath.Length..].TrimStart(Path.DirectorySeparatorChar)
             : "";
     }
 }

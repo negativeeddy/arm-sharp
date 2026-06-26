@@ -9,6 +9,13 @@ else
     echo "opencode already installed — skipping."
 fi
 
+apt update
+if ! command -v sqlite3 >/dev/null 2>&1; then
+    apt install -y sqlite3
+else
+    echo "sqlite3 already installed — skipping."
+fi
+
 # echo "=== Fixing workspace permissions ==="
 # chown vscode:vscode /workspaces
 

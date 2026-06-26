@@ -1,27 +1,17 @@
-This is the test plan I used on the old ARM software before the port to C#. It has my preferences for encoding and the hardware that the tarantino dev container and tarantino ARM instance run on.
+# ARM / HandBrake Encoding Reference (Tarantino Hardware)
 
-# ARM / HandBrake Encoding Test Plan
+This is the encoding test plan and results from the original Python ARM, used to inform the current ARM Sharp encoding defaults. The hardware is the same machine that ARM Sharp runs on.
 
 ## Hardware
-
 - **CPU:** Intel i5-8600K (5 cores available)
 - **GPU:** NVIDIA GeForce GTX 1060 6GB (Pascal, CC 6.1)
 - **NVENC:** Available (H.264 + H.265)
-- **NVDEC:** Now compiled into HandBrake (`nvdec: is available`)
+- **NVDEC:** Compiled into HandBrake (`nvdec: is available`)
 - **Driver:** 580.159.03, CUDA 13.0
-
-## Source Files (raw MakeMKV rips)
-
-| Movie | Resolution | Codec | HDR | Bitrate | Size |
-|-------|-----------|-------|-----|---------|------|
-| The Game (1997) | 1920x1080 | H.264 8-bit | No | ~38 Mbps | ~26 GB |
-| The Prestige (4K) | 3840x2160 | HEVC 10-bit | HDR10 | ~61 Mbps | ~56 GB |
 
 ---
 
 ## Two Configs — Switch Based on Disc Type
-
-You need to change arm.yaml lines when switching between 1080p Blu-rays and 4K UHD discs.
 
 ### Config A: 1080p Blu-rays & DVDs (HandBrake re-encode)
 
@@ -48,21 +38,11 @@ Performance:
 
 Use when ripping 4K UHD discs. Copies HEVC video losslessly, only re-encodes audio. HDR metadata guaranteed intact.
 
-**arm.yaml settings:**
-
 ```yaml
 USE_FFMPEG: true
-
-# No HandBrake presets needed when USE_FFMPEG=true
-
 FFMPEG_CLI: "ffmpeg"
 FFMPEG_PRE_FILE_ARGS: ""
 FFMPEG_POST_FILE_ARGS: "-fflags +genpts -c:v copy -c:a ac3 -b:a 640k -c:s copy -map 0"
-
-# These settings are ignored when USE_FFMPEG=true but keep them commented
-# for reference when switching back:
-# HB_ARGS_DVD: "..."
-# HB_ARGS_BD:  "..."
 ```
 
 Performance:
@@ -73,53 +53,9 @@ Performance:
 
 ---
 
-## Audio Options (applied in both configs)
-
-| Wrong | Correct |
-|-------|---------|
-| `--audio-encoder ac3` | `-E ac3` or `--aencoder ac3` |
-| `--audio-bitrate 640` | `-B 640` or `--ab 640` |
-| `--mixdown 5point1` | `--mixdown 5point1` (correct) |
-
-Output will be AC3 5.1 640kbps on all audio tracks.
-
----
-
-## How to Run a Test Encode
-
-### HandBrake (60s clip)
-
-```bash
-docker exec arm HandBrakeCLI \
-  -i '/home/arm/media/raw/<MOVIE>/<FILE>.mkv' \
-  -o /tmp/test_<label>.mkv \
-  -e <encoder> \
-  --encoder-preset <preset> \
-  --quality <crf> \
-  --start-at duration=60 \
-  --stop-at duration=120 \
-  --enable-hw-decoding nvdec \
-  --all-audio \
-  -E ac3 -B 640 --mixdown 5point1
-```
-
-### ffmpeg passthrough (full remux)
-
-```bash
-docker exec arm ffmpeg \
-  -i '/home/arm/media/raw/<MOVIE>/<FILE>.mkv' \
-  -map 0 -c:v copy \
-  -c:a ac3 -b:a 640k \
-  '/tmp/test_<label>.mkv'
-```
-
----
-
 ## Test Results
 
 ### The Prestige (4K HDR HEVC 10-bit, 3840x2160)
-
-CPU decode baseline (no NVDEC): — no longer relevant, NVDEC is now compiled in
 
 With NVDEC enabled (`--enable-hw-decoding nvdec`) — 30-second test clips:
 
@@ -133,10 +69,8 @@ With NVDEC enabled (`--enable-hw-decoding nvdec`) — 30-second test clips:
 **HDR verified on nvenc_h265_10bit output:**
 - `hevc (Main 10), yuv420p10le, bt2020nc/bt2020/smpte2084` — correct
 - `MaxCLL=1121, MaxFALL=284`, Mastering Display Metadata — preserved
-- Auto-crop removes letterbox bars (e.g. 3840x1596 output)
 
-**⚠️ nvenc_h264 and nvenc_h265 (8-bit) carry HDR metadata tags but encode 8-bit video.**
-Players will see HDR flags and expect 10-bit range, but get 8-bit data. This will look washed out or wrong on HDR displays. Only `nvenc_h265_10bit` properly preserves actual HDR.
+**Key finding:** nvenc_h264 and nvenc_h265 (8-bit) carry HDR metadata tags but encode 8-bit video — players will see HDR flags and expect 10-bit range, resulting in washed-out playback. Only `nvenc_h265_10bit` properly preserves HDR, or use ffmpeg passthrough (`-c:v copy`).
 
 ffmpeg passthrough:
 
@@ -144,7 +78,7 @@ ffmpeg passthrough:
 |--------|------|-----------|-------|
 | `-c:v copy -c:a ac3` | ~5 min | Yes | Zero loss, full quality |
 
-### The Game (1080p H.264) — not yet re-tested after NVDEC rebuild
+### The Game (1080p H.264)
 
 | Encoder | Preset | CRF | Avg FPS | Est. Full Time | Notes |
 |---------|--------|-----|---------|---------------|-------|
@@ -155,13 +89,6 @@ ffmpeg passthrough:
 ---
 
 ## HandBrake Rebuild History
-
 - Original: `nvdec: is not compiled into this build`
 - Rebuilt: Cloned HandBrake 1.11.1, `./configure --enable-nvdec --disable-gtk`, binary at `/usr/local/bin/HandBrakeCLI`
 - Original backup: `/usr/local/bin/HandBrakeCLI.orig`
-
-## Other Config Notes
-
-- **DELRAWFILES: false** — raw files preserved for testing
-- **NVDEC must be explicitly enabled** with `--enable-hw-decoding nvdec` in CLI args
-- **`ffmpeg -hwaccel cuda`** also works for GPU decode but `-c:v copy` is simpler for passthrough

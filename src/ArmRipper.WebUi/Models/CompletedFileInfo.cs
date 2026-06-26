@@ -5,6 +5,8 @@ public class CompletedFileInfo
     public string FilePath { get; set; } = "";
     public string FileName => Path.GetFileName(FilePath);
     public string RelativeDirectory { get; set; } = "";
+    /// <summary>Which directory the file came from: "Output", "Raw", or "Transcode".</summary>
+    public string Source { get; set; } = "Output";
     public DateTime LastModified { get; set; }
     public string LastModifiedFormatted => LastModified.ToString("yyyy-MM-dd HH:mm");
     public long SizeBytes { get; set; }

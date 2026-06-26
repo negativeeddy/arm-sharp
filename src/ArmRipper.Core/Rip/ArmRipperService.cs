@@ -124,7 +124,16 @@ public sealed class ArmRipperService(
 
         SetPermissions(finalDirectory, job);
 
-        DeleteRawFiles(new[] { transcodeInPath, transcodeOutPath, makeMkvOutPath }.OfType<string>().ToArray());
+        var delRaw = job.Config?.DelRawFiles ?? settings.Value.DelRawFiles;
+        if (delRaw)
+        {
+            DeleteRawFiles(new[] { transcodeInPath, transcodeOutPath, makeMkvOutPath }.OfType<string>().ToArray());
+        }
+        else
+        {
+            logger.LogInformation("DelRawFiles is disabled — keeping raw files at {Paths}",
+                string.Join(", ", new[] { transcodeInPath, transcodeOutPath, makeMkvOutPath }.OfType<string>()));
+        }
 
         await NotifyExitAsync(job, ct);
 
