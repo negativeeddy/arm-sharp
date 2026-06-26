@@ -28,6 +28,11 @@ public class SettingsController(
         var uiCfg = await db.UiSettings.FirstOrDefaultAsync(ct);
 
         ViewBag.Drives = drives;
+        ViewBag.ActiveJobDevPaths = (await db.Jobs
+            .Where(j => j.Status != JobState.Success && j.Status != JobState.Failure && j.Status != JobState.Cancelled && !string.IsNullOrEmpty(j.DevPath))
+            .Select(j => j.DevPath!)
+            .ToListAsync(ct))
+            .ToHashSet();
         ViewBag.SystemInfo = systemInfo;
         ViewBag.UiSettings = uiCfg;
 

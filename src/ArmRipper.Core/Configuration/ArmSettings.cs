@@ -72,18 +72,23 @@ public class ArmSettings
     public bool DisableLogin { get; set; } = true;
 
     // Backward-compatible naming aliases.
+    // Marked [JsonIgnore] so they are never persisted to the DB — only the
+    // canonical property names (Prevent99, GetAudioTitle, DelRawFiles) are stored.
+    [System.Text.Json.Serialization.JsonIgnore]
     public bool PreventTrack99
     {
         get => Prevent99;
         set => Prevent99 = value;
     }
 
+    [System.Text.Json.Serialization.JsonIgnore]
     public string? AudioMetadataProvider
     {
         get => GetAudioTitle;
         set => GetAudioTitle = value;
     }
 
+    [System.Text.Json.Serialization.JsonIgnore]
     public bool DeleteRawFiles
     {
         get => DelRawFiles;

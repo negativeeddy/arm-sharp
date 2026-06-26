@@ -18,6 +18,18 @@ namespace ArmRipper.Core.Configuration;
 public static class SettingsHelper
 {
     /// <summary>
+    /// Maps backward-compatible alias property names to their canonical names.
+    /// Aliases are never persisted to the DB; only the canonical names are stored.
+    /// During loading, any legacy alias keys in the DB are skipped.
+    /// </summary>
+    private static readonly Dictionary<string, string> AliasToCanonical = new()
+    {
+        ["DeleteRawFiles"] = "DelRawFiles",
+        ["PreventTrack99"] = "Prevent99",
+        ["AudioMetadataProvider"] = "GetAudioTitle",
+    };
+
+    /// <summary>
     /// Returns the merged effective settings: file-based defaults overridden by
     /// any values stored in the DB RipperSettings row.
     /// </summary>
@@ -45,6 +57,10 @@ public static class SettingsHelper
                 {
                     // Skip null JSON values — safe-guard for optional fields stored as null
                     if (value.ValueKind == JsonValueKind.Null)
+                        continue;
+
+                    // Skip legacy alias keys — only canonical property names are used
+                    if (AliasToCanonical.ContainsKey(key))
                         continue;
 
                     var prop = typeof(ArmSettings).GetProperty(key);
@@ -135,6 +151,13 @@ public static class SettingsHelper
                 if (doc.RootElement.ValueKind == JsonValueKind.Null)
                     continue;
                 existingDict[key] = doc.RootElement.Clone();
+            }
+
+            // Remove any legacy alias key that points to this canonical key
+            foreach (var (alias, canonical) in AliasToCanonical)
+            {
+                if (canonical == key)
+                    existingDict.Remove(alias);
             }
         }
 

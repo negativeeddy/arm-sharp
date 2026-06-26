@@ -2,6 +2,7 @@ var arm = arm || {};
 
 arm.jobRefreshInterval = null;
 arm._jobTableDebounceTimer = null;
+arm._drivesDebounceTimer = null;
 
 // Fetch and replace active jobs table body
 arm._refreshJobsTable = function () {
@@ -12,6 +13,18 @@ arm._refreshJobsTable = function () {
         .then(function (html) {
             var tbody = container.querySelector('tbody');
             if (tbody) tbody.innerHTML = html;
+        })
+        .catch(function () {});
+};
+
+// Fetch and replace the drives section (resets "Ripping" badges to "Rip" buttons)
+arm._refreshDrives = function () {
+    var container = document.getElementById('drivesContainer');
+    if (!container) return;
+    fetch('/api/drives/partial')
+        .then(function (r) { return r.text(); })
+        .then(function (html) {
+            container.innerHTML = html;
         })
         .catch(function () {});
 };
@@ -48,6 +61,16 @@ arm._onJobUpdateForTable = function (update) {
     // Schedule a full table refresh to sync pipeline, progress, etc.
     if (arm._jobTableDebounceTimer) clearTimeout(arm._jobTableDebounceTimer);
     arm._jobTableDebounceTimer = setTimeout(arm._refreshJobsTable, 500);
+
+    // When a job reaches a terminal state, also refresh the drives section
+    // so "Ripping" badges revert to "Rip" buttons
+    if (update && update.status) {
+        var terminalStatuses = ['success', 'fail', 'cancelled'];
+        if (terminalStatuses.indexOf(update.status) !== -1) {
+            if (arm._drivesDebounceTimer) clearTimeout(arm._drivesDebounceTimer);
+            arm._drivesDebounceTimer = setTimeout(arm._refreshDrives, 800);
+        }
+    }
 };
 
 // Start SignalR-driven table refresh (replaces polling)

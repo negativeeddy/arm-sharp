@@ -69,7 +69,7 @@
         <span>Drives</span>
         <a href="/settings/scan" class="btn btn-sm btn-outline-primary">Scan for drives</a>
     </div>
-    <div class="card-body py-2">
+    <div class="card-body py-2" id="drivesContainer">
         <partial name="_Drives" model="(ViewBag.Drives as IEnumerable<ArmRipper.Core.Models.SystemDrive> ?? Array.Empty<ArmRipper.Core.Models.SystemDrive>())" />
     </div>
 </div>

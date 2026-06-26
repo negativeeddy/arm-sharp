@@ -96,6 +96,22 @@ public partial class ApiController(
         return Json(drives);
     }
 
+    [HttpGet("drives/partial")]
+    public async Task<IActionResult> DrivesPartial(CancellationToken ct = default)
+    {
+        var activeRips = await db.Jobs
+            .Where(j => j.Status != JobState.Success && j.Status != JobState.Failure && j.Status != JobState.Cancelled)
+            .ToListAsync(ct);
+
+        ViewBag.ActiveJobDevPaths = activeRips
+            .Where(j => !string.IsNullOrEmpty(j.DevPath))
+            .Select(j => j.DevPath!)
+            .ToHashSet();
+
+        var drives = await db.SystemDrives.ToListAsync(ct);
+        return PartialView("~/Views/Shared/_Drives.cshtml", drives);
+    }
+
     [HttpGet("stats")]
     public async Task<IActionResult> GetStats(CancellationToken ct = default)
     {

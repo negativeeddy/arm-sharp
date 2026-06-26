@@ -93,8 +93,12 @@
                     </tr>
                 </thead>
                 <tbody>
+                    @{
+                        var activeDevPaths = ViewBag.ActiveJobDevPaths as HashSet<string> ?? new HashSet<string>();
+                    }
                     @foreach (var d in drives)
                     {
+                        var isRipping = activeDevPaths.Contains(d.Mount ?? "");
                         <tr class="@(d.DriveMode == "disabled" ? "table-secondary text-muted" : "")">
                             <td><code>@d.Mount</code></td>
                             <td>@d.Model</td>
@@ -117,10 +121,17 @@
                                 </form>
                             </td>
                             <td class="text-nowrap">
-                                <form method="post" action="/settings/start-rip" style="display:inline;">
-                                    <input type="hidden" name="devPath" value="@d.Mount" />
-                                    <button type="submit" class="btn btn-sm btn-success" title="Start rip">Rip</button>
-                                </form>
+                                @if (isRipping)
+                                {
+                                    <span class="badge bg-warning text-dark">Ripping</span>
+                                }
+                                else
+                                {
+                                    <form method="post" action="/settings/start-rip" style="display:inline;">
+                                        <input type="hidden" name="devPath" value="@d.Mount" />
+                                        <button type="submit" class="btn btn-sm btn-success" title="Start rip">Rip</button>
+                                    </form>
+                                }
                                 <form method="post" action="/settings/eject" style="display:inline;">
                                     <input type="hidden" name="devPath" value="@d.Mount" />
                                     <button type="submit" class="btn btn-sm btn-outline-danger" title="Eject disc">Eject</button>
