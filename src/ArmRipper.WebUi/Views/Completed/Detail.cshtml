@@ -23,6 +23,20 @@
                     <tr><th>Size</th><td>@Model.SizeFormatted</td></tr>
                     <tr><th>Duration</th><td>@Model.DurationFormatted</td></tr>
                     <tr><th>Overall Bitrate</th><td>@Model.BitrateKbps.ToString("N0") kbps</td></tr>
+                    <tr><th>Source</th><td>@Model.Source</td></tr>
+                    @if (Model.JobId.HasValue)
+                    {
+                        <tr>
+                            <th>Job</th>
+                            <td>
+                                <a href="/jobs/jobdetail?jobId=@Model.JobId.Value">#@Model.JobId.Value</a>
+                                @if (!string.IsNullOrEmpty(Model.JobTitle))
+                                {
+                                    <span class="text-muted ml-2">@Model.JobTitle</span>
+                                }
+                            </td>
+                        </tr>
+                    }
                 </table>
             </div>
             <div class="col-md-6 text-right">

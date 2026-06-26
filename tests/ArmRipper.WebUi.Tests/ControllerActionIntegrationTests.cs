@@ -253,6 +253,210 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
     }
 
     [Fact]
+    public async Task SaveRipper_SavesCorrectFields()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.PostAsync("/settings/save-ripper",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                { "RipMethod", "backup" },
+                { "MkvArgs", "--decrypt" },
+                { "MinLength", "300" },
+                { "MaxLength", "5000" },
+                { "MainFeature", "true" },
+                { "AutoEject", "false" }
+            }));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var settings = await db.RipperSettings.FirstOrDefaultAsync();
+            Assert.NotNull(settings);
+            var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(settings.SettingsJson);
+            Assert.NotNull(dict);
+
+            Assert.Equal("backup", dict["RipMethod"].GetString());
+            Assert.Equal("--decrypt", dict["MkvArgs"].GetString());
+            Assert.Equal(300, dict["MinLength"].GetInt32());
+            Assert.Equal(5000, dict["MaxLength"].GetInt32());
+            Assert.True(dict["MainFeature"].GetBoolean());
+            Assert.False(dict["AutoEject"].GetBoolean());
+        }
+    }
+
+    [Fact]
+    public async Task SaveRipper_DoesNotOverwriteTranscodeFields()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+
+        // First, save some transcode values
+        var transcodeResponse = await client.PostAsync("/settings/save-transcode",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                { "SkipTranscode", "true" },
+                { "DelRawFiles", "true" },
+                { "DestExt", "mp4" },
+                { "MaxConcurrentTranscodes", "3" }
+            }));
+        Assert.Equal(HttpStatusCode.OK, transcodeResponse.StatusCode);
+
+        // Now save ripper fields
+        var ripperResponse = await client.PostAsync("/settings/save-ripper",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                { "RipMethod", "mkv" },
+                { "MinLength", "600" },
+                { "MaxLength", "99999" },
+                { "MainFeature", "true" },
+                { "AutoEject", "true" }
+            }));
+        Assert.Equal(HttpStatusCode.OK, ripperResponse.StatusCode);
+
+        // Verify transcode fields were NOT overwritten
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var settings = await db.RipperSettings.FirstOrDefaultAsync();
+            Assert.NotNull(settings);
+            var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(settings.SettingsJson);
+            Assert.NotNull(dict);
+
+            // Transcode fields should still be there
+            Assert.True(dict["SkipTranscode"].GetBoolean(), "SkipTranscode should still be true");
+            Assert.True(dict["DelRawFiles"].GetBoolean(), "DelRawFiles should still be true");
+            Assert.Equal("mp4", dict["DestExt"].GetString());
+            Assert.Equal(3, dict["MaxConcurrentTranscodes"].GetInt32());
+
+            // Ripper fields should be updated
+            Assert.Equal("mkv", dict["RipMethod"].GetString());
+            Assert.Equal(600, dict["MinLength"].GetInt32());
+        }
+    }
+
+    [Fact]
+    public async Task SaveTranscode_SavesCorrectFields()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.PostAsync("/settings/save-transcode",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                { "SkipTranscode", "false" },
+                { "UseFfmpeg", "true" },
+                { "DelRawFiles", "true" },
+                { "DestExt", "mp4" },
+                { "MaxConcurrentTranscodes", "2" },
+                { "HbPresetDvd", "Fast 1080p30" },
+                { "HbPresetBd", "Fast 1080p30" },
+                { "HbArgsDvd", "--quality 20" },
+                { "FfmpegCli", "/usr/bin/ffmpeg" }
+            }));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var settings = await db.RipperSettings.FirstOrDefaultAsync();
+            Assert.NotNull(settings);
+            var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(settings.SettingsJson);
+            Assert.NotNull(dict);
+
+            Assert.False(dict["SkipTranscode"].GetBoolean());
+            Assert.True(dict["UseFfmpeg"].GetBoolean());
+            Assert.True(dict["DelRawFiles"].GetBoolean());
+            Assert.Equal("mp4", dict["DestExt"].GetString());
+            Assert.Equal(2, dict["MaxConcurrentTranscodes"].GetInt32());
+            Assert.Equal("Fast 1080p30", dict["HbPresetDvd"].GetString());
+            Assert.Equal("Fast 1080p30", dict["HbPresetBd"].GetString());
+            Assert.Equal("--quality 20", dict["HbArgsDvd"].GetString());
+            Assert.Equal("/usr/bin/ffmpeg", dict["FfmpegCli"].GetString());
+        }
+    }
+
+    [Fact]
+    public async Task SaveTranscode_DoesNotOverwriteRipperFields()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+
+        // First, save some ripper values
+        var ripperResponse = await client.PostAsync("/settings/save-ripper",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                { "RipMethod", "abcde" },
+                { "MkvArgs", "--test" },
+                { "MinLength", "400" },
+                { "MaxLength", "8000" },
+                { "MainFeature", "false" },
+                { "AutoEject", "false" }
+            }));
+        Assert.Equal(HttpStatusCode.OK, ripperResponse.StatusCode);
+
+        // Now save transcode fields
+        var transcodeResponse = await client.PostAsync("/settings/save-transcode",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                { "SkipTranscode", "true" },
+                { "DelRawFiles", "true" }
+            }));
+        Assert.Equal(HttpStatusCode.OK, transcodeResponse.StatusCode);
+
+        // Verify ripper fields were NOT overwritten
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var settings = await db.RipperSettings.FirstOrDefaultAsync();
+            Assert.NotNull(settings);
+            var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(settings.SettingsJson);
+            Assert.NotNull(dict);
+
+            // Ripper fields should still be there
+            Assert.Equal("abcde", dict["RipMethod"].GetString());
+            Assert.Equal("--test", dict["MkvArgs"].GetString());
+            Assert.Equal(400, dict["MinLength"].GetInt32());
+            Assert.Equal(8000, dict["MaxLength"].GetInt32());
+            Assert.False(dict["MainFeature"].GetBoolean());
+            Assert.False(dict["AutoEject"].GetBoolean());
+
+            // Transcode fields should be updated
+            Assert.True(dict["SkipTranscode"].GetBoolean());
+            Assert.True(dict["DelRawFiles"].GetBoolean());
+        }
+    }
+
+    [Fact]
+    public async Task SaveRipper_ReturnsCorrectTab()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.PostAsync("/settings/save-ripper",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                { "RipMethod", "mkv" },
+                { "MinLength", "600" }
+            }));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        // Verify the page renders with tab3 active
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("id=\"tab3-tab\"", html);
+    }
+
+    [Fact]
+    public async Task SaveTranscode_ReturnsCorrectTab()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.PostAsync("/settings/save-transcode",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                { "SkipTranscode", "true" }
+            }));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        // Verify the page renders with tab8 active
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("id=\"tab8-tab\"", html);
+    }
+
+    [Fact]
     public async Task UpdateIdentification_UpdatesJobMetadata()
     {
         int jobId;

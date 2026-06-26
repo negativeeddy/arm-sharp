@@ -32,37 +32,15 @@ public class SettingsController(
         ViewBag.UiSettings = uiCfg;
 
         // Merge DB-stored ripper settings on top of defaults
-        var mergedSettings = new ArmSettings();
-        foreach (var prop in typeof(ArmSettings).GetProperties())
-        {
-            if (prop.CanWrite)
-            {
-                var defaultValue = prop.GetValue(settings.Value);
-                prop.SetValue(mergedSettings, defaultValue);
-            }
-        }
-        var savedRipper = await db.RipperSettings.FirstOrDefaultAsync(ct);
-        if (savedRipper is not null)
-        {
-            var saved = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(savedRipper.SettingsJson);
-            if (saved is not null)
-            {
-                foreach (var (key, value) in saved)
-                {
-                    var prop = typeof(ArmSettings).GetProperty(key);
-                    if (prop is not null && prop.CanWrite)
-                    {
-                        var converted = System.Text.Json.JsonSerializer.Deserialize(value.GetRawText(), prop.PropertyType);
-                        if (converted is not null)
-                            prop.SetValue(mergedSettings, converted);
-                    }
-                }
-            }
-        }
+        var mergedSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, ct);
         ViewBag.ArmSettings = mergedSettings;
         ViewBag.Hostname = Environment.MachineName;
         ViewBag.OsDesc = RuntimeInformation.OSDescription;
         ViewBag.ProcCount = Environment.ProcessorCount;
+
+        // Tab persistence: stay on the tab that was active after a save
+        ViewBag.ActiveTab = TempData["ActiveTab"] as string ?? "tab3";
+        TempData.Keep("ActiveTab");
 
         var totalJobs = await db.Jobs.CountAsync(ct);
         var failedJobs = await db.Jobs.CountAsync(j => j.Status == JobState.Failure, ct);
@@ -99,21 +77,75 @@ public class SettingsController(
     }
 
     [HttpPost("save-ripper")]
-    public async Task<IActionResult> SaveRipper(ArmSettings posted, CancellationToken ct = default)
+    public async Task<IActionResult> SaveRipper(
+        string? RipMethod, string? MkvArgs, int? MinLength, int? MaxLength,
+        CancellationToken ct = default)
     {
-        var json = System.Text.Json.JsonSerializer.Serialize(posted);
-        var existing = await db.RipperSettings.FirstOrDefaultAsync(ct);
-        if (existing is null)
-        {
-            db.RipperSettings.Add(new RipperSettings { SettingsJson = json });
-        }
-        else
-        {
-            existing.SettingsJson = json;
-        }
-        await db.SaveChangesAsync(ct);
+        // Read checkboxes from raw form values — the hidden-false trick sends
+        // multiple values for the same key; bool.TryParse on the first value
+        // would incorrectly return false. Instead check if "true" is present.
+        bool MainFeature = Request.Form["MainFeature"].Contains("true");
+        bool AutoEject = Request.Form["AutoEject"].Contains("true");
 
-        TempData["Message"] = "Ripper settings saved to database.";
+        var fields = new Dictionary<string, string?>
+        {
+            ["RipMethod"] = RipMethod is not null ? JsonSerialize(RipMethod) : null,
+            ["MkvArgs"] = MkvArgs is not null ? JsonSerialize(MkvArgs) : null,
+            ["MinLength"] = JsonSerialize(MinLength ?? 600),
+            ["MaxLength"] = JsonSerialize(MaxLength ?? 99999),
+            ["MainFeature"] = JsonSerialize(MainFeature),
+            ["AutoEject"] = JsonSerialize(AutoEject),
+        };
+
+        await SettingsHelper.MergeIntoDbAsync(db, fields, ct);
+        TempData["Message"] = "Ripper settings saved.";
+        TempData["ActiveTab"] = "tab3";
+        return RedirectToAction("Index");
+    }
+
+    [HttpPost("save-transcode")]
+    public async Task<IActionResult> SaveTranscode(
+        string? DestExt, int? MaxConcurrentTranscodes,
+        string? HbPresetDvd, string? HbPresetBd,
+        string? HbArgsDvd, string? HbArgsBd,
+        string? FfmpegCli, string? FfmpegPreFileArgs, string? FfmpegPostFileArgs,
+        CancellationToken ct = default)
+    {
+        // Read checkboxes from raw form values (same hidden-false trick issue)
+        bool SkipTranscode = Request.Form["SkipTranscode"].Contains("true");
+        bool UseFfmpeg = Request.Form["UseFfmpeg"].Contains("true");
+        bool DelRawFiles = Request.Form["DelRawFiles"].Contains("true");
+
+        var fields = new Dictionary<string, string?>
+        {
+            ["SkipTranscode"] = JsonSerialize(SkipTranscode),
+            ["UseFfmpeg"] = JsonSerialize(UseFfmpeg),
+            ["DelRawFiles"] = JsonSerialize(DelRawFiles),
+            ["DestExt"] = DestExt is not null ? JsonSerialize(DestExt) : null,
+            ["MaxConcurrentTranscodes"] = JsonSerialize(MaxConcurrentTranscodes),
+            ["HbPresetDvd"] = HbPresetDvd is not null ? JsonSerialize(HbPresetDvd) : null,
+            ["HbPresetBd"] = HbPresetBd is not null ? JsonSerialize(HbPresetBd) : null,
+            ["HbArgsDvd"] = HbArgsDvd is not null ? JsonSerialize(HbArgsDvd) : null,
+            ["HbArgsBd"] = HbArgsBd is not null ? JsonSerialize(HbArgsBd) : null,
+            ["FfmpegCli"] = FfmpegCli is not null ? JsonSerialize(FfmpegCli) : null,
+            ["FfmpegPreFileArgs"] = FfmpegPreFileArgs is not null ? JsonSerialize(FfmpegPreFileArgs) : null,
+            ["FfmpegPostFileArgs"] = FfmpegPostFileArgs is not null ? JsonSerialize(FfmpegPostFileArgs) : null,
+        };
+
+        await SettingsHelper.MergeIntoDbAsync(db, fields, ct);
+        TempData["Message"] = "Transcoding settings saved.";
+        TempData["ActiveTab"] = "tab8";
+        return RedirectToAction("Index");
+    }
+
+    private static string JsonSerialize<T>(T value) =>
+        System.Text.Json.JsonSerializer.Serialize(value);
+
+    [HttpPost("reset-settings")]
+    public async Task<IActionResult> ResetSettings(CancellationToken ct = default)
+    {
+        await SettingsHelper.SeedFromFileAsync(db, settings.Value, force: true, ct);
+        TempData["Message"] = "Settings reset to file defaults.";
         return RedirectToAction("Index");
     }
 

@@ -12,6 +12,15 @@
 
 <h1>Settings</h1>
 
+<div class="alert alert-info alert-dismissible fade show" role="alert">
+    <strong>ℹ️ Settings flow:</strong> File config (YAML + appsettings.json) seeds the database on first run.
+    Changes made here override the file config. Set <code>ARM_RESET_SETTINGS=true</code> on restart to reset from file,
+    or click <strong>Reset to file defaults</strong> below.
+    <button type="button" class="close" data-dismiss="alert">&times;</button>
+</div>
+
+<form id="resetForm" method="post" action="/settings/reset-settings"></form>
+
 @if (TempData["Message"] is string msg)
 {
     <div class="alert alert-info alert-dismissible fade show" role="alert">
@@ -21,19 +30,20 @@
 }
 
 <ul class="nav nav-tabs mb-3" id="settingsTabs" role="tablist">
-    <li class="nav-item"><a class="nav-link active" id="tab1-tab" data-toggle="tab" href="#tab1" role="tab">General Info</a></li>
-    <li class="nav-item"><a class="nav-link" id="tab2-tab" data-toggle="tab" href="#tab2" role="tab">System Info</a></li>
-    <li class="nav-item"><a class="nav-link" id="tab3-tab" data-toggle="tab" href="#tab3" role="tab">Ripper</a></li>
-    <li class="nav-item"><a class="nav-link" id="tab4-tab" data-toggle="tab" href="#tab4" role="tab">UI</a></li>
-    <li class="nav-item"><a class="nav-link" id="tab5-tab" data-toggle="tab" href="#tab5" role="tab">abcde</a></li>
-    <li class="nav-item"><a class="nav-link" id="tab6-tab" data-toggle="tab" href="#tab6" role="tab">Apprise</a></li>
-    <li class="nav-item"><a class="nav-link" id="tab7-tab" data-toggle="tab" href="#tab7" role="tab">Help</a></li>
+    <li class="nav-item"><a class="nav-link @(ViewBag.ActiveTab == "tab1" ? "active" : "")" id="tab1-tab" data-toggle="tab" href="#tab1" role="tab">General Info</a></li>
+    <li class="nav-item"><a class="nav-link @(ViewBag.ActiveTab == "tab2" ? "active" : "")" id="tab2-tab" data-toggle="tab" href="#tab2" role="tab">System Info</a></li>
+    <li class="nav-item"><a class="nav-link @(ViewBag.ActiveTab == "tab3" ? "active" : "")" id="tab3-tab" data-toggle="tab" href="#tab3" role="tab">Ripper</a></li>
+    <li class="nav-item"><a class="nav-link @(ViewBag.ActiveTab == "tab4" ? "active" : "")" id="tab4-tab" data-toggle="tab" href="#tab4" role="tab">UI</a></li>
+    <li class="nav-item"><a class="nav-link @(ViewBag.ActiveTab == "tab5" ? "active" : "")" id="tab5-tab" data-toggle="tab" href="#tab5" role="tab">abcde</a></li>
+    <li class="nav-item"><a class="nav-link @(ViewBag.ActiveTab == "tab8" ? "active" : "")" id="tab8-tab" data-toggle="tab" href="#tab8" role="tab">Transcoding</a></li>
+    <li class="nav-item"><a class="nav-link @(ViewBag.ActiveTab == "tab6" ? "active" : "")" id="tab6-tab" data-toggle="tab" href="#tab6" role="tab">Apprise</a></li>
+    <li class="nav-item"><a class="nav-link @(ViewBag.ActiveTab == "tab7" ? "active" : "")" id="tab7-tab" data-toggle="tab" href="#tab7" role="tab">Help</a></li>
 </ul>
 
 <div class="tab-content" id="settingsTabsContent">
 
     <!-- General Info -->
-    <div class="tab-pane fade show active" id="tab1" role="tabpanel">
+    <div class="tab-pane fade @(ViewBag.ActiveTab == "tab1" ? "show active" : "")" id="tab1" role="tabpanel">
         <h2>General Info</h2>
         <table class="table table-sm">
             <tr><td><strong>ARM Version:</strong></td><td>1.0.0</td></tr>
@@ -50,7 +60,7 @@
     </div>
 
     <!-- System Info -->
-    <div class="tab-pane fade" id="tab2" role="tabpanel">
+    <div class="tab-pane fade @(ViewBag.ActiveTab == "tab2" ? "show active" : "")" id="tab2" role="tabpanel">
         <h2>System Info &amp; Health</h2>
         <a href="/settings/sysinfo" class="btn btn-sm btn-outline-secondary mb-2">Update system information</a>
         @if (sysInfo is not null)
@@ -204,7 +214,7 @@
     </div>
 
     <!-- Ripper Settings -->
-    <div class="tab-pane fade" id="tab3" role="tabpanel">
+    <div class="tab-pane fade @(ViewBag.ActiveTab == "tab3" ? "show active" : "")" id="tab3" role="tabpanel">
         @{
             var tips = new Dictionary<string, string>
             {
@@ -213,13 +223,7 @@
                 ["MinLength"] = "Shortest track length in seconds to include",
                 ["MaxLength"] = "Longest track length in seconds (99999 = no limit)",
                 ["MainFeature"] = "Rip only the main feature (longest track)",
-                ["SkipTranscode"] = "Skip video transcoding; keep raw MakeMKV output",
-                ["UseFfmpeg"] = "Use FFmpeg instead of HandBrake for transcoding",
                 ["AutoEject"] = "Automatically eject disc after processing",
-                ["DelRawFiles"] = "Delete raw MakeMKV files after transcoding completes",
-                ["HbPresetDvd"] = "HandBrake preset name for DVD encodes",
-                ["HbPresetBd"] = "HandBrake preset name for Blu-ray encodes",
-                ["DestExt"] = "Output file extension (mp4, mkv, etc.)",
             };
             static string tip(string key, Dictionary<string, string> tips) =>
                 $"<span class=\"text-info ml-1\" data-toggle=\"tooltip\" title=\"{tips[key]}\" style=\"cursor:help\">&#9432;</span>";
@@ -231,21 +235,16 @@
                 <tr><td><label>MKV Args:</label>@Html.Raw(tip("MkvArgs", tips))</td><td><input type="text" name="MkvArgs" value="@armSettings?.MkvArgs" class="form-control" /></td></tr>
                 <tr><td><label>Min Length:</label>@Html.Raw(tip("MinLength", tips))</td><td><input type="number" name="MinLength" value="@armSettings?.MinLength" class="form-control" /></td></tr>
                 <tr><td><label>Max Length:</label>@Html.Raw(tip("MaxLength", tips))</td><td><input type="number" name="MaxLength" value="@armSettings?.MaxLength" class="form-control" /></td></tr>
-                <tr><td><label>Main Feature:</label>@Html.Raw(tip("MainFeature", tips))</td><td><input type="checkbox" name="MainFeature" value="true" checked="@armSettings?.MainFeature" /></td></tr>
-                <tr><td><label>Skip Transcode:</label>@Html.Raw(tip("SkipTranscode", tips))</td><td><input type="checkbox" name="SkipTranscode" value="true" checked="@armSettings?.SkipTranscode" /></td></tr>
-                <tr><td><label>Use FFmpeg:</label>@Html.Raw(tip("UseFfmpeg", tips))</td><td><input type="checkbox" name="UseFfmpeg" value="true" checked="@armSettings?.UseFfmpeg" /></td></tr>
-                <tr><td><label>Auto Eject:</label>@Html.Raw(tip("AutoEject", tips))</td><td><input type="checkbox" name="AutoEject" value="true" checked="@armSettings?.AutoEject" /></td></tr>
-                <tr><td><label>Delete Raw Files:</label>@Html.Raw(tip("DelRawFiles", tips))</td><td><input type="checkbox" name="DelRawFiles" value="true" checked="@armSettings?.DelRawFiles" /></td></tr>
-                <tr><td><label>HB Preset DVD:</label>@Html.Raw(tip("HbPresetDvd", tips))</td><td><input type="text" name="HbPresetDvd" value="@armSettings?.HbPresetDvd" class="form-control" /></td></tr>
-                <tr><td><label>HB Preset BD:</label>@Html.Raw(tip("HbPresetBd", tips))</td><td><input type="text" name="HbPresetBd" value="@armSettings?.HbPresetBd" class="form-control" /></td></tr>
-                <tr><td><label>Dest Ext:</label>@Html.Raw(tip("DestExt", tips))</td><td><input type="text" name="DestExt" value="@armSettings?.DestExt" class="form-control" /></td></tr>
+                <tr><td><label for="MainFeature">Main Feature:</label>@Html.Raw(tip("MainFeature", tips))</td><td><input type="hidden" name="MainFeature" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="MainFeature" name="MainFeature" value="true" checked="@armSettings?.MainFeature" /><label class="custom-control-label" for="MainFeature"></label></div></td></tr>
+                <tr><td><label for="AutoEject">Auto Eject:</label>@Html.Raw(tip("AutoEject", tips))</td><td><input type="hidden" name="AutoEject" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="AutoEject" name="AutoEject" value="true" checked="@armSettings?.AutoEject" /><label class="custom-control-label" for="AutoEject"></label></div></td></tr>
             </table>
             <button type="submit" class="btn btn-primary">Save Ripper Settings</button>
+            <button type="submit" class="btn btn-outline-warning ml-2" form="resetForm">↻ Reset to file defaults</button>
         </form>
     </div>
 
     <!-- UI Settings -->
-    <div class="tab-pane fade" id="tab4" role="tabpanel">
+    <div class="tab-pane fade @(ViewBag.ActiveTab == "tab4" ? "show active" : "")" id="tab4" role="tabpanel">
         <h2>UI Settings</h2>
         <form method="post" action="/settings/save-ui">
             @Html.AntiForgeryToken()
@@ -279,7 +278,7 @@
     </div>
 
     <!-- abcde Config -->
-    <div class="tab-pane fade" id="tab5" role="tabpanel">
+    <div class="tab-pane fade @(ViewBag.ActiveTab == "tab5" ? "show active" : "")" id="tab5" role="tabpanel">
         <h2>abcde Config</h2>
         <p>Configuration for audio CD ripping via abcde. Saved to <code>/etc/arm/config/abcde.conf</code>.</p>
         <form method="post" action="/settings/save-abcde">
@@ -314,8 +313,108 @@
         </div>
     </div>
 
+    <!-- Transcoding Settings -->
+    <div class="tab-pane fade @(ViewBag.ActiveTab == "tab8" ? "show active" : "")" id="tab8" role="tabpanel">
+        @{
+            var transTips = new Dictionary<string, string>
+            {
+                ["SkipTranscode"] = "Skip video transcoding entirely; keep raw MakeMKV output",
+                ["UseFfmpeg"] = "Use FFmpeg instead of HandBrake for transcoding",
+                ["DelRawFiles"] = "Delete raw MakeMKV files after transcoding completes",
+                ["HbPresetDvd"] = "HandBrake preset name for DVD encodes",
+                ["HbPresetBd"] = "HandBrake preset name for Blu-ray encodes",
+                ["HbArgsDvd"] = "Extra HandBrake CLI arguments for DVD (overrides preset)",
+                ["HbArgsBd"] = "Extra HandBrake CLI arguments for Blu-ray (overrides preset)",
+                ["DestExt"] = "Output file extension (mkv, mp4, m4v, etc.)",
+                ["FfmpegCli"] = "Path to the FFmpeg executable",
+                ["FfmpegPreFileArgs"] = "FFmpeg arguments before the input file",
+                ["FfmpegPostFileArgs"] = "FFmpeg arguments after the input file",
+                ["MaxConcurrentTranscodes"] = "Maximum simultaneous transcodes (0 = unlimited)",
+            };
+            static string transTip(string key, Dictionary<string, string> tips) =>
+                $"<span class=\"text-info ml-1\" data-toggle=\"tooltip\" title=\"{tips[key]}\" style=\"cursor:help\">&#9432;</span>";
+        }
+        <h2>Transcoding Settings</h2>
+        <form method="post" action="/settings/save-transcode">
+            <div class="card mb-3">
+                <div class="card-header"><h5 class="mb-0">General</h5></div>
+                <div class="card-body">
+                    <table class="table table-sm mb-0">
+                        <tr>
+                            <td class="w-25"><label for="SkipTranscode">Skip Transcode:</label>@Html.Raw(transTip("SkipTranscode", transTips))</td>
+                            <td><input type="hidden" name="SkipTranscode" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="SkipTranscode" name="SkipTranscode" value="true" checked="@armSettings?.SkipTranscode" /><label class="custom-control-label" for="SkipTranscode"></label></div></td>
+                        </tr>
+                        <tr>
+                            <td><label for="UseFfmpeg">Use FFmpeg:</label>@Html.Raw(transTip("UseFfmpeg", transTips))</td>
+                            <td><input type="hidden" name="UseFfmpeg" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="UseFfmpeg" name="UseFfmpeg" value="true" checked="@armSettings?.UseFfmpeg" /><label class="custom-control-label" for="UseFfmpeg"></label></div></td>
+                        </tr>
+                        <tr>
+                            <td><label for="DelRawFiles">Delete Raw Files:</label>@Html.Raw(transTip("DelRawFiles", transTips))</td>
+                            <td><input type="hidden" name="DelRawFiles" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="DelRawFiles" name="DelRawFiles" value="true" checked="@armSettings?.DelRawFiles" /><label class="custom-control-label" for="DelRawFiles"></label></div></td>
+                        </tr>
+                        <tr>
+                            <td><label>Output Extension:</label>@Html.Raw(transTip("DestExt", transTips))</td>
+                            <td><input type="text" name="DestExt" value="@armSettings?.DestExt" class="form-control" /></td>
+                        </tr>
+                        <tr>
+                            <td><label>Max Concurrent Transcodes:</label>@Html.Raw(transTip("MaxConcurrentTranscodes", transTips))</td>
+                            <td><input type="number" name="MaxConcurrentTranscodes" value="@armSettings?.MaxConcurrentTranscodes" class="form-control" min="0" max="16" /></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-header"><h5 class="mb-0">HandBrake</h5></div>
+                <div class="card-body">
+                    <table class="table table-sm mb-0">
+                        <tr>
+                            <td class="w-25"><label>HB Preset DVD:</label>@Html.Raw(transTip("HbPresetDvd", transTips))</td>
+                            <td><input type="text" name="HbPresetDvd" value="@armSettings?.HbPresetDvd" class="form-control" /></td>
+                        </tr>
+                        <tr>
+                            <td><label>HB Preset BD:</label>@Html.Raw(transTip("HbPresetBd", transTips))</td>
+                            <td><input type="text" name="HbPresetBd" value="@armSettings?.HbPresetBd" class="form-control" /></td>
+                        </tr>
+                        <tr>
+                            <td><label>HB Args DVD:</label>@Html.Raw(transTip("HbArgsDvd", transTips))</td>
+                            <td><textarea name="HbArgsDvd" class="form-control font-monospace" rows="3">@armSettings?.HbArgsDvd</textarea></td>
+                        </tr>
+                        <tr>
+                            <td><label>HB Args BD:</label>@Html.Raw(transTip("HbArgsBd", transTips))</td>
+                            <td><textarea name="HbArgsBd" class="form-control font-monospace" rows="3">@armSettings?.HbArgsBd</textarea></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-header"><h5 class="mb-0">FFmpeg</h5></div>
+                <div class="card-body">
+                    <table class="table table-sm mb-0">
+                        <tr>
+                            <td class="w-25"><label>FFmpeg CLI:</label>@Html.Raw(transTip("FfmpegCli", transTips))</td>
+                            <td><input type="text" name="FfmpegCli" value="@armSettings?.FfmpegCli" class="form-control" /></td>
+                        </tr>
+                        <tr>
+                            <td><label>Pre-File Args:</label>@Html.Raw(transTip("FfmpegPreFileArgs", transTips))</td>
+                            <td><input type="text" name="FfmpegPreFileArgs" value="@armSettings?.FfmpegPreFileArgs" class="form-control" /></td>
+                        </tr>
+                        <tr>
+                            <td><label>Post-File Args:</label>@Html.Raw(transTip("FfmpegPostFileArgs", transTips))</td>
+                            <td><input type="text" name="FfmpegPostFileArgs" value="@armSettings?.FfmpegPostFileArgs" class="form-control" /></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Save Transcoding Settings</button>
+            <button type="submit" class="btn btn-outline-warning ml-2" form="resetForm">↻ Reset to file defaults</button>
+        </form>
+    </div>
+
     <!-- Apprise Config -->
-    <div class="tab-pane fade" id="tab6" role="tabpanel">
+    <div class="tab-pane fade @(ViewBag.ActiveTab == "tab6" ? "show active" : "")" id="tab6" role="tabpanel">
         <h2>Apprise Notification Config</h2>
         <p>Notification channels configured via ArmSettings:</p>
         <table class="table table-sm">
@@ -327,7 +426,7 @@
     </div>
 
     <!-- Help -->
-    <div class="tab-pane fade" id="tab7" role="tabpanel">
+    <div class="tab-pane fade @(ViewBag.ActiveTab == "tab7" ? "show active" : "")" id="tab7" role="tabpanel">
         <h2>Help</h2>
         <p>ARM .NET Port — <a href="https://github.com/automatic-ripping-machine/automatic-ripping-machine">Automatic Ripping Machine</a></p>
         <p>View modes:</p>

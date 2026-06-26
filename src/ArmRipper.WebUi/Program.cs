@@ -9,6 +9,7 @@ using ArmRipper.WebUi.Services;
 using ArmRipper.WebUi.Hubs;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -93,9 +94,15 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
     DatabaseHelper.EnsureMigrated(db);
+
+    // Seed (or reset) DB RipperSettings from file config
+    // Set ARM_RESET_SETTINGS=true to overwrite DB with file values on startup
+    var seedSettings = scope.ServiceProvider.GetRequiredService<IOptions<ArmSettings>>().Value;
+    var reset = Environment.GetEnvironmentVariable("ARM_RESET_SETTINGS") == "true";
+    SettingsHelper.SeedFromFileAsync(db, seedSettings, reset).GetAwaiter().GetResult();
 }
 
-var armSettings = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<ArmSettings>>().Value;
+var armSettings = app.Services.GetRequiredService<IOptions<ArmSettings>>().Value;
 if (armSettings.DisableLogin)
 {
     app.Use(async (ctx, next) =>

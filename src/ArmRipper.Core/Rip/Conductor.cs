@@ -273,8 +273,8 @@ public sealed class Conductor(
         job.LogFile = $"{job.Id}.log";
         job.Stage = RipStage.Setup;
 
-        // Create config snapshot
-        var armSettings = settings.Value;
+        // Create config snapshot from effective settings (file + DB override)
+        var armSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, ct);
         var config = new ConfigSnapshot
         {
             JobId = job.Id,

@@ -1,6 +1,7 @@
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
+using ArmRipper.Core.Models;
 using ArmRipper.Core.Notifications;
 using ArmRipper.Core.Rip;
 using Microsoft.EntityFrameworkCore;
@@ -8,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -71,6 +73,12 @@ using (var initScope = host.Services.CreateScope())
 {
     var db = initScope.ServiceProvider.GetRequiredService<ArmDbContext>();
     DatabaseHelper.EnsureMigrated(db);
+
+    // Seed (or reset) DB RipperSettings from file config
+    // Set ARM_RESET_SETTINGS=true to overwrite DB with file values on startup
+    var seedSettings = initScope.ServiceProvider.GetRequiredService<IOptions<ArmSettings>>().Value;
+    var reset = Environment.GetEnvironmentVariable("ARM_RESET_SETTINGS") == "true";
+    SettingsHelper.SeedFromFileAsync(db, seedSettings, reset).GetAwaiter().GetResult();
 }
 
 var testMode = args.Any(a => a is "--test" or "-t");

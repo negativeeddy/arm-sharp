@@ -28,10 +28,38 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         var files = await cache.GetOrCreateAsync(CacheKey, async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = CacheDuration;
-            var completed = await ScanFilesAsync(settings.Value.CompletedPath ?? "/home/arm/media", "Output", ct);
-            var raw = await ScanFilesAsync(settings.Value.RawPath ?? "/home/arm/media/raw", "Raw", ct);
-            var transcode = await ScanFilesAsync(settings.Value.TranscodePath ?? "/home/arm/media/transcode", "Transcode", ct);
-            return completed.Concat(raw).Concat(transcode).ToList();
+            var cp = settings.Value.CompletedPath ?? "/home/arm/media";
+            var rp = settings.Value.RawPath ?? "/home/arm/media/raw";
+            var tp = settings.Value.TranscodePath ?? "/home/arm/media/transcode";
+
+            // Scan the configured completed path.
+            var completed = await ScanFilesAsync(cp, "Output", ct);
+            // Also scan the default base path (/home/arm/media) so that files living
+            // directly under movies/, tv/, etc. (legacy layout or mixed configs) are found.
+            var basePath = "/home/arm/media";
+            if (!string.Equals(cp, basePath, StringComparison.OrdinalIgnoreCase) && Directory.Exists(basePath))
+            {
+                var baseFiles = await ScanFilesAsync(basePath, "Output", ct);
+                var existing = new HashSet<string>(completed.Select(f => f.FilePath), StringComparer.OrdinalIgnoreCase);
+                completed.AddRange(baseFiles.Where(f => !existing.Contains(f.FilePath)));
+            }
+            var raw = await ScanFilesAsync(rp, "Raw", ct);
+            var transcode = await ScanFilesAsync(tp, "Transcode", ct);
+
+            // Raw/Transcode paths may be subdirectories of the completed/base path.
+            // Deduplicate: prefer the more specific source (Raw > Transcode > Output).
+            var all = completed
+                .Concat(transcode)
+                .Concat(raw)
+                .ToList();
+            var deduped = new List<CompletedFileInfo>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var f in all.OrderBy(f => f.Source == "Raw" ? 0 : f.Source == "Transcode" ? 1 : 2))
+            {
+                if (seen.Add(f.FilePath))
+                    deduped.Add(f);
+            }
+            return deduped;
         });
 
         return View(files);
@@ -69,6 +97,58 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         catch (Exception ex)
         {
             TempData["ErrorMessage"] = $"Failed to delete: {ex.Message}";
+        }
+
+        return RedirectToAction("Index");
+    }
+
+    [HttpPost("rename")]
+    public IActionResult Rename(string filePath, string newName)
+    {
+        if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath))
+        {
+            TempData["ErrorMessage"] = "File not found.";
+            return RedirectToAction("Index");
+        }
+
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            TempData["ErrorMessage"] = "New name cannot be empty.";
+            return RedirectToAction("Index");
+        }
+
+        // Strip any path separators — we only rename within the same directory
+        var safeName = newName.Replace('/', '_').Replace('\\', '_').Trim();
+        var dir = Path.GetDirectoryName(filePath);
+        if (string.IsNullOrEmpty(dir))
+        {
+            TempData["ErrorMessage"] = "Cannot determine parent directory.";
+            return RedirectToAction("Index");
+        }
+
+        var targetPath = Path.Combine(dir, safeName);
+
+        if (string.Equals(filePath, targetPath, StringComparison.OrdinalIgnoreCase))
+        {
+            TempData["SuccessMessage"] = "Name unchanged.";
+            return RedirectToAction("Index");
+        }
+
+        if (System.IO.File.Exists(targetPath))
+        {
+            TempData["ErrorMessage"] = $"A file named \"{safeName}\" already exists in that directory.";
+            return RedirectToAction("Index");
+        }
+
+        try
+        {
+            System.IO.File.Move(filePath, targetPath);
+            cache.Remove(CacheKey);
+            TempData["SuccessMessage"] = $"Renamed {Path.GetFileName(filePath)} → {safeName}";
+        }
+        catch (Exception ex)
+        {
+            TempData["ErrorMessage"] = $"Failed to rename: {ex.Message}";
         }
 
         return RedirectToAction("Index");
@@ -143,73 +223,134 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         return (completed, "Output");
     }
 
+    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".webm", ".ts", ".m2ts", ".iso", ".mpeg", ".mpg", ".wmv", ".flv", ".ogv"
+    };
+
     private async Task<List<CompletedFileInfo>> ScanFilesAsync(string basePath, string source, CancellationToken ct)
     {
         if (!Directory.Exists(basePath))
             return [];
 
-        var videoExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { ".mkv", ".mp4", ".m4v", ".avi", ".mov" };
-
         var files = Directory.EnumerateFiles(basePath, "*.*", SearchOption.AllDirectories)
-            .Where(f => videoExtensions.Contains(Path.GetExtension(f)))
+            .Where(f => VideoExtensions.Contains(Path.GetExtension(f)))
             .ToList();
 
         var tasks = files.Select(file => ProbeFileAsync(file, basePath, source, ct));
         var results = await Task.WhenAll(tasks);
 
-        var list = results.Where(r => r is not null)
-            .OrderByDescending(r => r!.LastModified)
-            .Cast<CompletedFileInfo>()
+        // Keep all results — ProbeFileAsync now always returns an info object
+        // (with ffprobe data if available, or basic filesystem info as fallback).
+        var list = results
+            .OrderByDescending(r => r.LastModified)
             .ToList();
 
-        // For Raw files, try to look up the original job from the directory name
-        if (source == "Raw")
+        // Try to look up the producing job for ALL files by examining the directory name.
+        // For Raw files we also do a precise track-level match.
+        foreach (var info in list)
         {
-            foreach (var info in list)
+            var dirPath = Path.GetDirectoryName(info.FilePath);
+            if (string.IsNullOrEmpty(dirPath)) continue;
+            var dirName = Path.GetFileName(dirPath);
+            var fileName = Path.GetFileName(info.FilePath);
+            if (string.IsNullOrEmpty(dirName)) continue;
+
+            // ── Attempt #1: Track-level match (most precise) ──
+            // Works for Raw files where the file name matches a Track record.
+            if (source == "Raw" && !string.IsNullOrEmpty(fileName))
             {
-                var dirPath = Path.GetDirectoryName(info.FilePath);
-                if (string.IsNullOrEmpty(dirPath)) continue;
-                var dirName = Path.GetFileName(dirPath);
-                if (string.IsNullOrEmpty(dirName)) continue;
-
-                // Try "Title (Year)" format first
-                var match = System.Text.RegularExpressions.Regex.Match(dirName, @"^(.+?) \((\d{4})\)$");
-                if (match.Success)
+                var trackJobId = await db.Tracks
+                    .Where(t => t.BaseName == dirName && t.FileName == fileName)
+                    .Select(t => t.JobId)
+                    .FirstOrDefaultAsync(ct);
+                if (trackJobId != 0)
                 {
-                    var title = match.Groups[1].Value;
-                    var year = match.Groups[2].Value;
-                    var found = await db.Jobs
-                        .Where(j => j.Title == title && j.Year == year)
-                        .OrderByDescending(j => j.Id)
-                        .FirstOrDefaultAsync(ct);
-                    if (found is not null)
-                    {
-                        info.OriginalJobId = found.Id;
-                        continue;
-                    }
+                    var job = await db.Jobs.FindAsync(new object[] { trackJobId }, ct);
+                    info.JobId = trackJobId;
+                    info.OriginalJobId = trackJobId;
+                    info.JobTitle = job?.Title;
+                    continue;
                 }
+            }
 
-                // Fallback: match by title alone
-                var fallback = await db.Jobs
-                    .Where(j => j.Title == dirName || j.TitleManual == dirName)
+            // ── Attempt #2: Match by Job.Path ──
+            // Works for Output/Transcode files where job.Path matches the file's parent dir.
+            var jobByPath = await db.Jobs
+                .Where(j => j.Path != null && j.Path == dirPath)
+                .OrderByDescending(j => j.Id)
+                .FirstOrDefaultAsync(ct);
+            if (jobByPath is not null)
+            {
+                info.JobId = jobByPath.Id;
+                info.JobTitle = jobByPath.Title;
+                if (source == "Raw")
+                    info.OriginalJobId = jobByPath.Id;
+                continue;
+            }
+
+            // ── Attempt #3: Directory name is "Title (Year)" ──
+            var match = System.Text.RegularExpressions.Regex.Match(dirName, @"^(.+?) \((\d{4})\)$");
+            if (match.Success)
+            {
+                var title = match.Groups[1].Value;
+                var year = match.Groups[2].Value;
+                var foundByTitleYear = await db.Jobs
+                    .Where(j => j.Title == title && j.Year == year)
                     .OrderByDescending(j => j.Id)
                     .FirstOrDefaultAsync(ct);
-                if (fallback is not null)
+                if (foundByTitleYear is not null)
+                {
+                    info.JobId = foundByTitleYear.Id;
+                    if (source == "Raw")
+                        info.OriginalJobId = foundByTitleYear.Id;
+                    info.JobTitle = foundByTitleYear.Title;
+                    continue;
+                }
+            }
+
+            // ── Attempt #4: Match directory name as Job.Title or TitleManual ──
+            var fallback = await db.Jobs
+                .Where(j => j.Title == dirName || j.TitleManual == dirName || j.Path != null && j.Path.EndsWith(dirName))
+                .OrderByDescending(j => j.Id)
+                .FirstOrDefaultAsync(ct);
+            if (fallback is not null)
+            {
+                info.JobId = fallback.Id;
+                if (source == "Raw")
                     info.OriginalJobId = fallback.Id;
+                info.JobTitle = fallback.Title;
             }
         }
 
         return list;
     }
 
-    private async Task<CompletedFileInfo?> ProbeFileAsync(string filePath, string basePath, string source, CancellationToken ct)
+    /// <summary>
+    /// Probes a media file with ffprobe and returns a <see cref="CompletedFileInfo"/>.
+    /// If ffprobe fails or is unavailable, returns an info object populated with basic
+    /// filesystem metadata (file name, size, last-modified) so the file is still visible.
+    /// </summary>
+    private async Task<CompletedFileInfo> ProbeFileAsync(string filePath, string basePath, string source, CancellationToken ct)
     {
+        // Start with a basic info object from filesystem data (always succeeds).
+        var fileInfo = new System.IO.FileInfo(filePath);
+        var info = new CompletedFileInfo
+        {
+            FilePath = filePath,
+            RelativeDirectory = GetRelativeDirectory(filePath, basePath),
+            Source = source,
+            LastModified = fileInfo.LastWriteTimeUtc,
+            SizeBytes = fileInfo.Length,
+            DurationSeconds = 0,
+            BitrateKbps = 0
+        };
+
         try
         {
             ct.ThrowIfCancellationRequested();
 
-            var startInfo = new ProcessStartInfo
+            var psi = new ProcessStartInfo
             {
                 FileName = "ffprobe",
                 Arguments = $"-v quiet -print_format json -show_format -show_streams \"{filePath}\"",
@@ -219,35 +360,26 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
                 CreateNoWindow = true
             };
 
-            using var process = new Process { StartInfo = startInfo };
+            using var process = new Process { StartInfo = psi };
             process.Start();
             var json = await process.StandardOutput.ReadToEndAsync(ct);
             await process.WaitForExitAsync(ct);
 
             if (process.ExitCode != 0)
-                return null;
+                return info; // fallback — basic info only
 
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
             var format = root.GetProperty("format");
-            var sizeBytes = format.TryGetProperty("size", out var sizeEl) && long.TryParse(sizeEl.GetString(), out var s) ? s : 0L;
-            var duration = format.TryGetProperty("duration", out var durEl) && double.TryParse(durEl.GetString(), out var d) ? d : 0.0;
-            var bitrate = format.TryGetProperty("bit_rate", out var brEl) && long.TryParse(brEl.GetString(), out var b) ? b : 0L;
-
-            var info = new CompletedFileInfo
-            {
-                FilePath = filePath,
-                RelativeDirectory = GetRelativeDirectory(filePath, basePath),
-                Source = source,
-                LastModified = System.IO.File.GetLastWriteTimeUtc(filePath),
-                SizeBytes = sizeBytes,
-                DurationSeconds = duration,
-                BitrateKbps = bitrate / 1000.0
-            };
+            if (format.TryGetProperty("size", out var sizeEl) && long.TryParse(sizeEl.GetString(), out var s))
+                info.SizeBytes = s;
+            if (format.TryGetProperty("duration", out var durEl) && double.TryParse(durEl.GetString(), out var d))
+                info.DurationSeconds = d;
+            if (format.TryGetProperty("bit_rate", out var brEl) && long.TryParse(brEl.GetString(), out var b))
+                info.BitrateKbps = b / 1000.0;
 
             var streams = root.GetProperty("streams").EnumerateArray().ToList();
-
             foreach (var stream in streams)
             {
                 var codecType = stream.GetProperty("codec_type").GetString();
@@ -264,13 +396,13 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
                         break;
                 }
             }
-
-            return info;
         }
         catch
         {
-            return null;
+            // ffprobe failed — return the fallback info we already built
         }
+
+        return info;
     }
 
     private static VideoStreamInfo ParseVideoStream(JsonElement stream)

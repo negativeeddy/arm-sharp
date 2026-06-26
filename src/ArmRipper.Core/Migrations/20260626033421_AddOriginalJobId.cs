@@ -5,24 +5,18 @@
 namespace ArmRipper.Core.Migrations
 {
     /// <inheritdoc />
-    public partial class AddOriginalJobIdReal : Migration
+    public partial class AddOriginalJobId : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<int>(
-                name: "OriginalJobId",
-                table: "jobs",
-                type: "INTEGER",
-                nullable: true);
+
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "OriginalJobId",
-                table: "jobs");
+
         }
     }
 }

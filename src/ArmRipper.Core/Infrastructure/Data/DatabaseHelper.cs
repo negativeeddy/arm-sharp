@@ -31,6 +31,7 @@ public static class DatabaseHelper
             TryAlterColumn(db, "jobs", "StageErrors");
             TryAlterColumn(db, "jobs", "ManualWaitResume");
             TryAlterColumn(db, "jobs", "CompletedStages");
+            TryAlterColumn(db, "jobs", "OriginalJobId", "INTEGER");
             TryAlterColumn(db, "config", "MaxConcurrentRips");
 
             db.Database.ExecuteSqlRaw(
@@ -41,14 +42,15 @@ public static class DatabaseHelper
             TryInsertMigration(db, "20260612040927_AddStageErrors");
             TryInsertMigration(db, "20260613200029_AddManualWaitResume");
             TryInsertMigration(db, "20260614174913_AddCompletedStages");
+            TryInsertMigration(db, "20260626033421_AddOriginalJobId");
         }
 
         db.Database.ExecuteSqlRaw("PRAGMA busy_timeout = 5000;");
     }
 
-    private static void TryAlterColumn(ArmDbContext db, string table, string column)
+    private static void TryAlterColumn(ArmDbContext db, string table, string column, string? type = null)
     {
-        try { db.Database.ExecuteSqlRaw($"ALTER TABLE {table} ADD COLUMN {column} TEXT NULL;"); } catch { }
+        try { db.Database.ExecuteSqlRaw($"ALTER TABLE {table} ADD COLUMN {column} {(type ?? "TEXT")} NULL;"); } catch { }
     }
 
     private static void TryInsertMigration(ArmDbContext db, string migrationId)

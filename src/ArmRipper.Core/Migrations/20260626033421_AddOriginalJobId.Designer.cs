@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace ArmRipper.Core.Migrations
 {
     [DbContext(typeof(ArmDbContext))]
-    [Migration("20260626024127_AddOriginalJobId")]
+    [Migration("20260626033421_AddOriginalJobId")]
     partial class AddOriginalJobId
     {
         /// <inheritdoc />

@@ -7,8 +7,11 @@ public class CompletedFileInfo
     public string RelativeDirectory { get; set; } = "";
     /// <summary>Which directory the file came from: "Output", "Raw", or "Transcode".</summary>
     public string Source { get; set; } = "Output";
-    /// <summary>If the file is a raw file, the job ID it was originally ripped from (if found).</summary>
+    /// <summary>The job ID that produced this file (if one can be determined).</summary>
+    public int? JobId { get; set; }
+    /// <summary>If the file is a raw file, the original job ID it was ripped from (kept for backward compat).</summary>
     public int? OriginalJobId { get; set; }
+    public string? JobTitle { get; set; }
     public DateTime LastModified { get; set; }
     public string LastModifiedFormatted => LastModified.ToString("yyyy-MM-dd HH:mm");
     public long SizeBytes { get; set; }
