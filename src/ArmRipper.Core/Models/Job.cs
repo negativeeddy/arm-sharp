@@ -48,6 +48,8 @@ public class Job
     public bool ManualWaitResume { get; set; }
     public bool HasTrack99 { get; set; }
     public string? DiscFingerprint { get; set; }
+    /// <summary>If set, this job was forked from another job (e.g. a re-transcode of raw files).</summary>
+    public int? OriginalJobId { get; set; }
 
     /// <summary>Transient — current MakeMKV rip percentage (0–100). Goes over SignalR, NOT persisted to DB.</summary>
     [NotMapped]

@@ -63,6 +63,178 @@ public sealed class Conductor(
         }
     }
 
+    /// <summary>
+    /// Creates a new forked job from an existing job and starts from the transcode stage.
+    /// The new job reuses the original's metadata (title, year, video type) and config,
+    /// but skips the identify and rip stages — it jumps straight to transcoding the raw file(s).
+    /// </summary>
+    /// <param name="originalJobId">The ID of the original job to fork from.</param>
+    /// <param name="rawFilePath">Path to the raw .mkv file (or its parent directory) to transcode.</param>
+    public async Task<int> RunForkedTranscodeAsync(int originalJobId, string rawFilePath, CancellationToken ct = default)
+    {
+        // ── 1. Load the original job ──
+        var originalJob = await db.Jobs
+            .Include(j => j.Config)
+            .FirstOrDefaultAsync(j => j.Id == originalJobId, ct);
+
+        if (originalJob is null)
+        {
+            logger.LogError("Original job {JobId} not found — cannot fork transcode", originalJobId);
+            return 1;
+        }
+
+        // Determine the raw directory — if a specific file was given, transcode its directory
+        var rawDir = File.Exists(rawFilePath)
+            ? Path.GetDirectoryName(rawFilePath)!
+            : rawFilePath;
+
+        if (!Directory.Exists(rawDir))
+        {
+            logger.LogError("Raw directory {RawDir} does not exist", rawDir);
+            return 1;
+        }
+
+        // ── 2. Create the forked job ──
+        var job = new Job
+        {
+            DevPath = rawDir,
+            Status = JobState.Active,
+            StartTime = DateTime.UtcNow,
+            OriginalJobId = originalJob.Id,
+            Title = originalJob.Title,
+            TitleAuto = originalJob.TitleAuto,
+            Year = originalJob.Year,
+            YearAuto = originalJob.YearAuto,
+            VideoType = originalJob.VideoType,
+            VideoTypeAuto = originalJob.VideoTypeAuto,
+            DiscType = originalJob.DiscType,
+            ImdbId = originalJob.ImdbId,
+            ImdbIdAuto = originalJob.ImdbIdAuto,
+            PosterUrl = originalJob.PosterUrl,
+            PosterUrlAuto = originalJob.PosterUrlAuto,
+            Label = originalJob.Label,
+            ManualStart = true
+        };
+
+        db.Jobs.Add(job);
+        await db.SaveChangesAsync(ct);
+
+        job.LogFile = $"{job.Id}.log";
+        job.Stage = RipStage.Setup;
+
+        // ── 3. Copy the config snapshot from the original job's config or fall back to settings ──
+        var armSettings = settings.Value;
+        var sourceConfig = originalJob.Config;
+
+        var config = new ConfigSnapshot
+        {
+            JobId = job.Id,
+            SkipTranscode = sourceConfig?.SkipTranscode ?? armSettings.SkipTranscode,
+            MainFeature = sourceConfig?.MainFeature ?? armSettings.MainFeature,
+            UseFfmpeg = sourceConfig?.UseFfmpeg ?? armSettings.UseFfmpeg,
+            ManualWait = sourceConfig?.ManualWait ?? armSettings.ManualWait,
+            ManualWaitTime = sourceConfig?.ManualWaitTime ?? armSettings.ManualWaitTime,
+            AllowDuplicates = sourceConfig?.AllowDuplicates ?? armSettings.AllowDuplicates,
+            Prevent99 = sourceConfig?.Prevent99 ?? armSettings.Prevent99,
+            GetVideoTitle = sourceConfig?.GetVideoTitle ?? armSettings.GetVideoTitle,
+            GetAudioTitle = sourceConfig?.GetAudioTitle ?? armSettings.GetAudioTitle,
+            AutoEject = false, // Don't eject — no physical disc
+            DelRawFiles = sourceConfig?.DelRawFiles ?? armSettings.DelRawFiles,
+            RawPath = sourceConfig?.RawPath ?? armSettings.RawPath,
+            TranscodePath = sourceConfig?.TranscodePath ?? armSettings.TranscodePath,
+            CompletedPath = sourceConfig?.CompletedPath ?? armSettings.CompletedPath,
+            LogPath = sourceConfig?.LogPath ?? armSettings.LogPath,
+            RipMethod = sourceConfig?.RipMethod ?? armSettings.RipMethod,
+            MinLength = sourceConfig?.MinLength ?? armSettings.MinLength,
+            MaxLength = sourceConfig?.MaxLength ?? armSettings.MaxLength,
+            HbPresetDvd = sourceConfig?.HbPresetDvd ?? armSettings.HbPresetDvd,
+            HbPresetBd = sourceConfig?.HbPresetBd ?? armSettings.HbPresetBd,
+            HbArgsDvd = sourceConfig?.HbArgsDvd ?? armSettings.HbArgsDvd,
+            HbArgsBd = sourceConfig?.HbArgsBd ?? armSettings.HbArgsBd,
+            DestExt = sourceConfig?.DestExt ?? armSettings.DestExt,
+            FfmpegCli = sourceConfig?.FfmpegCli ?? armSettings.FfmpegCli,
+            FfmpegPreFileArgs = sourceConfig?.FfmpegPreFileArgs ?? armSettings.FfmpegPreFileArgs,
+            FfmpegPostFileArgs = sourceConfig?.FfmpegPostFileArgs ?? armSettings.FfmpegPostFileArgs,
+            MkvArgs = sourceConfig?.MkvArgs ?? armSettings.MkvArgs,
+            ExtrasSub = sourceConfig?.ExtrasSub ?? armSettings.ExtrasSub,
+            InstallPath = sourceConfig?.InstallPath ?? armSettings.InstallPath,
+            DbFile = sourceConfig?.DbFile ?? armSettings.DbFile,
+            NotifyRip = false, // Skip rip notifications
+            NotifyTranscode = sourceConfig?.NotifyTranscode ?? armSettings.NotifyTranscode,
+            PbKey = sourceConfig?.PbKey ?? armSettings.PbKey,
+            IftttKey = sourceConfig?.IftttKey ?? armSettings.IftttKey,
+            PoUserKey = sourceConfig?.PoUserKey ?? armSettings.PoUserKey,
+            BashScript = sourceConfig?.BashScript ?? armSettings.BashScript,
+            JsonUrl = sourceConfig?.JsonUrl ?? armSettings.JsonUrl,
+            Apprise = sourceConfig?.Apprise ?? armSettings.Apprise,
+            OmdbApiKey = sourceConfig?.OmdbApiKey ?? armSettings.OmdbApiKey,
+            TmdbApiKey = sourceConfig?.TmdbApiKey ?? armSettings.TmdbApiKey,
+            ArmApiKey = sourceConfig?.ArmApiKey ?? armSettings.ArmApiKey,
+            MetadataProvider = sourceConfig?.MetadataProvider ?? armSettings.MetadataProvider,
+            WebServerPort = sourceConfig?.WebServerPort ?? armSettings.WebServerPort,
+            WebServerIp = sourceConfig?.WebServerIp ?? armSettings.WebServerIp,
+            UiBaseUrl = sourceConfig?.UiBaseUrl ?? armSettings.UiBaseUrl,
+            EmbyRefresh = sourceConfig?.EmbyRefresh ?? armSettings.EmbyRefresh,
+            EmbyServer = sourceConfig?.EmbyServer ?? armSettings.EmbyServer,
+            EmbyPort = sourceConfig?.EmbyPort ?? armSettings.EmbyPort,
+            EmbyApiKey = sourceConfig?.EmbyApiKey ?? armSettings.EmbyApiKey,
+            MaxConcurrentRips = sourceConfig?.MaxConcurrentRips ?? armSettings.MaxConcurrentRips,
+            MaxConcurrentTranscodes = sourceConfig?.MaxConcurrentTranscodes ?? armSettings.MaxConcurrentTranscodes,
+            MaxConcurrentMakemkvInfo = sourceConfig?.MaxConcurrentMakemkvInfo ?? armSettings.MaxConcurrentMakemkvInfo
+        };
+
+        db.ConfigSnapshots.Add(config);
+        job.MarkStageComplete(RipStage.Setup);
+        job.MarkStageComplete(RipStage.Identify);
+        job.MarkStageComplete(RipStage.Rip);
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation("Forked job {JobId} created from original job {OriginalJobId} for raw directory {RawDir}",
+            job.Id, originalJob.Id, rawDir);
+
+        // ── 4. Set up file logger and run ──
+        using var _ = logger.BeginScope(new Dictionary<string, object>
+        {
+            [JobFileLoggerProvider.LogFilePathKey] = job.GetLogFilePath()
+        });
+
+        try
+        {
+            logger.LogInformation("************* Starting forked transcode *************");
+            logger.LogInformation("Original job: {OriginalJobId} ({Title})", originalJob.Id, originalJob.Title);
+            logger.LogInformation("Raw directory: {RawDir}", rawDir);
+
+            // Call directly into the rip service — it will skip MakeMKV (rip complete)
+            // and proceed to transcode, finalize, and cleanup.
+            var directory = await armRipperService.RipVisualMediaAsync(job, job.LogFile ?? "", false, false, ct);
+            job.Path = directory;
+
+            if (job.Status is not JobState.Failure)
+                job.Status = JobState.Success;
+            job.StopTime = DateTime.UtcNow;
+            if (job.StartTime != default)
+            {
+                var jobLength = job.StopTime.Value - job.StartTime;
+                job.JobLength = $"{(int)jobLength.TotalHours}:{jobLength.Minutes:D2}:{jobLength.Seconds:D2}";
+            }
+
+            await db.SaveChangesAsync(ct);
+            await BroadcastJobUpdateAsync(job);
+            logger.LogInformation("************* Forked transcode complete *************");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            logger.LogCritical(ex, "Forked transcode failed for job {JobId}", job.Id);
+            job.Status = JobState.Failure;
+            job.Errors = ex.Message;
+            job.ProgressMessage = null;
+            try { await db.SaveChangesAsync(ct); } catch { /* best effort */ }
+            await BroadcastJobUpdateAsync(job);
+            return 1;
+        }
+    }
+
     private void Setup()
     {
         var armSettings = settings.Value;

@@ -1,17 +1,20 @@
 using System.Diagnostics;
 using System.Text.Json;
 using ArmRipper.Core.Configuration;
+using ArmRipper.Core.Infrastructure;
+using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.WebUi.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
+using Microsoft.EntityFrameworkCore;
 
 namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("completed")]
-public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache cache) : Controller
+public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache cache, ArmDbContext db, IBackgroundRipService backgroundRip) : Controller
 {
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
     private const string CacheKey = "CompletedFiles";
@@ -71,6 +74,62 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         return RedirectToAction("Index");
     }
 
+    [HttpPost("transcode")]
+    public async Task<IActionResult> Transcode(string filePath, int? originalJobId, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath))
+        {
+            TempData["ErrorMessage"] = "Raw file not found.";
+            return RedirectToAction("Index");
+        }
+
+        // If no job ID was provided, try to find one by directory name
+        var jobId = originalJobId;
+        if (jobId is null or 0)
+        {
+            var dirName = Path.GetFileName(Path.GetDirectoryName(filePath));
+            if (!string.IsNullOrEmpty(dirName))
+            {
+                // Try to parse "Title (Year)" format
+                var match = System.Text.RegularExpressions.Regex.Match(dirName, @"^(.+?) \((\d{4})\)$");
+                if (match.Success)
+                {
+                    var title = match.Groups[1].Value;
+                    var year = match.Groups[2].Value;
+                    var found = await db.Jobs
+                        .Where(j => j.Title == title && j.Year == year)
+                        .OrderByDescending(j => j.Id)
+                        .FirstOrDefaultAsync(ct);
+                    if (found is not null)
+                        jobId = found.Id;
+                }
+
+                if (jobId is null or 0)
+                {
+                    // Fallback: try matching just the title
+                    var found = await db.Jobs
+                        .Where(j => j.Title == dirName || j.TitleManual == dirName)
+                        .OrderByDescending(j => j.Id)
+                        .FirstOrDefaultAsync(ct);
+                    if (found is not null)
+                        jobId = found.Id;
+                }
+            }
+        }
+
+        if (jobId is null or 0)
+        {
+            TempData["ErrorMessage"] = "Could not find the original job for this file. Ensure it was ripped through ARM first.";
+            return RedirectToAction("Index");
+        }
+
+        backgroundRip.StartForkedJob(jobId.Value, filePath, ct);
+        cache.Remove(CacheKey);
+
+        TempData["SuccessMessage"] = $"Forked transcode job started for {Path.GetFileName(filePath)} (original job #{jobId})";
+        return RedirectToAction("Index");
+    }
+
     private (string basePath, string source) ResolveSource(string filePath)
     {
         var completed = (settings.Value.CompletedPath ?? "/home/arm/media").TrimEnd('/');
@@ -99,9 +158,49 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         var tasks = files.Select(file => ProbeFileAsync(file, basePath, source, ct));
         var results = await Task.WhenAll(tasks);
 
-        return results.Where(r => r != null)
+        var list = results.Where(r => r is not null)
             .OrderByDescending(r => r!.LastModified)
-            .ToList()!;
+            .Cast<CompletedFileInfo>()
+            .ToList();
+
+        // For Raw files, try to look up the original job from the directory name
+        if (source == "Raw")
+        {
+            foreach (var info in list)
+            {
+                var dirPath = Path.GetDirectoryName(info.FilePath);
+                if (string.IsNullOrEmpty(dirPath)) continue;
+                var dirName = Path.GetFileName(dirPath);
+                if (string.IsNullOrEmpty(dirName)) continue;
+
+                // Try "Title (Year)" format first
+                var match = System.Text.RegularExpressions.Regex.Match(dirName, @"^(.+?) \((\d{4})\)$");
+                if (match.Success)
+                {
+                    var title = match.Groups[1].Value;
+                    var year = match.Groups[2].Value;
+                    var found = await db.Jobs
+                        .Where(j => j.Title == title && j.Year == year)
+                        .OrderByDescending(j => j.Id)
+                        .FirstOrDefaultAsync(ct);
+                    if (found is not null)
+                    {
+                        info.OriginalJobId = found.Id;
+                        continue;
+                    }
+                }
+
+                // Fallback: match by title alone
+                var fallback = await db.Jobs
+                    .Where(j => j.Title == dirName || j.TitleManual == dirName)
+                    .OrderByDescending(j => j.Id)
+                    .FirstOrDefaultAsync(ct);
+                if (fallback is not null)
+                    info.OriginalJobId = fallback.Id;
+            }
+        }
+
+        return list;
     }
 
     private async Task<CompletedFileInfo?> ProbeFileAsync(string filePath, string basePath, string source, CancellationToken ct)

@@ -166,6 +166,17 @@ else
                                                 }
                                             </td>
                                             <td class="text-right">
+                                                @if (file.Source == "Raw")
+                                                {
+                                                    <form method="post" action="/completed/transcode" style="display:inline" class="mr-1">
+                                                        <input type="hidden" name="filePath" value="@file.FilePath" />
+                                                        @if (file.OriginalJobId.HasValue)
+                                                        {
+                                                            <input type="hidden" name="originalJobId" value="@file.OriginalJobId.Value" />
+                                                        }
+                                                        <button type="submit" class="btn btn-outline-success btn-sm" title="Start transcoding this raw file">🎬 Transcode</button>
+                                                    </form>
+                                                }
                                                 <form method="post" action="/completed/delete" onsubmit="return confirm('Delete @file.FileName? This cannot be undone.');" style="display:inline">
                                                     <input type="hidden" name="filePath" value="@file.FilePath" />
                                                     <button type="submit" class="btn btn-outline-danger btn-sm" title="Delete file">🗑</button>

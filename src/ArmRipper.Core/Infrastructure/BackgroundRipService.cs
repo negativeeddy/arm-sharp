@@ -56,6 +56,50 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
         }, cts.Token);
     }
 
+    public void StartForkedJob(int originalJobId, string rawFilePath, CancellationToken ct = default)
+    {
+        var key = $"forked-{originalJobId}-{rawFilePath.GetHashCode()}";
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        if (!_activeRips.TryAdd(key, cts))
+        {
+            logger.LogWarning("Forked transcode already in progress for raw path {RawPath}", rawFilePath);
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            using var scope = scopeFactory.CreateScope();
+            try
+            {
+                await _ripSemaphore.WaitAsync(cts.Token);
+                try
+                {
+                    var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
+                    await conductor.RunForkedTranscodeAsync(originalJobId, rawFilePath, cts.Token);
+                    logger.LogInformation("Forked transcode completed for job {OriginalJobId}, raw path {RawPath}",
+                        originalJobId, rawFilePath);
+                }
+                finally
+                {
+                    _ripSemaphore.Release();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                logger.LogWarning("Forked transcode cancelled for job {OriginalJobId}", originalJobId);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Forked transcode failed for job {OriginalJobId}", originalJobId);
+            }
+            finally
+            {
+                _activeRips.TryRemove(key, out _);
+                cts.Dispose();
+            }
+        }, cts.Token);
+    }
+
     public void CancelRip(string devPath)
     {
         if (_activeRips.TryRemove(devPath, out var cts))
