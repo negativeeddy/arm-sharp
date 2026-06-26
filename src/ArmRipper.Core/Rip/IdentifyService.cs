@@ -731,7 +731,7 @@ public sealed partial class IdentifyService(
         }
     }
 
-    private async Task EjectAsync(Job job, CancellationToken ct)
+    public async Task EjectAsync(Job job, CancellationToken ct)
     {
         if (!settings.Value.AutoEject)
             return;

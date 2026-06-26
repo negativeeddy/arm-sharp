@@ -461,11 +461,15 @@ public sealed class Conductor(
                     logger.LogInformation("Music CD identified: {Title}", musicTitle);
 
                 await RipMusicAsync(job, ct);
+                await identifyService.EjectAsync(job, ct);
+                job.Ejected = true;
                 break;
 
             case DiscType.Data:
                 logger.LogInformation("Disc identified as data");
                 await RipDataAsync(job, ct);
+                await identifyService.EjectAsync(job, ct);
+                job.Ejected = true;
                 break;
 
             default:

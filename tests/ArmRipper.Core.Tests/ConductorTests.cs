@@ -209,6 +209,11 @@ public sealed class ConductorTests : IDisposable
             }
             return Task.CompletedTask;
         }
+
+        public Task EjectAsync(Job job, CancellationToken ct = default)
+        {
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class MockArmRipperService : IArmRipperService

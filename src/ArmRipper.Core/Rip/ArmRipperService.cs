@@ -19,7 +19,8 @@ public sealed class ArmRipperService(
     ICliProcessRunner runner,
     NotificationService notifications,
     IOptions<ArmSettings> settings,
-    IEnumerable<INotificationBroadcaster> broadcasters) : IArmRipperService
+    IEnumerable<INotificationBroadcaster> broadcasters,
+    IIdentifyService identifyService) : IArmRipperService
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("ArmRipperService");
     private static readonly TimeSpan ProgressBroadcastInterval = TimeSpan.FromMilliseconds(200);
@@ -58,6 +59,12 @@ public sealed class ArmRipperService(
         {
             transcodeInPath = await PrepareTranscodeInputPathAsync(job, jobTitle, makeMkvOutPath, ct);
         }
+
+        // ── 2b. Eject the disc now that the rip is done — transcode uses files only.
+        //     If AutoEject is disabled in config, this is a no-op.
+        await identifyService.EjectAsync(job, ct);
+        job.Ejected = true;
+        await db.SaveChangesAsync(ct);
 
         // ── 3. Test-mode trim (optional) ──
         if (settings.Value.TestMode && transcodeInPath is not null && Directory.Exists(transcodeInPath))
