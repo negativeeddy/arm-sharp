@@ -308,6 +308,9 @@ public sealed partial class IdentifyService(
             logger.LogError(ex, "DVD identification failed");
         }
 
+        // Track 99 detection via lsdvd
+        await DetectTrack99Async(job, ct);
+
         // Fallback: use label as title when CRC64 lookup didn't find a match
         if (string.IsNullOrEmpty(job.Title) && !string.IsNullOrEmpty(job.Label))
             job.Title = job.TitleAuto = job.Label;
@@ -316,6 +319,57 @@ public sealed partial class IdentifyService(
         await SaveDiscPosterAsync(job, ct);
 
         return true;
+    }
+
+    private async Task DetectTrack99Async(Job job, CancellationToken ct)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(job.DevPath))
+            {
+                logger.LogDebug("Track 99 detection skipped: no device path");
+                return;
+            }
+
+            var result = await runner.RunAsync("lsdvd", $"-Oy {job.DevPath}", timeoutMs: 30_000, ct: ct);
+            if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.StdOut))
+            {
+                logger.LogDebug("lsdvd returned no output for {DevPath}", job.DevPath);
+                return;
+            }
+
+            // Count track entries — each track has a 'length' field in the Python dict
+            var output = result.StdOut;
+            var trackCount = 0;
+            var index = 0;
+            while ((index = output.IndexOf("'length'", index, StringComparison.Ordinal)) >= 0)
+            {
+                trackCount++;
+                index += 8; // advance past 'length'
+            }
+
+            logger.LogInformation("lsdvd detected {TrackCount} tracks on {DevPath}", trackCount, job.DevPath);
+
+            if (trackCount == 99)
+            {
+                job.HasTrack99 = true;
+                logger.LogWarning("Track 99 disc detected on {DevPath}", job.DevPath);
+
+                var prevent99 = job.Config?.Prevent99 ?? settings.Value.Prevent99;
+                if (prevent99)
+                {
+                    var msg = $"Track 99 disc found on {job.DevPath} and PREVENT_99 is enabled. Aborting.";
+                    logger.LogError(msg);
+                    job.Status = JobState.Failure;
+                    job.Errors = msg;
+                    await db.SaveChangesAsync(ct);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to detect track 99 via lsdvd on {DevPath}", job.DevPath);
+        }
     }
 
     private async Task SaveDiscPosterAsync(Job job, CancellationToken ct)

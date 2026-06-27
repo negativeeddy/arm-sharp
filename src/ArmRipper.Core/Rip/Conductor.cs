@@ -443,6 +443,12 @@ public sealed class Conductor(
         await notificationService.NotifyEntryAsync(job, ct);
 
         // Dispatch based on disc type
+        if (job.Status == JobState.Failure)
+        {
+            logger.LogError("Job {JobId} failed during identification: {Errors}", job.Id, job.Errors);
+            return 1;
+        }
+
         switch (job.DiscType)
         {
             case DiscType.Dvd:
