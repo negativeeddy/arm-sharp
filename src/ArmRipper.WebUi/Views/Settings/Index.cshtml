@@ -529,6 +529,14 @@
                 .then(function (r) { return r.json(); })
                 .then(function (data) {
                     bar.style.width = "100%";
+                    bar.classList.remove("progress-bar-animated", "progress-bar-striped");
+                    if (data.success && data.failed === 0) {
+                        bar.classList.add("bg-success");
+                    } else if (data.failed > 0) {
+                        bar.classList.add("bg-warning");
+                    } else {
+                        bar.classList.add("bg-danger");
+                    }
                     if (data.success) {
                         var msg = "Sent " + data.submitted + " of " + data.total + " movies.";
                         if (data.failed > 0) msg += " " + data.failed + " failed.";
@@ -550,6 +558,8 @@
                 })
                 .catch(function (err) {
                     bar.style.width = "0%";
+                    bar.classList.remove("progress-bar-animated", "progress-bar-striped");
+                    bar.classList.add("bg-danger");
                     status.textContent = "Error: " + err.message;
                 })
                 .finally(function () {

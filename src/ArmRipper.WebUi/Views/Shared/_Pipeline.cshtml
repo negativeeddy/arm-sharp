@@ -141,7 +141,11 @@
         ? (activeProgress.HasValue ? Model.ProgressMessage + " — " + pct + "%" : Model.ProgressMessage)
         : pct + "%";
     <div class="progress mt-2" style="height:22px;">
-        <div class="progress-bar @(isIndeterminate ? "progress-bar-striped progress-bar-animated bg-info" : "progress-bar-striped progress-bar-animated")" role="progressbar"
+        <div class="progress-bar @(isIndeterminate
+            ? "progress-bar-striped progress-bar-animated bg-info"
+            : pct >= 100
+                ? "bg-success"
+                : "progress-bar-striped progress-bar-animated")" role="progressbar"
              style="width:@(isIndeterminate ? "100" : pct)%" aria-valuenow="@pct" aria-valuemin="0" aria-valuemax="100">
             @label
         </div>
