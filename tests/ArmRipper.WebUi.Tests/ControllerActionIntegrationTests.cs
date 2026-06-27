@@ -38,13 +38,16 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
                 db.Database.EnsureCreated();
 
                 var hasher = new PasswordHasher<User>();
-                db.Users.Add(new User
+                if (!db.Users.Any(u => u.Username == "admin"))
                 {
-                    Username = "admin",
-                    PasswordHash = hasher.HashPassword(new User(), "admin"),
-                    IsAdmin = true
-                });
-                db.SaveChanges();
+                    db.Users.Add(new User
+                    {
+                        Username = "admin",
+                        PasswordHash = hasher.HashPassword(new User(), "admin"),
+                        IsAdmin = true
+                    });
+                    db.SaveChanges();
+                }
             });
         });
     }
@@ -766,5 +769,69 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
 
         var json = await response.Content.ReadAsStringAsync();
         Assert.Contains("added", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task FixMovieDir_MovesFileToMoviesSubfolder()
+    {
+        // Arrange — create a temp file in a "wrong" folder under the completed path
+        var tempDir = Path.Combine(Path.GetTempPath(), "armtest", Guid.NewGuid().ToString());
+        var completedPath = Path.Combine(tempDir, "completed");
+        var sourceDir = Path.Combine(completedPath, "movieA");
+        var sourceFile = Path.Combine(sourceDir, "movieA.mkv");
+        Directory.CreateDirectory(sourceDir);
+        await File.WriteAllTextAsync(sourceFile, "dummy content");
+
+        // Create a client with CompletedPath pointing to our temp dir
+        // Do NOT follow redirects so we can see the 302 from RedirectToAction
+        var client = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureServices(services =>
+            {
+                services.PostConfigure<ArmSettings>(a =>
+                {
+                    a.CompletedPath = completedPath;
+                    a.DisableLogin = false;
+                });
+            });
+        }).CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        // Login
+        var loginPage = await client.GetAsync("/auth/login");
+        var loginHtml = await loginPage.Content.ReadAsStringAsync();
+        var tokenMatch = Regex.Match(loginHtml,
+            @"<input[^>]*name=""__RequestVerificationToken""[^>]*value=""([^""]+)""");
+        var token = tokenMatch.Success ? tokenMatch.Groups[1].Value : "";
+
+        var loginResponse = await client.PostAsync("/auth/login", new FormUrlEncodedContent(
+            new Dictionary<string, string>
+            {
+                { "username", "admin" },
+                { "password", "admin" },
+                { "__RequestVerificationToken", token }
+            }));
+        // Login redirects on success (302), which is expected
+        Assert.Equal(HttpStatusCode.Redirect, loginResponse.StatusCode);
+
+        // Act
+        var response = await client.PostAsync("/completed/fix-movie-dir",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                { "filePath", sourceFile },
+                { "movieTitle", "movieA" }
+            }));
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+
+        var expectedFile = Path.Combine(completedPath, "movies", "movieA", "movieA.mkv");
+        Assert.False(File.Exists(sourceFile), "Source file should have been moved");
+        Assert.True(File.Exists(expectedFile), $"Expected file at {expectedFile}");
+
+        // Cleanup
+        try { Directory.Delete(tempDir, true); } catch { }
     }
 }

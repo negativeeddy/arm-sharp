@@ -7,6 +7,17 @@ public class CompletedFileInfo
     public string RelativeDirectory { get; set; } = "";
     /// <summary>Which directory the file came from: "Output", "Raw", or "Transcode".</summary>
     public string Source { get; set; } = "Output";
+    /// <summary>True if the file lives in an "extras" subfolder and can be promoted to a standalone movie.</summary>
+    public bool IsExtra
+    {
+        get
+        {
+            var dir = Path.GetDirectoryName(FilePath);
+            if (string.IsNullOrEmpty(dir)) return false;
+            var segments = dir.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return segments.Contains("extras", StringComparer.OrdinalIgnoreCase);
+        }
+    }
     /// <summary>The job ID that produced this file (if one can be determined).</summary>
     public int? JobId { get; set; }
     /// <summary>If the file is a raw file, the original job ID it was ripped from (kept for backward compat).</summary>

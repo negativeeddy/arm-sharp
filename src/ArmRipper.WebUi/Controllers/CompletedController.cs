@@ -16,6 +16,11 @@ namespace ArmRipper.WebUi.Controllers;
 [Route("completed")]
 public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache cache, ArmDbContext db, IBackgroundRipService backgroundRip) : Controller
 {
+    private const string DefaultCompletedPath = "/home/arm/media/completed";
+    private const string DefaultRawPath = "/home/arm/media/raw";
+    private const string DefaultTranscodePath = "/home/arm/media/transcode";
+    private const string LegacyBasePath = "/home/arm/media";
+
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
     private const string CacheKey = "CompletedFiles";
 
@@ -28,15 +33,15 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         var files = await cache.GetOrCreateAsync(CacheKey, async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = CacheDuration;
-            var cp = settings.Value.CompletedPath ?? "/home/arm/media";
-            var rp = settings.Value.RawPath ?? "/home/arm/media/raw";
-            var tp = settings.Value.TranscodePath ?? "/home/arm/media/transcode";
+            var cp = settings.Value.CompletedPath ?? DefaultCompletedPath;
+            var rp = settings.Value.RawPath ?? DefaultRawPath;
+            var tp = settings.Value.TranscodePath ?? DefaultTranscodePath;
 
             // Scan the configured completed path.
             var completed = await ScanFilesAsync(cp, "Output", ct);
-            // Also scan the default base path (/home/arm/media) so that files living
+            // Also scan the legacy base path so that files living
             // directly under movies/, tv/, etc. (legacy layout or mixed configs) are found.
-            var basePath = "/home/arm/media";
+            var basePath = LegacyBasePath;
             if (!string.Equals(cp, basePath, StringComparison.OrdinalIgnoreCase) && Directory.Exists(basePath))
             {
                 var baseFiles = await ScanFilesAsync(basePath, "Output", ct);
@@ -154,6 +159,65 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         return RedirectToAction("Index");
     }
 
+    [HttpPost("fix-movie-dir")]
+    public IActionResult FixMovieDir(string filePath, string movieTitle)
+    {
+        if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath))
+        {
+            TempData["ErrorMessage"] = "File not found.";
+            return RedirectToAction("Index");
+        }
+
+        if (string.IsNullOrWhiteSpace(movieTitle))
+        {
+            TempData["ErrorMessage"] = "Movie title cannot be empty.";
+            return RedirectToAction("Index");
+        }
+
+        try
+        {
+            // Sanitize the title — strip path separators and trim
+            var safeTitle = movieTitle.Replace('/', '_').Replace('\\', '_').Trim();
+            var ext = Path.GetExtension(filePath);
+            var dir = Path.GetDirectoryName(filePath);
+            if (string.IsNullOrEmpty(dir))
+            {
+                TempData["ErrorMessage"] = "Cannot determine parent directory.";
+                return RedirectToAction("Index");
+            }
+
+            // Determine the target base directory (CompletedPath)
+            var (basePath, _) = ResolveSource(filePath);
+            var targetDir = Path.Combine(basePath, "movies", safeTitle);
+            var targetFile = Path.Combine(targetDir, safeTitle + ext);
+
+            if (string.Equals(filePath, targetFile, StringComparison.OrdinalIgnoreCase))
+            {
+                TempData["SuccessMessage"] = "Name unchanged.";
+                return RedirectToAction("Index");
+            }
+
+            if (System.IO.File.Exists(targetFile))
+            {
+                TempData["ErrorMessage"] = string.Format("A file named \"{0}{1}\" already exists in movies/{0}.", safeTitle, ext);
+                return RedirectToAction("Index");
+            }
+
+            // Create the target directory and move the file
+            Directory.CreateDirectory(targetDir);
+            System.IO.File.Move(filePath, targetFile);
+
+            cache.Remove(CacheKey);
+            TempData["SuccessMessage"] = $"Moved \"{Path.GetFileName(filePath)}\" to movies/{safeTitle}";
+        }
+        catch (Exception ex)
+        {
+            TempData["ErrorMessage"] = $"Failed to fix movie directory: {ex.Message}";
+        }
+
+        return RedirectToAction("Index");
+    }
+
     [HttpPost("transcode")]
     public async Task<IActionResult> Transcode(string filePath, int? originalJobId, CancellationToken ct)
     {
@@ -212,9 +276,9 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
 
     private (string basePath, string source) ResolveSource(string filePath)
     {
-        var completed = (settings.Value.CompletedPath ?? "/home/arm/media").TrimEnd('/');
-        var raw = (settings.Value.RawPath ?? "/home/arm/media/raw").TrimEnd('/');
-        var transcode = (settings.Value.TranscodePath ?? "/home/arm/media/transcode").TrimEnd('/');
+        var completed = (settings.Value.CompletedPath ?? DefaultCompletedPath).TrimEnd('/');
+        var raw = (settings.Value.RawPath ?? DefaultRawPath).TrimEnd('/');
+        var transcode = (settings.Value.TranscodePath ?? DefaultTranscodePath).TrimEnd('/');
 
         if (filePath.StartsWith(raw, StringComparison.OrdinalIgnoreCase))
             return (raw, "Raw");
