@@ -3,6 +3,7 @@ using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
+using ArmRipper.Core.Rip;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -15,7 +16,8 @@ namespace ArmRipper.WebUi.Controllers;
 public partial class ApiController(
     ArmDbContext db,
     ICliProcessRunner runner,
-    IOptions<ArmSettings> settings) : Controller
+    IOptions<ArmSettings> settings,
+    IDatabaseSubmitService databaseSubmitService) : Controller
 {
     [HttpGet("health")]
     public IActionResult Health()
@@ -241,5 +243,55 @@ public partial class ApiController(
         await db.SaveChangesAsync(ct);
 
         return Json(new { success = true, job = id, message = "Manual wait will resume" });
+    }
+
+    /// <summary>
+    /// Submit a single job's CRC64 + metadata to the remote ARM database.
+    /// Skips if already submitted.
+    /// </summary>
+    [HttpPost("submit-crc/{id:int}")]
+    public async Task<IActionResult> SubmitCrc(int id, CancellationToken ct = default)
+    {
+        var job = await db.Jobs.Include(j => j.Config).FirstOrDefaultAsync(j => j.Id == id, ct);
+        if (job is null)
+            return NotFound(new { success = false, error = "Job not found" });
+
+        if (job.DiscType != DiscType.Dvd)
+            return Json(new { success = false, error = "Only DVD jobs can be submitted", jobId = id });
+
+        if (string.IsNullOrEmpty(job.CrcId))
+            return Json(new { success = false, error = "Job has no CRC64 hash", jobId = id });
+
+        var result = await databaseSubmitService.SubmitJobAsync(job, ct);
+        return Json(new
+        {
+            success = result.Success,
+            message = result.Message,
+            jobId = id,
+            title = job.Title,
+            year = job.Year
+        });
+    }
+
+    /// <summary>
+    /// Submit all pending (not-yet-submitted) DVD jobs to the remote ARM database.
+    /// </summary>
+    [HttpPost("submit-crc/pending")]
+    public async Task<IActionResult> SubmitPendingCrc(CancellationToken ct = default)
+    {
+        var results = await databaseSubmitService.SubmitPendingAsync(ct);
+        return Json(new
+        {
+            success = true,
+            total = results.Count,
+            submitted = results.Count(r => r.Success),
+            failed = results.Count(r => !r.Success),
+            results = results.Select(r => new
+            {
+                r.Success,
+                r.Message,
+                r.JobId
+            })
+        });
     }
 }

@@ -54,10 +54,16 @@ builder.Services.AddScoped<IHandBrakeService, HandBrakeService>();
 builder.Services.AddScoped<IFfmpegService, FfmpegService>();
 builder.Services.AddScoped<IArmRipperService, ArmRipperService>();
 builder.Services.AddScoped<IMakeMkvService, MakeMkvService>();
+builder.Services.AddScoped<IDatabaseSubmitService, DatabaseSubmitService>();
 builder.Services.AddHttpClient<IMusicBrainzService, MusicBrainzService>(client =>
 {
     client.DefaultRequestHeaders.UserAgent.ParseAdd("arm/1.0");
     client.Timeout = TimeSpan.FromSeconds(15);
+});
+builder.Services.AddHttpClient("DatabaseSubmitService", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("arm/1.0");
 });
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<IConductor, Conductor>();

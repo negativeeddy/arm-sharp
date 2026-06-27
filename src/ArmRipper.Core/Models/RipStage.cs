@@ -7,7 +7,8 @@ public enum RipStage
     Rip,
     Transcode,
     Finalize,
-    Done
+    Done,
+    CrcSubmitted
 }
 
 public static class RipStageExtensions
@@ -20,6 +21,7 @@ public static class RipStageExtensions
         RipStage.Transcode => "Transcode",
         RipStage.Finalize => "Finalize",
         RipStage.Done => "Done",
+        RipStage.CrcSubmitted => "CrcSubmitted",
         _ => "Setup"
     };
 }
