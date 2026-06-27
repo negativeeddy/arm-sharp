@@ -23,6 +23,12 @@ public class ArmSettings
     public bool AutoEject { get; set; } = true;
     public bool DelRawFiles { get; set; } = false;
 
+    public bool SetMediaPermissions { get; set; } = true;
+    public string? ChmodValue { get; set; } = "777";
+    public bool SetMediaOwner { get; set; } = false;
+    public string? ChownUser { get; set; } = "arm";
+    public string? ChownGroup { get; set; } = "arm";
+
     public string? RipMethod { get; set; } = "mkv";
     public string? MkvArgs { get; set; } = "";
     public int MinLength { get; set; } = 600;

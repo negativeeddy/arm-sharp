@@ -129,7 +129,7 @@ public sealed class ArmRipperService(
 
         await ScanEmbyAsync(job, ct);
 
-        SetPermissions(finalDirectory, job);
+        await SetPermissionsAsync(finalDirectory, job, ct);
 
         var delRaw = job.Config?.DelRawFiles ?? settings.Value.DelRawFiles;
         if (delRaw)
@@ -791,16 +791,48 @@ public sealed class ArmRipperService(
         }
     }
 
-    private void SetPermissions(string directoryToTraverse, Job job)
+    private async Task SetPermissionsAsync(string directoryToTraverse, Job job, CancellationToken ct)
     {
-        if (job.Config is null) return;
+        if (!settings.Value.SetMediaPermissions)
+        {
+            logger.LogInformation("SET_MEDIA_PERMISSIONS is disabled — skipping permission changes");
+            return;
+        }
 
         try
         {
-            var chmodValue = Convert.ToInt32("777", 8);
+            // ── chmod ──
+            var chmodString = settings.Value.ChmodValue ?? "777";
+            var chmodValue = Convert.ToInt32(chmodString, 8);
             logger.LogInformation("Setting permissions to: {ChmodValue} on: {Dir}", chmodValue, directoryToTraverse);
             SetUnixPermissionsRecursive(directoryToTraverse, chmodValue);
             logger.LogInformation("Permissions set successfully");
+
+            // ── chown ──
+            if (settings.Value.SetMediaOwner)
+            {
+                var chownUser = settings.Value.ChownUser;
+                if (string.IsNullOrEmpty(chownUser))
+                    chownUser = Environment.GetEnvironmentVariable("ARM_UID") ?? "arm";
+
+                var chownGroup = settings.Value.ChownGroup;
+                if (string.IsNullOrEmpty(chownGroup))
+                    chownGroup = Environment.GetEnvironmentVariable("ARM_GID") ?? "arm";
+
+                logger.LogInformation("Setting owner to {User}:{Group} on: {Dir}", chownUser, chownGroup, directoryToTraverse);
+                var chownResult = await runner.RunAsync(
+                    "chown", $"-R {chownUser}:{chownGroup} \"{directoryToTraverse}\"",
+                    timeoutMs: 60_000, ct: ct);
+
+                if (chownResult.ExitCode != 0)
+                {
+                    logger.LogWarning("chown exited with {ExitCode}: {StdErr}", chownResult.ExitCode, chownResult.StdErr);
+                }
+                else
+                {
+                    logger.LogInformation("Owner set successfully");
+                }
+            }
         }
         catch (Exception ex)
         {

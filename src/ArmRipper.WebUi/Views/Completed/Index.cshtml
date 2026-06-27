@@ -306,20 +306,33 @@ else
             var $currentName = $('#renameCurrentName');
             var $input = $('#renameInput');
 
+            // Select only the name without the extension
+            function selectNameWithoutExtension(el) {
+                var val = el.val();
+                var dotIdx = val.lastIndexOf('.');
+                if (dotIdx > 0) {
+                    el[0].setSelectionRange(0, dotIdx);
+                } else {
+                    el.select();
+                }
+            }
+
             $(document).on('click', '.rename-btn', function () {
                 var $btn = $(this);
                 var fp = decodeURIComponent($btn.data('filepath'));
                 var fn = $btn.data('filename');
                 $filePath.val(fp);
                 $currentName.text(fn);
-                // Pre-fill input with current name (selected for easy replacement)
-                $input.val(fn).select();
+                // Pre-fill input with current name (select name only, not extension)
+                $input.val(fn);
+                selectNameWithoutExtension($input);
                 $modal.modal('show');
             });
 
             // Auto-focus input when modal opens
             $modal.on('shown.bs.modal', function () {
-                $input.trigger('focus').select();
+                $input.trigger('focus');
+                selectNameWithoutExtension($input);
             });
         });
     </script>
