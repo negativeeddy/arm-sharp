@@ -446,4 +446,28 @@ public class SettingsController(
         TempData["Message"] = "System info updated.";
         return RedirectToAction("Index");
     }
+
+    [HttpPost("save-notifications")]
+    public async Task<IActionResult> SaveNotifications(
+        string? PbKey, string? IftttKey, string? PoUserKey,
+        string? BashScript, string? JsonUrl, string? Apprise,
+        string? ArmApiKey,
+        CancellationToken ct = default)
+    {
+        var fields = new Dictionary<string, string?>
+        {
+            ["PbKey"] = PbKey is not null ? JsonSerialize(PbKey) : null,
+            ["IftttKey"] = IftttKey is not null ? JsonSerialize(IftttKey) : null,
+            ["PoUserKey"] = PoUserKey is not null ? JsonSerialize(PoUserKey) : null,
+            ["BashScript"] = BashScript is not null ? JsonSerialize(BashScript) : null,
+            ["JsonUrl"] = JsonUrl is not null ? JsonSerialize(JsonUrl) : null,
+            ["Apprise"] = Apprise is not null ? JsonSerialize(Apprise) : null,
+            ["ArmApiKey"] = ArmApiKey is not null ? JsonSerialize(ArmApiKey) : null,
+        };
+
+        await SettingsHelper.MergeIntoDbAsync(db, fields, ct);
+        TempData["Message"] = "Notification settings saved.";
+        TempData["ActiveTab"] = "tab6";
+        return RedirectToAction("Index");
+    }
 }
