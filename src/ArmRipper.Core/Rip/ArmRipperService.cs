@@ -31,8 +31,8 @@ public sealed class ArmRipperService(
         var typeSubFolder = ConvertJobType(job.VideoType);
         var jobTitle = FixJobTitle(job);
 
-        var transcodeOutPath = Path.Combine(job.Config?.TranscodePath ?? settings.Value.TranscodePath!, typeSubFolder, jobTitle);
-        var finalDirectory = Path.Combine(job.Config?.CompletedPath ?? settings.Value.CompletedPath!, typeSubFolder, jobTitle);
+        var transcodeOutPath = Path.Combine(job.Config?.TranscodePath ?? ArmPaths.GetTranscodePath(settings.Value), typeSubFolder, jobTitle);
+        var finalDirectory = Path.Combine(job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value), typeSubFolder, jobTitle);
 
         job.Stage ??= RipStage.Setup;
         job.Stage = RipStage.Identify;  // transition stage
@@ -48,7 +48,7 @@ public sealed class ArmRipperService(
 
         logger.LogInformation("Processing files to: {TranscodeOutPath}", transcodeOutPath);
 
-        var makeMkvOutPath = Path.Combine(job.Config?.RawPath ?? settings.Value.RawPath!, jobTitle);
+        var makeMkvOutPath = Path.Combine(job.Config?.RawPath ?? ArmPaths.GetRawPath(settings.Value), jobTitle);
         var transcodeInPath = job.DevPath;
         var useMakeMkv = RipWithMkv(job, protection);
 
@@ -116,7 +116,7 @@ public sealed class ArmRipperService(
         {
             DeleteRawFiles(new[] { finalDirectory });
             jobTitle = FixJobTitle(job);
-            finalDirectory = Path.Combine(job.Config?.CompletedPath ?? settings.Value.CompletedPath!, typeSubFolder, jobTitle);
+            finalDirectory = Path.Combine(job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value), typeSubFolder, jobTitle);
             // Re-apply dupe folder suffix — CheckForDupeFolder already determined a suffix
             // was needed, but the path recalculation above dropped it.
             finalDirectory = CheckForDupeFolder(hasDupes, finalDirectory, job);

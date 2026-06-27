@@ -327,7 +327,7 @@ public sealed partial class IdentifyService(
         {
             var typeSubFolder = ArmRipperService.ConvertJobType(job.VideoType);
             var jobTitle = ArmRipperService.FixJobTitle(job);
-            var completedPath = settings.Value.CompletedPath ?? "/home/arm/media";
+            var completedPath = ArmPaths.GetCompletedPath(settings.Value);
             var finalDir = Path.Combine(completedPath, typeSubFolder, jobTitle);
             Directory.CreateDirectory(finalDir);
 

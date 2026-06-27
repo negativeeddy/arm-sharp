@@ -7,7 +7,7 @@ namespace ArmRipper.WebUi.Hubs;
 
 public class NotificationHub(IOptions<ArmSettings> settings) : Hub
 {
-    private string LogPath => settings.Value.LogPath ?? "/home/arm/logs";
+    private string LogPath => ArmPaths.GetLogPath(settings.Value);
 
     public async IAsyncEnumerable<string> StreamLog(
         string fileName,

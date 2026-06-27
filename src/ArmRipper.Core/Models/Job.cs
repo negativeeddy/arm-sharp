@@ -1,3 +1,4 @@
+using ArmRipper.Core.Configuration;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ArmRipper.Core.Models;
@@ -84,7 +85,7 @@ public class Job
     /// <summary>Full path to the on-disk log file for this job.</summary>
     public string GetLogFilePath(string? defaultLogPath = null)
     {
-        var logPath = Config?.LogPath ?? defaultLogPath ?? "/home/arm/logs";
+        var logPath = Config?.LogPath ?? defaultLogPath ?? ArmPaths.DefaultLogPath;
         return System.IO.Path.Combine(logPath, LogFile ?? $"{Id}.log");
     }
 

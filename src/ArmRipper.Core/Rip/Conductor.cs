@@ -552,10 +552,10 @@ public sealed class Conductor(
         var label = !string.IsNullOrEmpty(job.Label) ? job.Label : "data-disc";
         var rawPath = job.Config?.RawPath is not null
             ? Path.Combine(job.Config.RawPath, label)
-            : Path.Combine(settings.Value.RawPath ?? "/home/arm/media/raw", label);
+            : Path.Combine(ArmPaths.GetRawPath(settings.Value), label);
         var finalDir = job.Config?.CompletedPath is not null
-            ? Path.Combine(job.Config.CompletedPath, "data")
-            : Path.Combine(settings.Value.CompletedPath ?? "/home/arm/media", "data");
+            ? Path.Combine(job.Config.CompletedPath, ArmPaths.DataDir)
+            : Path.Combine(ArmPaths.GetCompletedPath(settings.Value), ArmPaths.DataDir);
         var finalFileName = label;
 
         if (Directory.Exists(rawPath))

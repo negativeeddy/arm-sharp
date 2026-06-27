@@ -1,3 +1,4 @@
+using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
@@ -97,8 +98,8 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardware
 
         try
         {
-            ViewBag.StorageTranscode = GetDriveInfo("/home/arm/media/transcode");
-            ViewBag.StorageCompleted = GetDriveInfo("/home/arm/media/completed");
+            ViewBag.StorageTranscode = GetDriveInfo(ArmPaths.DefaultTranscodePath);
+            ViewBag.StorageCompleted = GetDriveInfo(ArmPaths.DefaultCompletedPath);
         }
         catch { }
 

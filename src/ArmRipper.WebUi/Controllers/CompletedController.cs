@@ -16,11 +16,6 @@ namespace ArmRipper.WebUi.Controllers;
 [Route("completed")]
 public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache cache, ArmDbContext db, IBackgroundRipService backgroundRip) : Controller
 {
-    private const string DefaultCompletedPath = "/home/arm/media/completed";
-    private const string DefaultRawPath = "/home/arm/media/raw";
-    private const string DefaultTranscodePath = "/home/arm/media/transcode";
-    private const string LegacyBasePath = "/home/arm/media";
-
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
     private const string CacheKey = "CompletedFiles";
 
@@ -33,23 +28,23 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         var files = await cache.GetOrCreateAsync(CacheKey, async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = CacheDuration;
-            var cp = settings.Value.CompletedPath ?? DefaultCompletedPath;
-            var rp = settings.Value.RawPath ?? DefaultRawPath;
-            var tp = settings.Value.TranscodePath ?? DefaultTranscodePath;
+            var cp = ArmPaths.GetCompletedPath(settings.Value);
+            var rp = ArmPaths.GetRawPath(settings.Value);
+            var tp = ArmPaths.GetTranscodePath(settings.Value);
 
             // Scan the configured completed path.
-            var completed = await ScanFilesAsync(cp, "Output", ct);
+            var completed = await ScanFilesAsync(cp, FileSource.Completed, ct);
             // Also scan the legacy base path so that files living
             // directly under movies/, tv/, etc. (legacy layout or mixed configs) are found.
-            var basePath = LegacyBasePath;
+            var basePath = ArmPaths.DefaultMediaRoot; // legacy fallback
             if (!string.Equals(cp, basePath, StringComparison.OrdinalIgnoreCase) && Directory.Exists(basePath))
             {
-                var baseFiles = await ScanFilesAsync(basePath, "Output", ct);
+                var baseFiles = await ScanFilesAsync(basePath, FileSource.Completed, ct);
                 var existing = new HashSet<string>(completed.Select(f => f.FilePath), StringComparer.OrdinalIgnoreCase);
                 completed.AddRange(baseFiles.Where(f => !existing.Contains(f.FilePath)));
             }
-            var raw = await ScanFilesAsync(rp, "Raw", ct);
-            var transcode = await ScanFilesAsync(tp, "Transcode", ct);
+            var raw = await ScanFilesAsync(rp, FileSource.Raw, ct);
+            var transcode = await ScanFilesAsync(tp, FileSource.Transcode, ct);
 
             // Raw/Transcode paths may be subdirectories of the completed/base path.
             // Deduplicate: prefer the more specific source (Raw > Transcode > Output).
@@ -59,7 +54,7 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
                 .ToList();
             var deduped = new List<CompletedFileInfo>();
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var f in all.OrderBy(f => f.Source == "Raw" ? 0 : f.Source == "Transcode" ? 1 : 2))
+            foreach (var f in all.OrderBy(f => f.Source == FileSource.Raw ? 0 : f.Source == FileSource.Transcode ? 1 : 2))
             {
                 if (seen.Add(f.FilePath))
                     deduped.Add(f);
@@ -274,17 +269,11 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         return RedirectToAction("Index");
     }
 
-    private (string basePath, string source) ResolveSource(string filePath)
+    private (string basePath, FileSource source) ResolveSource(string filePath)
     {
-        var completed = (settings.Value.CompletedPath ?? DefaultCompletedPath).TrimEnd('/');
-        var raw = (settings.Value.RawPath ?? DefaultRawPath).TrimEnd('/');
-        var transcode = (settings.Value.TranscodePath ?? DefaultTranscodePath).TrimEnd('/');
-
-        if (filePath.StartsWith(raw, StringComparison.OrdinalIgnoreCase))
-            return (raw, "Raw");
-        if (filePath.StartsWith(transcode, StringComparison.OrdinalIgnoreCase))
-            return (transcode, "Transcode");
-        return (completed, "Output");
+        var source = ArmPaths.ResolveSourceType(filePath, settings.Value);
+        var basePath = ArmPaths.GetPathForSource(source, settings.Value);
+        return (basePath.TrimEnd('/'), source);
     }
 
     private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -292,7 +281,7 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         ".mkv", ".mp4", ".m4v", ".avi", ".mov", ".webm", ".ts", ".m2ts", ".iso", ".mpeg", ".mpg", ".wmv", ".flv", ".ogv"
     };
 
-    private async Task<List<CompletedFileInfo>> ScanFilesAsync(string basePath, string source, CancellationToken ct)
+    private async Task<List<CompletedFileInfo>> ScanFilesAsync(string basePath, FileSource source, CancellationToken ct)
     {
         if (!Directory.Exists(basePath))
             return [];
@@ -322,7 +311,7 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
 
             // ── Attempt #1: Track-level match (most precise) ──
             // Works for Raw files where the file name matches a Track record.
-            if (source == "Raw" && !string.IsNullOrEmpty(fileName))
+            if (source == FileSource.Raw && !string.IsNullOrEmpty(fileName))
             {
                 var trackJobId = await db.Tracks
                     .Where(t => t.BaseName == dirName && t.FileName == fileName)
@@ -348,7 +337,7 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
             {
                 info.JobId = jobByPath.Id;
                 info.JobTitle = jobByPath.Title;
-                if (source == "Raw")
+                if (source == FileSource.Raw)
                     info.OriginalJobId = jobByPath.Id;
                 continue;
             }
@@ -366,7 +355,7 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
                 if (foundByTitleYear is not null)
                 {
                     info.JobId = foundByTitleYear.Id;
-                    if (source == "Raw")
+                    if (source == FileSource.Raw)
                         info.OriginalJobId = foundByTitleYear.Id;
                     info.JobTitle = foundByTitleYear.Title;
                     continue;
@@ -381,7 +370,7 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
             if (fallback is not null)
             {
                 info.JobId = fallback.Id;
-                if (source == "Raw")
+                if (source == FileSource.Raw)
                     info.OriginalJobId = fallback.Id;
                 info.JobTitle = fallback.Title;
             }
@@ -395,7 +384,7 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
     /// If ffprobe fails or is unavailable, returns an info object populated with basic
     /// filesystem metadata (file name, size, last-modified) so the file is still visible.
     /// </summary>
-    private async Task<CompletedFileInfo> ProbeFileAsync(string filePath, string basePath, string source, CancellationToken ct)
+    private async Task<CompletedFileInfo> ProbeFileAsync(string filePath, string basePath, FileSource source, CancellationToken ct)
     {
         // Start with a basic info object from filesystem data (always succeeds).
         var fileInfo = new System.IO.FileInfo(filePath);

@@ -4,12 +4,12 @@ public class ArmSettings
 {
     public const string SectionName = "Arm";
 
-    public string? RawPath { get; set; } = "/home/arm/media/raw";
-    public string? TranscodePath { get; set; } = "/home/arm/media/transcode";
-    public string? CompletedPath { get; set; } = "/home/arm/media";
-    public string? LogPath { get; set; } = "/home/arm/logs";
-    public string? DbFile { get; set; } = "/etc/arm/config/arm-sharp.db";
-    public string? InstallPath { get; set; } = "/opt/arm";
+    public string? RawPath { get; set; } = ArmPaths.DefaultRawPath;
+    public string? TranscodePath { get; set; } = ArmPaths.DefaultTranscodePath;
+    public string? CompletedPath { get; set; } = ArmPaths.DefaultCompletedPath;
+    public string? LogPath { get; set; } = ArmPaths.DefaultLogPath;
+    public string? DbFile { get; set; } = ArmPaths.DefaultDbFile;
+    public string? InstallPath { get; set; } = ArmPaths.DefaultInstallPath;
 
     public bool SkipTranscode { get; set; }
     public bool MainFeature { get; set; } = true;

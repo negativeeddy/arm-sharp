@@ -1,3 +1,4 @@
+using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -84,7 +85,7 @@ public class DatabaseController(ArmDbContext db) : Controller
     [HttpGet("import")]
     public async Task<IActionResult> Import(CancellationToken ct = default)
     {
-        var completedPath = "/home/arm/media";
+        var completedPath = ArmPaths.DefaultCompletedPath;
         if (!Directory.Exists(completedPath))
             return Json(new { message = "Completed path does not exist", path = completedPath });
 

@@ -206,7 +206,7 @@ public partial class ApiController(
         if (job?.LogFile is null)
             return Json(new { success = false, error = "Job or log file not found" });
 
-        var logPath = settings.Value.LogPath ?? "/home/arm/logs";
+        var logPath = ArmPaths.GetLogPath(settings.Value);
         var fullPath = Path.Combine(logPath, job.LogFile);
 
         if (!System.IO.File.Exists(fullPath))

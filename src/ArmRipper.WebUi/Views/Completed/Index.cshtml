@@ -4,7 +4,7 @@
     var totalFiles = Model.Count;
 
     // Single flat list ordered by Source priority, then by directory, then by date desc.
-    var sourceOrder = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["Output"] = 0, ["Transcode"] = 1, ["Raw"] = 2 };
+    var sourceOrder = new Dictionary<FileSource, int> { [FileSource.Completed] = 0, [FileSource.Transcode] = 1, [FileSource.Raw] = 2 };
     var ordered = Model
         .OrderBy(f => sourceOrder.TryGetValue(f.Source, out var o) ? o : 3)
         .ThenBy(f => f.RelativeDirectory)
@@ -41,11 +41,11 @@
 }
 else
 {
-    var sourceIcons = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    var sourceIcons = new Dictionary<FileSource, string>
     {
-        ["Output"] = "✅",
-        ["Raw"] = "📦",
-        ["Transcode"] = "⚙️"
+        [FileSource.Completed] = "✅",
+        [FileSource.Raw] = "📦",
+        [FileSource.Transcode] = "⚙"
     };
 
     <div class="table-responsive">
@@ -78,7 +78,7 @@ else
             </thead>
             <tbody>
                 @{
-                    string? lastSource = null;
+                    FileSource? lastSource = null;
                     string? lastDir = null;
                     long dirTotalSize = 0;
                 }
@@ -92,9 +92,9 @@ else
                         var icon = sourceIcons.TryGetValue(file.Source, out var ic) ? ic : "📁";
                         var desc = file.Source switch
                         {
-                            "Output" => "Completed, ready-to-play files",
-                            "Raw" => "Unprocessed MakeMKV rips",
-                            "Transcode" => "In-progress or partially transcoded files",
+                            FileSource.Completed => "Completed, ready-to-play files",
+                            FileSource.Raw => "Unprocessed MakeMKV rips",
+                            FileSource.Transcode => "In-progress or partially transcoded files",
                             _ => ""
                         };
                         <tr class="table-divider-source">
@@ -210,7 +210,7 @@ else
                                     style="padding:0.1rem 0.4rem; font-size:0.75rem;"
                                     data-filepath="@Uri.EscapeDataString(file.FilePath)"
                                     data-filename="@file.FileName">✏️</button>
-                            @if (file.Source == "Output")
+                            @if (file.Source == FileSource.Completed)
                             {
                                 <button type="button" class="btn btn-outline-warning btn-sm fixdir-btn mr-1"
                                         title="Make sure this file is in its own movie folder"
@@ -218,7 +218,7 @@ else
                                         data-filepath="@Uri.EscapeDataString(file.FilePath)"
                                         data-filename="@file.FileName">📁</button>
                             }
-                            @if (file.Source == "Raw")
+                            @if (file.Source == FileSource.Raw)
                             {
                                 <form method="post" action="/completed/transcode" style="display:inline" class="mr-1">
                                     <input type="hidden" name="filePath" value="@file.FilePath" />

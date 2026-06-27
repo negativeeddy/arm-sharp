@@ -1,3 +1,5 @@
+using ArmRipper.Core.Configuration;
+
 namespace ArmRipper.WebUi.Models;
 
 public class CompletedFileInfo
@@ -5,8 +7,8 @@ public class CompletedFileInfo
     public string FilePath { get; set; } = "";
     public string FileName => Path.GetFileName(FilePath);
     public string RelativeDirectory { get; set; } = "";
-    /// <summary>Which directory the file came from: "Output", "Raw", or "Transcode".</summary>
-    public string Source { get; set; } = "Output";
+    /// <summary>Which directory the file came from (see <see cref="FileSource"/>).</summary>
+    public FileSource Source { get; set; } = FileSource.Completed;
     /// <summary>True if the file lives in an "extras" subfolder and can be promoted to a standalone movie.</summary>
     public bool IsExtra
     {

@@ -89,7 +89,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
             return NotFound();
 
         var logPath = Path.Combine(
-            job.Config?.LogPath ?? settings.Value.LogPath ?? "/home/arm/logs",
+            job.Config?.LogPath ?? ArmPaths.GetLogPath(settings.Value),
             job.LogFile ?? $"{jobId}.log");
 
         if (!System.IO.File.Exists(logPath))

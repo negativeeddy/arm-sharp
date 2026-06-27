@@ -9,7 +9,7 @@ namespace ArmRipper.WebUi.Controllers;
 [Route("logs")]
 public class LogsController(IOptions<ArmSettings> settings) : Controller
 {
-    private string LogPath => settings.Value.LogPath ?? "/home/arm/logs";
+    private string LogPath => ArmPaths.GetLogPath(settings.Value);
 
     [HttpGet("")]
     public IActionResult Index()
