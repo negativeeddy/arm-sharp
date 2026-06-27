@@ -36,6 +36,7 @@
     <li class="nav-item"><a class="nav-link @(ViewBag.ActiveTab == "tab4" ? "active" : "")" id="tab4-tab" data-toggle="tab" href="#tab4" role="tab">UI</a></li>
     <li class="nav-item"><a class="nav-link @(ViewBag.ActiveTab == "tab5" ? "active" : "")" id="tab5-tab" data-toggle="tab" href="#tab5" role="tab">abcde</a></li>
     <li class="nav-item"><a class="nav-link @(ViewBag.ActiveTab == "tab8" ? "active" : "")" id="tab8-tab" data-toggle="tab" href="#tab8" role="tab">Transcoding</a></li>
+    <li class="nav-item"><a class="nav-link @(ViewBag.ActiveTab == "tab9" ? "active" : "")" id="tab9-tab" data-toggle="tab" href="#tab9" role="tab">Online DB</a></li>
     <li class="nav-item"><a class="nav-link @(ViewBag.ActiveTab == "tab6" ? "active" : "")" id="tab6-tab" data-toggle="tab" href="#tab6" role="tab">Apprise</a></li>
     <li class="nav-item"><a class="nav-link @(ViewBag.ActiveTab == "tab7" ? "active" : "")" id="tab7-tab" data-toggle="tab" href="#tab7" role="tab">Help</a></li>
 </ul>
@@ -424,17 +425,18 @@
         </form>
     </div>
 
-    <!-- Apprise & API Config -->
-    <div class="tab-pane fade @(ViewBag.ActiveTab == "tab6" ? "show active" : "")" id="tab6" role="tabpanel">
-        <h2>Notifications &amp; API Config</h2>
-        <form method="post" action="/settings/save-notifications">
-            <div class="card mb-3">
-                <div class="card-header"><h5 class="mb-0">ARM Online Database API</h5></div>
-                <div class="card-body">
-                    <p>Submit your DVD CRC64 hashes to the community database at
-                        <a href="https://1337server.pythonanywhere.com" target="_blank">1337server</a>
-                        to help others identify discs. Get a free API key
-                        <a href="https://1337server.pythonanywhere.com/request/key" target="_blank">here</a>.</p>
+    <!-- Online DB -->
+    <div class="tab-pane fade @(ViewBag.ActiveTab == "tab9" ? "show active" : "")" id="tab9" role="tabpanel">
+        <h2>ARM Online Database</h2>
+
+        <div class="card mb-3">
+            <div class="card-header"><h5 class="mb-0">API Key</h5></div>
+            <div class="card-body">
+                <p>Submit your DVD CRC64 hashes to the community database at
+                    <a href="https://1337server.pythonanywhere.com" target="_blank">1337server</a>
+                    to help others identify discs. Get a free API key
+                    <a href="https://1337server.pythonanywhere.com/request/key" target="_blank">here</a>.</p>
+                <form method="post" action="/settings/save-notifications">
                     <table class="table table-sm mb-0">
                         <tr>
                             <td class="w-25"><label for="ArmApiKey">ARM API Key:</label></td>
@@ -451,11 +453,39 @@
                             </td>
                         </tr>
                     </table>
+                    <button type="submit" class="btn btn-primary mt-2">Save API Key</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h5 class="mb-0">Send Movies to ARM Online Database</h5></div>
+            <div class="card-body">
+                <p>This will submit all DVD jobs that have a CRC64 hash and a nice title to the
+                    community ARM database. Previously submitted movies are skipped automatically.</p>
+                <p class="text-warning"><strong>Warning:</strong> This may take a while with a large database.</p>
+                <button id="sendMoviesBtn" class="btn btn-info" onclick="sendPendingMovies()"
+                        @(ViewBag.PendingCrcCount == 0 ? "disabled" : "")>
+                    🚀 Send @ViewBag.PendingCrcCount Pending Movies
+                </button>
+                <div id="sendMoviesProgress" class="mt-3" style="display:none;">
+                    <div class="progress mb-2">
+                        <div id="sendMoviesProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                             role="progressbar" style="width:0%"></div>
+                    </div>
+                    <div id="sendMoviesStatus" class="text-muted"></div>
+                    <div id="sendMoviesResults" class="mt-2"></div>
                 </div>
             </div>
+        </div>
+    </div>
 
+    <!-- Apprise -->
+    <div class="tab-pane fade @(ViewBag.ActiveTab == "tab6" ? "show active" : "")" id="tab6" role="tabpanel">
+        <h2>Apprise / Push Notifications</h2>
+        <form method="post" action="/settings/save-notifications">
             <div class="card mb-3">
-                <div class="card-header"><h5 class="mb-0">Apprise / Push Notifications</h5></div>
+                <div class="card-header"><h5 class="mb-0">Notification Services</h5></div>
                 <div class="card-body">
                     <table class="table table-sm mb-0">
                         <tr><td class="w-25"><label for="PbKey">Pushbullet Key:</label></td>
@@ -477,28 +507,6 @@
             <button type="submit" class="btn btn-primary">Save Notification Settings</button>
             <button type="submit" class="btn btn-outline-warning ml-2" form="resetForm">↻ Reset to file defaults</button>
         </form>
-
-        <hr class="my-4" />
-
-        <div class="card">
-            <div class="card-header"><h5 class="mb-0">Send Movies to ARM Online Database</h5></div>
-            <div class="card-body">
-                <p>This will submit all DVD jobs that have a CRC64 hash and a nice title to the
-                    community ARM database. Previously submitted movies are skipped automatically.</p>
-                <p class="text-warning"><strong>Warning:</strong> This may take a while with a large database.</p>
-                <button id="sendMoviesBtn" class="btn btn-info" onclick="sendPendingMovies()">
-                    🚀 Send Pending Movies
-                </button>
-                <div id="sendMoviesProgress" class="mt-3" style="display:none;">
-                    <div class="progress mb-2">
-                        <div id="sendMoviesProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"
-                             role="progressbar" style="width:0%"></div>
-                    </div>
-                    <div id="sendMoviesStatus" class="text-muted"></div>
-                    <div id="sendMoviesResults" class="mt-2"></div>
-                </div>
-            </div>
-        </div>
     </div>
 
     <script>
@@ -538,20 +546,46 @@
                         bar.classList.add("bg-danger");
                     }
                     if (data.success) {
-                        var msg = "Sent " + data.submitted + " of " + data.total + " movies.";
-                        if (data.failed > 0) msg += " " + data.failed + " failed.";
-                        status.textContent = msg;
+                        var added = 0, alreadyExists = 0, skipped = 0, failed = 0;
+                        data.results.forEach(function (r) {
+                            if (r.status === "added") added++;
+                            else if (r.status === "already_exists") alreadyExists++;
+                            else if (r.status === "skipped") skipped++;
+                            else failed++;
+                        });
+                        var parts = [];
+                        if (added > 0) parts.push(added + " added");
+                        if (alreadyExists > 0) parts.push(alreadyExists + " already in DB");
+                        if (skipped > 0) parts.push(skipped + " skipped");
+                        if (failed > 0) parts.push(failed + " failed");
+                        status.textContent = parts.join(", ") || "No movies to send.";
 
                         var html = "";
                         data.results.forEach(function (r) {
-                            var icon = r.success
-                                ? "<span class='text-success' data-toggle='tooltip' title='" + escHtml(r.message) + "'>&#9989;</span>"
-                                : "<span class='text-danger' data-toggle='tooltip' title='" + escHtml(r.message) + "'>&#10060;</span>";
+                            var icon, color;
+                            if (r.status === "added") {
+                                icon = "&#9989;"; color = "text-success";
+                            } else if (r.status === "already_exists") {
+                                icon = "&#128204;"; color = "text-info";
+                            } else if (r.status === "skipped") {
+                                icon = "&#9193;"; color = "text-secondary";
+                            } else {
+                                icon = "&#10060;"; color = "text-danger";
+                            }
+                            var tipTitle = r.status === "added" ? "Successfully added to database"
+                                : r.status === "already_exists" ? "Already in the database"
+                                : r.status === "skipped" ? "Already submitted locally"
+                                : r.message || "Submission failed";
                             html += "<div class='d-inline-block mr-2 mb-1' title=''>" +
-                                icon + " Job #" + r.jobId + "</div>";
+                                "<span class='" + color + "' data-toggle='tooltip' title='" + escHtml(tipTitle) + "'>" + icon + "</span>" +
+                                " Job #" + r.jobId + "</div>";
                         });
                         results.innerHTML = html;
                         $('[data-toggle="tooltip"]').tooltip();
+
+                        // Update the button text and disable if nothing left
+                        btn.textContent = "🚀 Send " + failed + " Pending Movies";
+                        if (failed === 0) btn.disabled = true;
                     } else {
                         status.textContent = "Failed to send: " + (data.error || "Unknown error");
                     }

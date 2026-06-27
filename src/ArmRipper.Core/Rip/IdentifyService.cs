@@ -300,6 +300,10 @@ public sealed partial class IdentifyService(
                     job.VideoType = job.VideoTypeAuto = first.VideoType;
                     job.PosterUrl = job.PosterUrlAuto = first.PosterUrl;
                     job.HasNiceTitle = true;
+
+                    // CRC already exists in the remote DB — mark as submitted so
+                    // the submit service skips it rather than trying to re-upload.
+                    job.MarkStageComplete(RipStage.CrcSubmitted);
                 }
             }
         }

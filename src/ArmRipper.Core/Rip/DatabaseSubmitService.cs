@@ -24,7 +24,7 @@ public sealed class DatabaseSubmitService(
         if (job.IsStageComplete(RipStage.CrcSubmitted))
         {
             logger.LogInformation("Job {JobId} already submitted, skipping", job.Id);
-            return new DatabaseSubmitResult { Success = true, JobId = job.Id, Message = "Already submitted" };
+            return new DatabaseSubmitResult { Success = true, JobId = job.Id, Message = "Already submitted", Status = "skipped" };
         }
 
         // Validate we have what we need
@@ -32,14 +32,14 @@ public sealed class DatabaseSubmitService(
         {
             var msg = $"Job {job.Id} has no CRC64 hash, cannot submit";
             logger.LogWarning(msg);
-            return new DatabaseSubmitResult { Success = false, JobId = job.Id, Message = msg };
+            return new DatabaseSubmitResult { Success = false, JobId = job.Id, Message = msg, Status = "failed" };
         }
 
         if (!job.HasNiceTitle && string.IsNullOrWhiteSpace(job.Title) && string.IsNullOrWhiteSpace(job.TitleManual))
         {
             var msg = $"Job {job.Id} has no nice title, cannot submit";
             logger.LogWarning(msg);
-            return new DatabaseSubmitResult { Success = false, JobId = job.Id, Message = msg };
+            return new DatabaseSubmitResult { Success = false, JobId = job.Id, Message = msg, Status = "failed" };
         }
 
         var apiKey = job.Config?.ArmApiKey ?? settings.Value.ArmApiKey;
@@ -47,7 +47,7 @@ public sealed class DatabaseSubmitService(
         {
             var msg = "No ARM API key configured. Set ArmApiKey in settings.";
             logger.LogWarning(msg);
-            return new DatabaseSubmitResult { Success = false, JobId = job.Id, Message = msg };
+            return new DatabaseSubmitResult { Success = false, JobId = job.Id, Message = msg, Status = "failed" };
         }
 
         try
@@ -71,17 +71,30 @@ public sealed class DatabaseSubmitService(
                 job.MarkStageComplete(RipStage.CrcSubmitted);
                 await db.SaveChangesAsync(ct);
                 logger.LogInformation("Successfully submitted CRC64 for job {JobId} ({Title})", job.Id, job.Title);
-                return new DatabaseSubmitResult { Success = true, JobId = job.Id, Message = "Submitted" };
+                return new DatabaseSubmitResult { Success = true, JobId = job.Id, Message = "Submitted", Status = "added" };
             }
 
             var errorMsg = result?.Error ?? "Unknown error from remote API";
+
+            // If the remote says the CRC already exists, treat it as submitted
+            // so we never retry.
+            if (errorMsg.Contains("already", StringComparison.OrdinalIgnoreCase) ||
+                errorMsg.Contains("exist", StringComparison.OrdinalIgnoreCase) ||
+                errorMsg.Contains("duplicate", StringComparison.OrdinalIgnoreCase))
+            {
+                job.MarkStageComplete(RipStage.CrcSubmitted);
+                await db.SaveChangesAsync(ct);
+                logger.LogInformation("CRC64 for job {JobId} already exists remotely, marking as submitted", job.Id);
+                return new DatabaseSubmitResult { Success = true, JobId = job.Id, Message = "Already exists remotely", Status = "already_exists" };
+            }
+
             logger.LogWarning("Failed to submit CRC64 for job {JobId}: {Error}", job.Id, errorMsg);
-            return new DatabaseSubmitResult { Success = false, JobId = job.Id, Message = errorMsg };
+            return new DatabaseSubmitResult { Success = false, JobId = job.Id, Message = errorMsg, Status = "failed" };
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error submitting CRC64 for job {JobId}", job.Id);
-            return new DatabaseSubmitResult { Success = false, JobId = job.Id, Message = ex.Message };
+            return new DatabaseSubmitResult { Success = false, JobId = job.Id, Message = ex.Message, Status = "failed" };
         }
     }
 

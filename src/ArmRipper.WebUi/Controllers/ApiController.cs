@@ -237,7 +237,6 @@ public partial class ApiController(
         {
             job.TitleManual = title;
             job.Title = title;
-            job.HasNiceTitle = true;
         }
 
         job.ManualWaitResume = true;
@@ -268,6 +267,7 @@ public partial class ApiController(
         {
             success = result.Success,
             message = result.Message,
+            status = result.Status,
             jobId = id,
             title = job.Title,
             year = job.Year
@@ -291,6 +291,7 @@ public partial class ApiController(
             {
                 r.Success,
                 r.Message,
+                r.Status,
                 r.JobId
             })
         });

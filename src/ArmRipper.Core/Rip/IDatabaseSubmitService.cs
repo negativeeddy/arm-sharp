@@ -10,6 +10,15 @@ public record DatabaseSubmitResult
     public bool Success { get; init; }
     public string? Message { get; init; }
     public int? JobId { get; init; }
+
+    /// <summary>
+    /// Categorises the result for UI display:
+    /// "added" — new CRC successfully submitted to the remote DB,
+    /// "already_exists" — CRC already present in the remote DB,
+    /// "skipped" — already marked submitted locally,
+    /// "failed" — submission failed.
+    /// </summary>
+    public string? Status { get; init; }
 }
 
 public interface IDatabaseSubmitService

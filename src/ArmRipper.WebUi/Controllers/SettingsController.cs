@@ -62,6 +62,15 @@ public class SettingsController(
 
         ViewBag.HardwareEncoders = await hardwareEncoderInfoService.GetHardwareEncoderInfoAsync(includeDetailedNvidiaStats: true);
 
+        // Count pending CRC64 submissions for the Online DB tab (excludes already-submitted)
+        var pendingCrcCount = await db.Jobs
+            .Where(j => j.DiscType == DiscType.Dvd &&
+                        !string.IsNullOrEmpty(j.CrcId) &&
+                        (j.HasNiceTitle || !string.IsNullOrEmpty(j.TitleManual)) &&
+                        !EF.Functions.Like(j.CompletedStages ?? "", "%CrcSubmitted%"))
+            .CountAsync(ct);
+        ViewBag.PendingCrcCount = pendingCrcCount;
+
         // Read abcde config if available
         var abcdePath = "/etc/arm/config/abcde.conf";
         var abcdeConfig = new Dictionary<string, string>();
