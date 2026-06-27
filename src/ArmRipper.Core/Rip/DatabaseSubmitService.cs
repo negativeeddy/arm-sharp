@@ -35,7 +35,7 @@ public sealed class DatabaseSubmitService(
             return new DatabaseSubmitResult { Success = false, JobId = job.Id, Message = msg };
         }
 
-        if (!job.HasNiceTitle && string.IsNullOrWhiteSpace(job.Title))
+        if (!job.HasNiceTitle && string.IsNullOrWhiteSpace(job.Title) && string.IsNullOrWhiteSpace(job.TitleManual))
         {
             var msg = $"Job {job.Id} has no nice title, cannot submit";
             logger.LogWarning(msg);
@@ -93,7 +93,7 @@ public sealed class DatabaseSubmitService(
             .Include(j => j.Config)
             .Where(j => j.DiscType == DiscType.Dvd &&
                         !string.IsNullOrEmpty(j.CrcId) &&
-                        j.HasNiceTitle)
+                        (j.HasNiceTitle || !string.IsNullOrEmpty(j.TitleManual)))
             .ToListAsync(ct);
 
         // Filter out already-submitted in memory (since CompletedStages is not queryable via EF)

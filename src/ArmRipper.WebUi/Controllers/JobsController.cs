@@ -63,6 +63,8 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
         if (imdbId is not null) { job.ImdbIdManual = imdbId; job.ImdbId = imdbId; }
         if (posterUrl is not null) { job.PosterUrlManual = posterUrl; job.PosterUrl = posterUrl; }
 
+        job.HasNiceTitle = true;
+
         await db.SaveChangesAsync(ct);
         return RedirectToAction("JobDetail", new { jobId });
     }
@@ -76,6 +78,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
 
         job.TitleManual = title;
         job.Title = title;
+        job.HasNiceTitle = true;
         await db.SaveChangesAsync(ct);
 
         return Redirect(returnUrl ?? Url.Action("TitleSearch")!);
@@ -206,6 +209,8 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
             job.VideoTypeManual = videoType;
             job.VideoType = videoType;
         }
+
+        job.HasNiceTitle = true;
 
         await db.SaveChangesAsync(ct);
 

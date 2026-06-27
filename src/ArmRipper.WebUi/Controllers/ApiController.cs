@@ -237,6 +237,7 @@ public partial class ApiController(
         {
             job.TitleManual = title;
             job.Title = title;
+            job.HasNiceTitle = true;
         }
 
         job.ManualWaitResume = true;
