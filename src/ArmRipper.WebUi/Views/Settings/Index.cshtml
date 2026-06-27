@@ -502,6 +502,12 @@
     </div>
 
     <script>
+        function escHtml(str) {
+            var div = document.createElement("div");
+            div.appendChild(document.createTextNode(str));
+            return div.innerHTML;
+        }
+
         function toggleApiKey() {
             var input = document.getElementById("ArmApiKey");
             input.type = input.type === "password" ? "text" : "password";
@@ -530,11 +536,14 @@
 
                         var html = "";
                         data.results.forEach(function (r) {
-                            var cls = r.success ? "success" : "danger";
-                            html += "<div class='alert alert-" + cls + " py-1 mb-1 small'>" +
-                                "Job #" + r.jobId + ": " + r.message + "</div>";
+                            var icon = r.success
+                                ? "<span class='text-success' data-toggle='tooltip' title='" + escHtml(r.message) + "'>&#9989;</span>"
+                                : "<span class='text-danger' data-toggle='tooltip' title='" + escHtml(r.message) + "'>&#10060;</span>";
+                            html += "<div class='d-inline-block mr-2 mb-1' title=''>" +
+                                icon + " Job #" + r.jobId + "</div>";
                         });
                         results.innerHTML = html;
+                        $('[data-toggle="tooltip"]').tooltip();
                     } else {
                         status.textContent = "Failed to send: " + (data.error || "Unknown error");
                     }
