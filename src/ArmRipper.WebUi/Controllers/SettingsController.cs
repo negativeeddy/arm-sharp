@@ -93,6 +93,7 @@ public class SettingsController(
     [HttpPost("save-ripper")]
     public async Task<IActionResult> SaveRipper(
         string? RipMethod, string? MkvArgs, int? MinLength, int? MaxLength,
+        int? MaxConcurrentRips,
         CancellationToken ct = default)
     {
         // Read checkboxes from raw form values — the hidden-false trick sends
@@ -107,6 +108,7 @@ public class SettingsController(
             ["MkvArgs"] = MkvArgs is not null ? JsonSerialize(MkvArgs) : null,
             ["MinLength"] = JsonSerialize(MinLength ?? 600),
             ["MaxLength"] = JsonSerialize(MaxLength ?? 99999),
+            ["MaxConcurrentRips"] = JsonSerialize(MaxConcurrentRips ?? 1),
             ["MainFeature"] = JsonSerialize(MainFeature),
             ["AutoEject"] = JsonSerialize(AutoEject),
         };
@@ -282,7 +284,9 @@ public class SettingsController(
             return RedirectToAction("Index");
         }
 
-        // Check if a job is already running for this device
+        // Check if a job is already actively ripping on this device.
+        // Jobs that are transcoding (or in other non-ripping states) don't
+        // block the drive — a new rip can be started for the next disc.
         var existingJob = await db.Jobs
             .Where(j => j.DevPath == devPath
                 && j.Status != JobState.Success
@@ -291,7 +295,7 @@ public class SettingsController(
             .OrderByDescending(j => j.StartTime)
             .FirstOrDefaultAsync(ct);
 
-        if (existingJob is not null)
+        if (existingJob is not null && existingJob.Status.IsRippingState())
             return RedirectToAction("JobDetail", "Jobs", new { jobId = existingJob.Id });
 
         // Record the max existing job ID before starting, so we can find the new one

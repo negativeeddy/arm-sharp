@@ -49,6 +49,16 @@ public static class JobStateExtensions
     public static bool IsTerminal(this JobState state) =>
         state is JobState.Success or JobState.Failure or JobState.Cancelled;
 
+    /// <summary>Returns true when the job is in a state where the optical drive is
+    /// actively being used for ripping (i.e. the drive is busy).</summary>
+    public static bool IsRippingState(this JobState state) => state switch
+    {
+        JobState.Active or JobState.VideoRipping or JobState.VideoWaiting
+            or JobState.VideoInfo or JobState.AudioRipping
+            or JobState.ManualWaitStarted => true,
+        _ => false
+    };
+
     public static JobState FromDbString(string value) => value switch
     {
         JobStateDbValues.Success => JobState.Success,

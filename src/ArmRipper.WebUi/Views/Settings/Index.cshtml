@@ -234,6 +234,7 @@
                 ["MkvArgs"] = "Extra arguments passed to makemkvcon (e.g. --decrypt)",
                 ["MinLength"] = "Shortest track length in seconds to include",
                 ["MaxLength"] = "Longest track length in seconds (99999 = no limit)",
+                ["MaxConcurrentRips"] = "How many jobs can run in parallel (e.g. rip one disc while another is transcoding)",
                 ["MainFeature"] = "Rip only the main feature (longest track)",
                 ["AutoEject"] = "Automatically eject disc after processing",
             };
@@ -247,6 +248,7 @@
                 <tr><td><label>MKV Args:</label>@Html.Raw(tip("MkvArgs", tips))</td><td><input type="text" name="MkvArgs" value="@armSettings?.MkvArgs" class="form-control" /></td></tr>
                 <tr><td><label>Min Length:</label>@Html.Raw(tip("MinLength", tips))</td><td><input type="number" name="MinLength" value="@armSettings?.MinLength" class="form-control" /></td></tr>
                 <tr><td><label>Max Length:</label>@Html.Raw(tip("MaxLength", tips))</td><td><input type="number" name="MaxLength" value="@armSettings?.MaxLength" class="form-control" /></td></tr>
+                <tr><td><label>Concurrent Jobs:</label>@Html.Raw(tip("MaxConcurrentRips", tips))</td><td><input type="number" name="MaxConcurrentRips" value="@(armSettings?.MaxConcurrentRips ?? 1)" class="form-control" min="1" step="1" /></td></tr>
                 <tr><td><label for="MainFeature">Main Feature:</label>@Html.Raw(tip("MainFeature", tips))</td><td><input type="hidden" name="MainFeature" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="MainFeature" name="MainFeature" value="true" checked="@armSettings?.MainFeature" /><label class="custom-control-label" for="MainFeature"></label></div></td></tr>
                 <tr><td><label for="AutoEject">Auto Eject:</label>@Html.Raw(tip("AutoEject", tips))</td><td><input type="hidden" name="AutoEject" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="AutoEject" name="AutoEject" value="true" checked="@armSettings?.AutoEject" /><label class="custom-control-label" for="AutoEject"></label></div></td></tr>
             </table>

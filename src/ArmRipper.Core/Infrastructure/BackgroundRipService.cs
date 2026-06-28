@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
 using ArmRipper.Core.Configuration;
+using ArmRipper.Core.Infrastructure.Data;
+using ArmRipper.Core.Models;
 using ArmRipper.Core.Rip;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -19,9 +22,24 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         if (!_activeRips.TryAdd(devPath, cts))
         {
+            // A pipeline is already running for this devPath. If the existing job(s)
+            // on this drive are in a non-ripping state (e.g. transcoding), the drive
+            // is free — replace the entry so a new rip can start.
+            if (!IsAnyJobRippingOnDevPath(devPath))
+            {
+                logger.LogInformation(
+                    "Existing pipeline for {DevPath} is in transcode or other non-ripping state; " +
+                    "replacing entry to allow a new rip", devPath);
+                _activeRips.TryRemove(devPath, out _);
+                if (_activeRips.TryAdd(devPath, cts))
+                    goto start;
+            }
+
             logger.LogWarning("Rip already in progress for {DevPath}", devPath);
             return;
         }
+
+    start:
 
         _ = Task.Run(async () =>
         {
@@ -107,6 +125,31 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
             logger.LogInformation("Cancelling rip for {DevPath}", devPath);
             cts.Cancel();
             cts.Dispose();
+        }
+    }
+
+    /// <summary>Queries the DB to see if any non-terminal job on the given
+    /// devPath is in a ripping state (i.e. still using the optical drive).</summary>
+    private bool IsAnyJobRippingOnDevPath(string devPath)
+    {
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var rippingJob = db.Jobs
+                .Where(j => j.DevPath == devPath
+                    && j.Status != JobState.Success
+                    && j.Status != JobState.Failure
+                    && j.Status != JobState.Cancelled)
+                .OrderByDescending(j => j.StartTime)
+                .FirstOrDefault();
+
+            return rippingJob?.Status.IsRippingState() ?? false;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to check ripping state for {DevPath}; assuming ripping in progress", devPath);
+            return true; // safe default — block the new rip
         }
     }
 }

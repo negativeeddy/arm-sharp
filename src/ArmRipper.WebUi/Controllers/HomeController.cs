@@ -24,10 +24,12 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardware
             .Take(10)
             .ToListAsync(ct);
 
-        // Pass drives and active job device paths for the Drives widget
+        // Pass drives and active job device paths for the Drives widget.
+        // Only jobs that are still using the optical drive (ripping states)
+        // should mark the drive as busy — transcoding jobs no longer need the drive.
         ViewBag.Drives = await db.SystemDrives.ToListAsync(ct);
         ViewBag.ActiveJobDevPaths = activeRips
-            .Where(j => !string.IsNullOrEmpty(j.DevPath))
+            .Where(j => !string.IsNullOrEmpty(j.DevPath) && j.Status.IsRippingState())
             .Select(j => j.DevPath!)
             .ToHashSet();
 

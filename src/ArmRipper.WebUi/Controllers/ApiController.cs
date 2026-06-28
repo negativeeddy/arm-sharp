@@ -105,8 +105,10 @@ public partial class ApiController(
             .Where(j => j.Status != JobState.Success && j.Status != JobState.Failure && j.Status != JobState.Cancelled)
             .ToListAsync(ct);
 
+        // Only jobs in ripping states keep the drive busy — transcoding jobs
+        // no longer need the drive so the button should become available again.
         ViewBag.ActiveJobDevPaths = activeRips
-            .Where(j => !string.IsNullOrEmpty(j.DevPath))
+            .Where(j => !string.IsNullOrEmpty(j.DevPath) && j.Status.IsRippingState())
             .Select(j => j.DevPath!)
             .ToHashSet();
 
