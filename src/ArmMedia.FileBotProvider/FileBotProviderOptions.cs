@@ -15,4 +15,11 @@ public sealed class FileBotProviderOptions
     /// <see cref="Core.Models.DiscContext.DiscId"/> at runtime.
     /// </summary>
     public string MapFilePath { get; set; } = "./filebot-map.json";
+
+    /// <summary>
+    /// Gets or sets the database used for FileBot CLI matching.
+    /// Default is <c>TheTVDB</c> for best DVD episode order support.
+    /// Other options: <c>AniDB</c>, <c>TVmaze</c>, <c>OMDb</c>.
+    /// </summary>
+    public string FileBotDb { get; set; } = "TheTVDB";
 }

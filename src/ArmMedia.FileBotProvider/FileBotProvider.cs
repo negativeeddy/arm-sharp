@@ -14,8 +14,12 @@ namespace ArmMedia.FileBotProvider;
 /// </summary>
 public sealed class FileBotProvider : IEpisodeIdentificationProvider
 {
+    /// <summary>Constant provider name used by both the sidecar and CLI identification paths.</summary>
+    public const string ProviderNameConst = "FileBot";
+
     private readonly FileBotProviderOptions        _options;
     private readonly ILogger<FileBotProvider>      _logger;
+    private readonly FileBotCliService?            _cliService;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -23,17 +27,19 @@ public sealed class FileBotProvider : IEpisodeIdentificationProvider
         AllowTrailingCommas         = true
     };
 
-    /// <summary>Initialises the provider with options and a logger.</summary>
+    /// <summary>Initialises the provider with options, a logger, and an optional CLI service for runtime identification.</summary>
     public FileBotProvider(
         IOptions<FileBotProviderOptions>    options,
-        ILogger<FileBotProvider>            logger)
+        ILogger<FileBotProvider>            logger,
+        FileBotCliService?                  cliService = null)
     {
         _options = options.Value;
         _logger  = logger;
+        _cliService = cliService;
     }
 
     /// <inheritdoc/>
-    public string ProviderName => "FileBot";
+    public string ProviderName => ProviderNameConst;
 
     /// <inheritdoc/>
     public async Task<ProviderResult[]> IdentifyAsync(
@@ -42,45 +48,55 @@ public sealed class FileBotProvider : IEpisodeIdentificationProvider
     {
         string mapPath = ResolveMapPath(context);
 
-        if (!File.Exists(mapPath))
+        // ── Priority 1: Pre-generated filebot-map.json sidecar ───────────────
+        if (File.Exists(mapPath))
         {
-            _logger.LogDebug("[FileBotProvider] Sidecar file not found at '{Path}'; returning empty results.", mapPath);
-            return [];
+            _logger.LogInformation("[FileBotProvider] Reading sidecar '{Path}'.", mapPath);
+
+            FileBotMapFile? mapFile;
+            try
+            {
+                await using var stream = File.OpenRead(mapPath);
+                mapFile = await JsonSerializer.DeserializeAsync<FileBotMapFile>(stream, _jsonOptions, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[FileBotProvider] Failed to parse '{Path}'; falling back to CLI.", mapPath);
+                mapFile = null;
+            }
+
+            if (mapFile?.Mappings is { Count: > 0 })
+            {
+                var results = mapFile.Mappings.Select(m => new ProviderResult
+                {
+                    TrackIndex   = m.TrackIndex,
+                    Season       = m.Season,
+                    Episodes     = m.Episodes ?? [0],
+                    Title        = m.Title,
+                    IsExtra      = m.IsExtra,
+                    Confidence   = Confidence.High,
+                    ProviderName = ProviderNameConst
+                }).ToArray();
+
+                _logger.LogInformation("[FileBotProvider] Loaded {Count} mappings from sidecar.", results.Length);
+                return results;
+            }
+        }
+        else
+        {
+            _logger.LogDebug("[FileBotProvider] Sidecar file not found at '{Path}'.", mapPath);
         }
 
-        _logger.LogInformation("[FileBotProvider] Reading sidecar '{Path}'.", mapPath);
-
-        FileBotMapFile? mapFile;
-        try
+        // ── Priority 2: Run FileBot CLI for live identification ──────────────
+        if (_cliService is not null)
         {
-            await using var stream = File.OpenRead(mapPath);
-            mapFile = await JsonSerializer.DeserializeAsync<FileBotMapFile>(stream, _jsonOptions, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[FileBotProvider] Failed to parse '{Path}'; returning empty results.", mapPath);
-            return [];
+            string? rawPath = ResolveRawPath(context);
+            _logger.LogInformation("[FileBotProvider] Attempting CLI identification at '{Path}'.", rawPath ?? "(unknown)");
+            return await _cliService.IdentifyAsync(context, rawPath, cancellationToken);
         }
 
-        if (mapFile?.Mappings is null || mapFile.Mappings.Count == 0)
-        {
-            _logger.LogDebug("[FileBotProvider] Sidecar has no mappings; returning empty results.");
-            return [];
-        }
-
-        var results = mapFile.Mappings.Select(m => new ProviderResult
-        {
-            TrackIndex   = m.TrackIndex,
-            Season       = m.Season,
-            Episodes     = m.Episodes ?? [0],
-            Title        = m.Title,
-            IsExtra      = m.IsExtra,
-            Confidence   = Confidence.High,
-            ProviderName = ProviderName
-        }).ToArray();
-
-        _logger.LogInformation("[FileBotProvider] Loaded {Count} mappings from sidecar.", results.Length);
-        return results;
+        _logger.LogDebug("[FileBotProvider] No sidecar and no CLI service configured; returning empty results.");
+        return [];
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
@@ -90,6 +106,14 @@ public sealed class FileBotProvider : IEpisodeIdentificationProvider
         // Allow per-disc override by substituting {DiscId} in the configured path.
         return _options.MapFilePath
             .Replace("{DiscId}", context.DiscId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Resolves the path to raw MakeMKV output files for FileBot CLI identification.</summary>
+    private static string? ResolveRawPath(DiscContext context)
+    {
+        // Use the RawPath hint from the context's DiscDbHint / RawProperties,
+        // or construct from known ARM-Sharp path conventions.
+        return context.DiscDbHint; // The host sets this to the raw rip path
     }
 }
 

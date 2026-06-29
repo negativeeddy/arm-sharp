@@ -1,14 +1,15 @@
 using ArmMedia.Core.Abstractions;
 using ArmMedia.Core.DependencyInjection;
 using ArmMedia.Core.Orchestration;
+using ArmMedia.FileBotProvider;
 using ArmMedia.Linting;
 using ArmMedia.Linting.Abstractions;
 using ArmMedia.Linting.Rules;
 using ArmMedia.Naming;
 using ArmMedia.Naming.Abstractions;
+using ArmMedia.OmdbProvider;
 using ArmMedia.TmdbProvider;
 using ArmMedia.TvdbProvider;
-using ArmMedia.OmdbProvider;
 using ArmRipper.Core.Configuration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -50,6 +51,20 @@ public static class ArmSharpServiceCollectionExtensions
         // Bridge the existing IDiscDbMappingService to the lightweight
         // IDiscDbLookupService used by the provider layer.
         services.AddSingleton<IDiscDbLookupService, DiscDbLookupAdapter>();
+
+        // ── FileBot CLI service ──────────────────────────────────────────────
+        // Bind options so the provider can configure the FileBot database.
+        services.Configure<FileBotProviderOptions>(
+            configuration.GetSection(FileBotProviderOptions.SectionName));
+
+        // Register the CLI runner delegate that bridges the host's
+        // ICliProcessRunner to the FileBotCliService.
+        services.AddSingleton<FileBotCliRunner>(sp =>
+        {
+            var runner = sp.GetRequiredService<ArmRipper.Core.Infrastructure.ICliProcessRunner>();
+            return FileBotCliBridge.CreateRunner(runner);
+        });
+        services.AddSingleton<FileBotCliService>();
 
         // ── Naming ───────────────────────────────────────────────────────────
         services.Configure<NamingOptions>(configuration.GetSection(NamingOptions.SectionName));
