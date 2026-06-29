@@ -1,3 +1,5 @@
+using ArmMedia.Core.Abstractions;
+using ArmMedia.Core.Models;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
@@ -22,7 +24,8 @@ public sealed class ArmRipperService(
     IEnumerable<INotificationBroadcaster> broadcasters,
     IIdentifyService identifyService,
     IDiscDbMappingService discDbMappingService,
-    ITrackMapperService trackMapperService) : IArmRipperService
+    ITrackMapperService trackMapperService,
+    IEpisodeIdentificationOrchestrator? episodeOrchestrator = null) : IArmRipperService
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("ArmRipperService");
     private static readonly TimeSpan ProgressBroadcastInterval = TimeSpan.FromMilliseconds(200);
@@ -127,6 +130,16 @@ public sealed class ArmRipperService(
         }
 
         await db.Entry(job).Collection(j => j.Tracks).LoadAsync(ct);
+
+        // ── ArmMedia TV episode identification pipeline ──────────────────────
+        // Run the full provider chain (DiscDb → FileBot → TMDB → TVDB → OMDB)
+        // to identify TV episode assignments before moving files to the output
+        // directory. Providers populate track EpisodeNumber/EpisodeTitle fields.
+        if (episodeOrchestrator is not null &&
+            (job.VideoType == "series" || job.VideoType == "tv"))
+        {
+            await RunEpisodeIdentificationAsync(job, makeMkvOutPath, ct);
+        }
 
         await MoveFilesPostAsync(transcodeOutPath, job, ct);
 
@@ -633,6 +646,93 @@ public sealed class ArmRipperService(
         {
             await notifications.NotifyAsync(job, NotificationService.NotifyTitle,
                 $"{job.Title} processing complete.", ct);
+        }
+    }
+
+    /// <summary>
+    /// Runs the ArmMedia TV episode identification pipeline and merges
+    /// results back into the job's tracks (EpisodeNumber, EpisodeTitle, etc.).
+    /// </summary>
+    private async Task RunEpisodeIdentificationAsync(
+        Job job, string makeMkvOutPath, CancellationToken ct)
+    {
+        try
+        {
+            var tracks = job.Tracks.Where(t => t.Ripped).OrderBy(t => t.TrackNumberInt ?? 0).ToList();
+            if (tracks.Count == 0)
+                return;
+
+            var trackContexts = tracks.Select(t =>
+            {
+                var rawProps = new Dictionary<string, string>();
+                if (!string.IsNullOrEmpty(t.FileName))
+                    rawProps["FileName"] = t.FileName;
+                if (!string.IsNullOrEmpty(t.TrackNumber))
+                    rawProps["TrackNumber"] = t.TrackNumber;
+
+                return new TrackContext
+                {
+                    TrackIndex    = t.TrackNumberInt ?? 0,
+                    Duration      = TimeSpan.FromSeconds(t.Length ?? 0),
+                    SizeBytes     = t.FileSize ?? 0,
+                    ChapterCount  = t.Chapters,
+                    DiscDbTrackId = t.DiscDbItemSlug,
+                    RawProperties = rawProps
+                };
+            }).ToList().AsReadOnly();
+
+            var discId = job.DiscDbHash ?? job.Label ?? job.DevPath ?? "unknown";
+            var season = job.SeasonNumber ?? 1;
+
+            var ctx = new DiscContext
+            {
+                DiscId      = discId,
+                SeriesTitle = job.Title ?? job.Label ?? "Unknown",
+                Season      = season,
+                Tracks      = trackContexts,
+                DiscDbHint  = makeMkvOutPath,  // FileBot CLI uses this for raw file path
+                DiscNumber  = ParseDiscNumber(job.Label)
+            };
+
+            logger.LogInformation(
+                "[ArmMedia] Running episode identification for '{Title}' S{Season} (disc {Disc}, {Count} tracks)...",
+                ctx.SeriesTitle, ctx.Season, ctx.DiscNumber, ctx.Tracks.Count);
+
+            var episodeMap = await episodeOrchestrator!.IdentifyAsync(ctx, ct);
+
+            // Merge results back into job tracks
+            foreach (var mapped in episodeMap.Tracks)
+            {
+                var track = tracks.FirstOrDefault(t => t.TrackNumberInt == mapped.TrackIndex);
+                if (track is not null)
+                {
+                    track.EpisodeNumber   = mapped.Episodes.FirstOrDefault();
+                    track.EpisodeTitle    = mapped.Title;
+                    track.TrackSeasonNumber = mapped.Season;
+
+                    if (!string.IsNullOrEmpty(mapped.WinningProvider))
+                    {
+                        logger.LogDebug(
+                            "[ArmMedia] Track {Track} → S{Season}E{Ep} '{Title}' ({Provider})",
+                            track.TrackNumber, mapped.Season,
+                            mapped.Episodes.FirstOrDefault(), track.EpisodeTitle,
+                            mapped.WinningProvider);
+                    }
+                }
+            }
+
+            await db.SaveChangesAsync(ct);
+            await BroadcastJobUpdateAsync(job);
+
+            logger.LogInformation(
+                "[ArmMedia] Episode identification complete. {Count} tracks mapped.",
+                episodeMap.Tracks.Count);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "[ArmMedia] Episode identification failed for job {JobId}; falling back to positional naming.",
+                job.Id);
         }
     }
 
