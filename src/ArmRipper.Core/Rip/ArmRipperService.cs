@@ -702,6 +702,23 @@ public sealed class ArmRipperService(
                 MoveFiles(transcodeOutPath, track.FileName!, job, track.MainFeature, track);
             }
         }
+
+        // ── Update job.Path for TV series: files now live under
+        //     {completed}/tv/Series Name/Season XX/ instead of the flat
+        //     {completed}/tv/DISC_LABEL/ directory that was set at startup.
+        //     The Conductor uses job.Path for the final output verification.
+        if (job.VideoType == "series" || job.VideoType == "tv")
+        {
+            var episodeTrack = tracks.FirstOrDefault(t => t.EpisodeNumber is not null);
+            if (episodeTrack is not null)
+            {
+                var cleanSeries = CleanSeriesTitle(job.Title ?? "Unknown Series");
+                var season = episodeTrack.TrackSeasonNumber ?? job.SeasonNumber ?? 1;
+                var completedBase = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value);
+                job.Path = Path.Combine(completedBase, "tv", SanitizeFileName(cleanSeries));
+                logger.LogInformation("Updated job path to series directory: {Path}", job.Path);
+            }
+        }
     }
 
     private static bool RipWithMkv(Job currentJob, bool protection)
@@ -801,14 +818,23 @@ public sealed class ArmRipperService(
         {
             var season = track!.TrackSeasonNumber ?? job.SeasonNumber ?? 1;
             var episode = track.EpisodeNumber!.Value;
+
+            // ── Plex / Jellyfin convention: Series Name / Season XX / SxxExx - Title.ext ──
+            var cleanSeries = CleanSeriesTitle(job.Title ?? "Unknown Series");
+            var completedBase = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value);
+            var seriesDir = Path.Combine(completedBase, "tv", SanitizeFileName(cleanSeries));
+            var seasonDir = Path.Combine(seriesDir, $"Season {season:D2}");
+
             var destExt = job.Config?.DestExt ?? settings.Value.DestExt ?? "mp4";
             var episodeTitle = !string.IsNullOrEmpty(track.EpisodeTitle)
                 ? $" - {SanitizeFileName(track.EpisodeTitle)}"
                 : "";
-            var episodeFile = Path.Combine(moviePath,
-                $"{FixJobTitle(job)} - S{season:D2}E{episode:D2}{episodeTitle}.{destExt}");
 
-            EnsureDirectory(moviePath);
+            var seriesFileName = SanitizeFileName(cleanSeries);
+            var episodeFile = Path.Combine(seasonDir,
+                $"{seriesFileName} - S{season:D2}E{episode:D2}{episodeTitle}.{destExt}");
+
+            EnsureDirectory(seasonDir);
             logger.LogInformation("Track is a TV episode. Moving '{Src}' to '{Dst}'",
                 Path.Combine(basePath, filename), episodeFile);
             MoveFileMain(Path.Combine(basePath, filename), episodeFile, logger);
@@ -928,6 +954,40 @@ public sealed class ArmRipperService(
             return d;
 
         return 1;
+    }
+
+    /// <summary>
+    /// Converts a raw disc label or title to a clean human-readable series name
+    /// suitable for Plex / Jellyfin folder and file naming.
+    /// </summary>
+    /// <param name="raw">The raw disc label (e.g. "MY_NAME_IS_EARL_S1_D1") or title.</param>
+    /// <returns>A clean, human-readable series name (e.g. "My Name Is Earl").</returns>
+    internal static string CleanSeriesTitle(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return "Unknown Series";
+
+        // Strip year suffix: "My Name Is Earl (2005–2009)" → "My Name Is Earl"
+        var result = System.Text.RegularExpressions.Regex.Replace(
+            raw.Trim(), @"\s*\([^)]*\d{4}.*\)$", "");
+
+        // Strip season/disc suffix: "MY_NAME_IS_EARL_S1_D1" → "MY_NAME_IS_EARL"
+        result = System.Text.RegularExpressions.Regex.Replace(
+            result, @"[_\s][Ss]\d+[_\s][Dd](?:ISC)?\d+$", "",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        // Replace underscores with spaces
+        result = result.Replace('_', ' ').Trim();
+
+        // If the result is all-uppercase with no lowercase letters (disc label),
+        // convert to title case using CultureInfo.
+        if (result.Length > 0 && !result.Any(char.IsLower) && result.Any(char.IsUpper))
+        {
+            result = System.Globalization.CultureInfo.CurrentCulture.TextInfo
+                .ToTitleCase(result.ToLowerInvariant());
+        }
+
+        return string.IsNullOrWhiteSpace(result) ? "Unknown Series" : result;
     }
 
     private static void MoveFileMain(string oldFile, string newFile, ILogger? logger = null)
