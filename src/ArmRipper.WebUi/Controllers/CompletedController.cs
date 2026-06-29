@@ -102,6 +102,52 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         return RedirectToAction("Index");
     }
 
+    [HttpPost("delete-folder")]
+    public IActionResult DeleteFolder(string dirPath)
+    {
+        if (string.IsNullOrEmpty(dirPath) || !Directory.Exists(dirPath))
+        {
+            TempData["ErrorMessage"] = "Directory not found.";
+            return RedirectToAction("Index");
+        }
+
+        try
+        {
+            Directory.Delete(dirPath, recursive: true);
+            cache.Remove(CacheKey);
+            TempData["SuccessMessage"] = $"Deleted folder {Path.GetFileName(dirPath)}";
+        }
+        catch (Exception ex)
+        {
+            TempData["ErrorMessage"] = $"Failed to delete folder: {ex.Message}";
+        }
+
+        return RedirectToAction("Index");
+    }
+
+    [HttpGet("delete-folder-preview")]
+    public IActionResult DeleteFolderPreview(string dirPath)
+    {
+        if (string.IsNullOrEmpty(dirPath) || !Directory.Exists(dirPath))
+            return Json(new { files = Array.Empty<string>(), total = 0 });
+
+        var allFiles = Directory.GetFiles(dirPath, "*", SearchOption.AllDirectories)
+            .OrderBy(f => f)
+            .ToList();
+
+        var show = allFiles.Count <= 10 ? allFiles : allFiles.Take(10).ToList();
+        var more = allFiles.Count > 10 ? allFiles.Count - 10 : 0;
+
+        return Json(new
+        {
+            files = show,
+            total = allFiles.Count,
+            dirName = Path.GetFileName(dirPath),
+            truncated = more > 0,
+            moreCount = more
+        });
+    }
+
     [HttpPost("rename")]
     public IActionResult Rename(string filePath, string newName)
     {

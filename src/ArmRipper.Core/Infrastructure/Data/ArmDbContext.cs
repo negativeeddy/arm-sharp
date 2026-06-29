@@ -19,6 +19,7 @@ public class ArmDbContext : DbContext
     public DbSet<DiscTrack> DiscTracks => Set<DiscTrack>();
     public DbSet<DiscTrackStream> DiscTrackStreams => Set<DiscTrackStream>();
     public DbSet<RipperSettings> RipperSettings => Set<RipperSettings>();
+    public DbSet<DiscDbMapping> DiscDbMappings => Set<DiscDbMapping>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -49,6 +50,9 @@ public class ArmDbContext : DbContext
             entity.Property(e => e.DevPath).HasMaxLength(15);
             entity.Property(e => e.DiscFingerprint).HasMaxLength(128);
             entity.Property(e => e.CompletedStages).HasMaxLength(256);
+            entity.Property(e => e.DiscDbHash).HasMaxLength(64);
+            entity.Property(e => e.SeriesTmdbId);
+            entity.Property(e => e.SeasonNumber);
             entity.Ignore(e => e.MakeMkvProgress);
             entity.Ignore(e => e.TranscodeProgress);
             entity.Ignore(e => e.ProgressMessage);
@@ -74,6 +78,9 @@ public class ArmDbContext : DbContext
             entity.Property(e => e.NewFileName).HasMaxLength(256);
             entity.Property(e => e.Status).HasMaxLength(32);
             entity.Property(e => e.Source).HasMaxLength(32);
+            entity.Property(e => e.EpisodeTitle).HasMaxLength(256);
+            entity.Property(e => e.ContentType).HasMaxLength(32);
+            entity.Property(e => e.DiscDbItemSlug).HasMaxLength(128);
         });
 
         modelBuilder.Entity<ConfigSnapshot>(entity =>
@@ -159,6 +166,20 @@ public class ArmDbContext : DbContext
             entity.ToTable("ripper_settings");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.SettingsJson);
+        });
+
+        modelBuilder.Entity<DiscDbMapping>(entity =>
+        {
+            entity.ToTable("discdb_mappings");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ContentHash).HasMaxLength(64).IsRequired();
+            entity.HasIndex(e => e.ContentHash).IsUnique();
+            entity.Property(e => e.MediaSlug).HasMaxLength(128);
+            entity.Property(e => e.MediaTitle).HasMaxLength(256);
+            entity.Property(e => e.MediaYear).HasMaxLength(4);
+            entity.Property(e => e.MediaType).HasMaxLength(20);
+            entity.Property(e => e.ImageUrl).HasMaxLength(256);
+            entity.Property(e => e.TrackMappingsJson);
         });
     }
 }

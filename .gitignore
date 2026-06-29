@@ -484,3 +484,4 @@ $RECYCLE.BIN/
 
 # ARM Web data/config
 src/ArmRipper.WebUi/data/
+.scratch/

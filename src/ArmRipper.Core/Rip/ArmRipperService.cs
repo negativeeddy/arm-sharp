@@ -20,7 +20,9 @@ public sealed class ArmRipperService(
     NotificationService notifications,
     IOptions<ArmSettings> settings,
     IEnumerable<INotificationBroadcaster> broadcasters,
-    IIdentifyService identifyService) : IArmRipperService
+    IIdentifyService identifyService,
+    IDiscDbMappingService discDbMappingService,
+    ITrackMapperService trackMapperService) : IArmRipperService
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("ArmRipperService");
     private static readonly TimeSpan ProgressBroadcastInterval = TimeSpan.FromMilliseconds(200);
@@ -125,6 +127,7 @@ public sealed class ArmRipperService(
         }
 
         await db.Entry(job).Collection(j => j.Tracks).LoadAsync(ct);
+
         await MoveFilesPostAsync(transcodeOutPath, job, ct);
 
         await ScanEmbyAsync(job, ct);
@@ -182,7 +185,11 @@ public sealed class ArmRipperService(
         var minLengthCfg = config?.MinLength ?? settings.Value.MinLength;
         var maxLength = config?.MaxLength ?? settings.Value.MaxLength;
 
-        var tracks = await makeMkv.GetTrackInfoWithCacheAsync(job, jobTitle, ct);
+        // When DiscDb is enabled, pass infoMinLength=0 so MakeMKV reports ALL tracks,
+        // including short extras that may match DiscDb entries. Our own minLengthCfg
+        // and DiscDb promotion logic will handle filtering and promotion.
+        var infoMinLength = settings.Value.DiscDbEnabled ? 0 : (int?)null;
+        var tracks = await makeMkv.GetTrackInfoWithCacheAsync(job, jobTitle, infoMinLength, ct);
 
         // Encrypted BDs often return 0 tracks from info; rip all titles directly
         if (tracks.Count == 0 && job.DiscType is DiscType.Bluray or DiscType.Dvd)
@@ -236,6 +243,76 @@ public sealed class ArmRipperService(
             db.Tracks.Add(track);
         await db.SaveChangesAsync(ct);
 
+        // ── DiscDb track mapping: promote short tracks that have a DiscDb match ──
+        if (settings.Value.DiscDbEnabled && !string.IsNullOrEmpty(job.DiscDbHash))
+        {
+            logger.LogInformation(
+                "DiscDb: hash {Hash} present, attempting track mapping for job {JobId}",
+                job.DiscDbHash[..Math.Min(8, job.DiscDbHash.Length)], job.Id);
+
+            var discDbMapping = await discDbMappingService.GetCachedMappingAsync(job.DiscDbHash, ct);
+            if (discDbMapping is not null)
+            {
+                _ = await trackMapperService.MapTracksAsync(job, discDbMapping, ct);
+
+                // Reload tracks from DB — the mapper modified DB-tracked instances,
+                // not the local 'tracks' list, so Process/EpisodeTitle are stale here.
+                var freshTracks = await db.Tracks.Where(t => t.JobId == job.Id).ToListAsync(ct);
+
+                // Sync Process flag back to local list for the rip loop below,
+                // and promote any short track that got a DiscDb match.
+                var promoted = 0;
+                foreach (var fresh in freshTracks)
+                {
+                    var local = tracks.FirstOrDefault(t => t.Id == fresh.Id);
+                    if (local is not null)
+                    {
+                        local.EpisodeTitle = fresh.EpisodeTitle;
+                        local.ContentType = fresh.ContentType;
+                        local.EpisodeNumber = fresh.EpisodeNumber;
+                        local.TrackSeasonNumber = fresh.TrackSeasonNumber;
+                        local.DiscDbItemSlug = fresh.DiscDbItemSlug;
+
+                        if (!local.Process && !string.IsNullOrEmpty(fresh.EpisodeTitle))
+                        {
+                            local.Process = true;
+                            promoted++;
+                        }
+                    }
+                }
+
+                if (promoted > 0)
+                {
+                    // Persist the promoted Process flags
+                    foreach (var t in tracks.Where(t => t.Process))
+                        db.Entry(t).Property(x => x.Process).IsModified = true;
+                    await db.SaveChangesAsync(ct);
+                    await BroadcastJobUpdateAsync(job);
+                    logger.LogInformation(
+                        "DiscDb: promoted {Promoted} short track(s) to Process=true for job {JobId}",
+                        promoted, job.Id);
+                }
+                else
+                {
+                    logger.LogDebug(
+                        "DiscDb: mapping ran but no short tracks were promoted for job {JobId}",
+                        job.Id);
+                }
+            }
+            else
+            {
+                logger.LogInformation(
+                    "DiscDb: mapping not found for hash {Hash}... (cache miss or API returned no match)",
+                    job.DiscDbHash.Length >= 8 ? job.DiscDbHash[..8] : job.DiscDbHash);
+            }
+        }
+        else
+        {
+            logger.LogInformation(
+                "DiscDb: skipping track mapping (enabled={Enabled}, hash={Hash}) for job {JobId}",
+                settings.Value.DiscDbEnabled, job.DiscDbHash ?? "(null)", job.Id);
+        }
+
         logger.LogInformation("************* Ripping disc with MakeMKV *************");
         job.Stage = RipStage.Identify;
         GuardStage(job, "identify", "Active/VideoInfo", () => job.Status is JobState.Active or JobState.VideoInfo);
@@ -265,6 +342,9 @@ public sealed class ArmRipperService(
             }
             else if (config?.MainFeature ?? settings.Value.MainFeature)
             {
+                // MainFeature mode: only rip the single longest track.
+                // DiscDb metadata mapping still runs (for poster, title, etc.) but
+                // promoted extras are NOT ripped in this mode.
                 var main = tracks.FirstOrDefault(t => t.MainFeature);
                 if (main is not null)
                 {
@@ -272,8 +352,11 @@ public sealed class ArmRipperService(
                     ripCount = 1;
                 }
             }
-            else if (maxLength > 99998)
+            else if (maxLength > 99998 && eligibleTracks.All(t => string.IsNullOrEmpty(t.EpisodeTitle)))
             {
+                // Fast path: rip everything >= minLength in a single MakeMKV pass.
+                // Only safe when NO tracks have been DiscDb-promoted (no EpisodeTitle),
+                // otherwise individual iteration is needed to respect Process flags.
                 await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, "Ripping all titles", ct), ct);
                 ripCount = eligibleTracks.Count;
             }
@@ -283,7 +366,11 @@ public sealed class ArmRipperService(
                 foreach (var track in eligibleTracks)
                 {
                     trackNum++;
-                    await makeMkv.RipTrackAsync(job, track.TrackNumber!, makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, $"Ripping track {trackNum} of {eligibleTracks.Count}", ct), ct);
+                    // DiscDb-promoted tracks (with EpisodeTitle) may be shorter than the
+                    // configured minLength — we already decided to rip them, so tell MakeMKV
+                    // not to filter them out by passing minLength=0.
+                    var trackMinLength = !string.IsNullOrEmpty(track.EpisodeTitle) ? 0 : minLengthCfg;
+                    await makeMkv.RipTrackAsync(job, track.TrackNumber!, makeMkvOutPath, mkvArgs, trackMinLength, MkvProgress(job, $"Ripping track {trackNum} of {eligibleTracks.Count}", ct), ct);
                     ripCount++;
                 }
             }
@@ -553,28 +640,20 @@ public sealed class ArmRipperService(
     {
         var tracks = job.Tracks.Where(t => t.Ripped).ToList();
 
-        if (job.VideoType == "series")
+        foreach (var track in tracks)
         {
-            foreach (var track in tracks)
-                MoveFiles(transcodeOutPath, track.FileName!, job, false);
-        }
-        else
-        {
-            foreach (var track in tracks)
+            if (tracks.Count == 1)
             {
-                if (tracks.Count == 1)
+                MoveFiles(transcodeOutPath, track.FileName!, job, true, track);
+            }
+            else
+            {
+                if (track.Source == "MakeMKV" && job.VideoType == "movie")
                 {
-                    MoveFiles(transcodeOutPath, track.FileName!, job, true);
+                    SkipTranscodeMovie(Directory.GetFiles(transcodeOutPath).Select(Path.GetFileName).Cast<string>().ToList(), job, transcodeOutPath);
+                    break;
                 }
-                else
-                {
-                    if (track.Source == "MakeMKV" && job.VideoType == "movie")
-                    {
-                        SkipTranscodeMovie(Directory.GetFiles(transcodeOutPath).Select(Path.GetFileName).Cast<string>().ToList(), job, transcodeOutPath);
-                        break;
-                    }
-                    MoveFiles(transcodeOutPath, track.FileName!, job, track.MainFeature);
-                }
+                MoveFiles(transcodeOutPath, track.FileName!, job, track.MainFeature, track);
             }
         }
     }
@@ -616,11 +695,18 @@ public sealed class ArmRipperService(
         }
         catch { }
 
+        // Build a lookup from filename to Track so we can pass DiscDb metadata
+        var trackByFileName = job.Tracks
+            .Where(t => !string.IsNullOrEmpty(t.FileName))
+            .ToDictionary(t => t.FileName!, StringComparer.OrdinalIgnoreCase);
+
         foreach (var file in files)
         {
+            trackByFileName.TryGetValue(file, out var track);
+
             if (file == largestFileName)
             {
-                MoveFiles(rawPath, file, job, true);
+                MoveFiles(rawPath, file, job, true, track);
             }
             else
             {
@@ -637,13 +723,13 @@ public sealed class ArmRipperService(
                 }
                 else
                 {
-                    MoveFiles(rawPath, file, job, false);
+                    MoveFiles(rawPath, file, job, false, track);
                 }
             }
         }
     }
 
-    private void MoveFiles(string basePath, string filename, Job job, bool isMainFeature)
+    private void MoveFiles(string basePath, string filename, Job job, bool isMainFeature, Track? track = null)
     {
         if (string.IsNullOrEmpty(filename))
         {
@@ -651,7 +737,6 @@ public sealed class ArmRipperService(
             return;
         }
 
-        var videoTitle = FixJobTitle(job);
         var moviePath = job.Path;
 
         if (string.IsNullOrEmpty(moviePath))
@@ -662,25 +747,120 @@ public sealed class ArmRipperService(
 
         logger.LogInformation("Moving {VideoType} {Filename} to {MoviePath}", job.VideoType, filename, moviePath);
 
-        var extrasPath = job.VideoType != "series" && !string.IsNullOrEmpty(job.Config?.ExtrasSub)
-            ? Path.Combine(moviePath, job.Config.ExtrasSub)
-            : moviePath;
+        // ── TV episode naming (DiscDb-mapped) ──
+        var useEpisodeNaming = track?.EpisodeNumber is not null &&
+                               (job.VideoType == "series" || job.VideoType == "tv");
+
+        if (useEpisodeNaming)
+        {
+            var season = track!.TrackSeasonNumber ?? job.SeasonNumber ?? 1;
+            var episode = track.EpisodeNumber!.Value;
+            var destExt = job.Config?.DestExt ?? settings.Value.DestExt ?? "mp4";
+            var episodeTitle = !string.IsNullOrEmpty(track.EpisodeTitle)
+                ? $" - {SanitizeFileName(track.EpisodeTitle)}"
+                : "";
+            var episodeFile = Path.Combine(moviePath,
+                $"{FixJobTitle(job)} - S{season:D2}E{episode:D2}{episodeTitle}.{destExt}");
+
+            EnsureDirectory(moviePath);
+            logger.LogInformation("Track is a TV episode. Moving '{Src}' to '{Dst}'",
+                Path.Combine(basePath, filename), episodeFile);
+            MoveFileMain(Path.Combine(basePath, filename), episodeFile, logger);
+            return;
+        }
+
+        // ── Extras routing by content type (DiscDb-mapped) ──
+        var contentType = track?.ContentType;
+        var useContentBasedExtras = !string.IsNullOrEmpty(contentType) &&
+                                    contentType != "main" &&
+                                    contentType != "unknown";
+
+        if (useContentBasedExtras)
+        {
+            var extrasSubFolder = GetExtrasSubFolder(contentType!, job);
+            var extrasPath = Path.Combine(moviePath, extrasSubFolder);
+            EnsureDirectory(extrasPath);
+
+            // Use DiscDb-mapped title for the filename (e.g. "Backstage Pass With Lindsay Lohan.mkv")
+            var targetName = !string.IsNullOrEmpty(track?.EpisodeTitle)
+                ? SanitizeFileName(track!.EpisodeTitle) + Path.GetExtension(filename)
+                : filename;
+
+            logger.LogInformation("Moving extra (type={ContentType}) '{Src}' to '{Dst}'",
+                contentType, Path.Combine(basePath, filename), Path.Combine(extrasPath, targetName));
+            MoveFileMain(Path.Combine(basePath, filename), Path.Combine(extrasPath, targetName), logger);
+            return;
+        }
+
+        // ── Standard movie/series handling (no episode mapping) ──
+        var videoTitle = FixJobTitle(job);
 
         EnsureDirectory(moviePath);
 
         if (isMainFeature)
         {
             var destExt = job.Config?.DestExt ?? settings.Value.DestExt ?? "mp4";
-            var movieFile = Path.Combine(moviePath, $"{videoTitle}.{destExt}");
+            // Use DiscDb title suffix when the track has a specific name (e.g. "Freaky Friday Widescreen")
+            var featureTitle = !string.IsNullOrEmpty(track?.EpisodeTitle) &&
+                               !track.EpisodeTitle.Contains(videoTitle, StringComparison.OrdinalIgnoreCase)
+                ? $"{videoTitle} - {SanitizeFileName(track.EpisodeTitle)}"
+                : videoTitle;
+            var movieFile = Path.Combine(moviePath, $"{featureTitle}.{destExt}");
             logger.LogInformation("Track is the Main Title. Moving '{Src}' to '{Dst}'", Path.Combine(basePath, filename), movieFile);
             MoveFileMain(Path.Combine(basePath, filename), movieFile, logger);
         }
         else
         {
+            var extrasPath = job.VideoType != "series" && !string.IsNullOrEmpty(job.Config?.ExtrasSub)
+                ? Path.Combine(moviePath, job.Config.ExtrasSub)
+                : moviePath;
+
             EnsureDirectory(extrasPath);
+
+            // Use DiscDb-mapped title for non-main features (e.g. "Freaky Friday Fullscreen")
+            var targetName = !string.IsNullOrEmpty(track?.EpisodeTitle)
+                ? SanitizeFileName(track!.EpisodeTitle) + Path.GetExtension(filename)
+                : filename;
+
             logger.LogInformation("Moving '{Src}' to '{Dst}'", Path.Combine(basePath, filename), extrasPath);
-            MoveFileMain(Path.Combine(basePath, filename), Path.Combine(extrasPath, filename), logger);
+            MoveFileMain(Path.Combine(basePath, filename), Path.Combine(extrasPath, targetName), logger);
         }
+    }
+
+    /// <summary>
+    /// Maps TheDiscDb content type to the appropriate extras subfolder for Plex or Jellyfin.
+    /// Plex uses type-specific folders; Jellyfin groups all extras under a single 'Extras/' folder.
+    /// </summary>
+    private static string GetExtrasSubFolder(string contentType, Job job)
+    {
+        var extrasSetting = job.Config?.ExtrasSub;
+        var isJellyfin = !string.IsNullOrEmpty(extrasSetting) &&
+                         extrasSetting.Equals("jellyfin", StringComparison.OrdinalIgnoreCase);
+
+        if (isJellyfin)
+        {
+            // Jellyfin: single Extras/ folder for all supplementary content
+            return "Extras";
+        }
+
+        // Plex-style: type-specific subfolders
+        return contentType.ToLowerInvariant() switch
+        {
+            "trailer" => "Trailers",
+            "featurette" => "Featurettes",
+            "deleted_scene" or "deleted" => "Deleted Scenes",
+            "behind_the_scenes" or "behindthescenes" => "Behind The Scenes",
+            "interview" => "Interviews",
+            "short" => "Shorts",
+            _ => "Extras"
+        };
+    }
+
+    /// <summary>Removes characters that are invalid in filenames.</summary>
+    private static string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        return string.Concat(name.Where(ch => !invalid.Contains(ch)));
     }
 
     private static void MoveFileMain(string oldFile, string newFile, ILogger? logger = null)

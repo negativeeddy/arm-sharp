@@ -180,7 +180,11 @@ public sealed class Conductor(
             EmbyApiKey = sourceConfig?.EmbyApiKey ?? armSettings.EmbyApiKey,
             MaxConcurrentRips = sourceConfig?.MaxConcurrentRips ?? armSettings.MaxConcurrentRips,
             MaxConcurrentTranscodes = sourceConfig?.MaxConcurrentTranscodes ?? armSettings.MaxConcurrentTranscodes,
-            MaxConcurrentMakemkvInfo = sourceConfig?.MaxConcurrentMakemkvInfo ?? armSettings.MaxConcurrentMakemkvInfo
+            MaxConcurrentMakemkvInfo = sourceConfig?.MaxConcurrentMakemkvInfo ?? armSettings.MaxConcurrentMakemkvInfo,
+            DiscDbEnabled = sourceConfig?.DiscDbEnabled ?? armSettings.DiscDbEnabled,
+            DiscDbApiBaseUrl = sourceConfig?.DiscDbApiBaseUrl ?? armSettings.DiscDbApiBaseUrl,
+            DiscDbMinConfidence = sourceConfig?.DiscDbMinConfidence ?? armSettings.DiscDbMinConfidence,
+            DiscDbRequireConfirmation = sourceConfig?.DiscDbRequireConfirmation ?? armSettings.DiscDbRequireConfirmation
         };
 
         db.ConfigSnapshots.Add(config);
@@ -329,7 +333,11 @@ public sealed class Conductor(
             EmbyApiKey = armSettings.EmbyApiKey,
             MaxConcurrentRips = armSettings.MaxConcurrentRips,
             MaxConcurrentTranscodes = armSettings.MaxConcurrentTranscodes,
-            MaxConcurrentMakemkvInfo = armSettings.MaxConcurrentMakemkvInfo
+            MaxConcurrentMakemkvInfo = armSettings.MaxConcurrentMakemkvInfo,
+            DiscDbEnabled = armSettings.DiscDbEnabled,
+            DiscDbApiBaseUrl = armSettings.DiscDbApiBaseUrl,
+            DiscDbMinConfidence = armSettings.DiscDbMinConfidence,
+            DiscDbRequireConfirmation = armSettings.DiscDbRequireConfirmation
         };
 
         db.ConfigSnapshots.Add(config);

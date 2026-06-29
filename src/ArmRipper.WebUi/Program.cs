@@ -65,6 +65,15 @@ builder.Services.AddHttpClient("DatabaseSubmitService", client =>
     client.Timeout = TimeSpan.FromSeconds(15);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("arm/1.0");
 });
+builder.Services.AddHttpClient("TheDiscDb", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("arm-sharp/1.0 (discdb-integration)");
+});
+builder.Services.AddScoped<IDiscDbHashService, DiscDbHashService>();
+builder.Services.AddScoped<IDiscDbQueryService, DiscDbQueryService>();
+builder.Services.AddScoped<IDiscDbMappingService, DiscDbMappingService>();
+builder.Services.AddScoped<ITrackMapperService, TrackMapperService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<IConductor, Conductor>();
 builder.Services.AddHttpClient<OmdbService>();

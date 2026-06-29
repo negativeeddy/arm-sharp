@@ -55,6 +55,15 @@ builder.Services.AddHttpClient("MakeMkv", client =>
     client.Timeout = TimeSpan.FromSeconds(15);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 });
+builder.Services.AddHttpClient("TheDiscDb", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("arm-sharp/1.0 (discdb-integration)");
+});
+builder.Services.AddScoped<IDiscDbHashService, DiscDbHashService>();
+builder.Services.AddScoped<IDiscDbQueryService, DiscDbQueryService>();
+builder.Services.AddScoped<IDiscDbMappingService, DiscDbMappingService>();
+builder.Services.AddScoped<ITrackMapperService, TrackMapperService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<IConductor, Conductor>();
 builder.Services.AddSingleton<INotificationBroadcaster, NullNotificationBroadcaster>();

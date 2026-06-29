@@ -72,6 +72,17 @@ public static class SettingsHelper
                     }
                 }
             }
+
+            // ── Default migration: if DB has MinLength=600 (the old default before it was
+            //    changed to 300 in the code), ignore the DB value so the file default takes effect.
+            //    This prevents stale DB-stored defaults from overriding updated code defaults. ──
+            if (dict?.TryGetValue("MinLength", out var minLenEl) == true &&
+                minLenEl.ValueKind == JsonValueKind.Number &&
+                minLenEl.GetInt32() == 600 &&
+                fileSettings.MinLength != 600)
+            {
+                merged.MinLength = fileSettings.MinLength;
+            }
         }
 
         return merged;

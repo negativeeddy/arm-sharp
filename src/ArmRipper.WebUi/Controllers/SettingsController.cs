@@ -87,6 +87,9 @@ public class SettingsController(
         }
         ViewBag.AbcdeConfig = abcdeConfig;
 
+        // DiscDb cache stats
+        ViewBag.DiscDbCacheCount = await db.DiscDbMappings.CountAsync(ct);
+
         return View();
     }
 
@@ -106,7 +109,7 @@ public class SettingsController(
         {
             ["RipMethod"] = RipMethod is not null ? JsonSerialize(RipMethod) : null,
             ["MkvArgs"] = MkvArgs is not null ? JsonSerialize(MkvArgs) : null,
-            ["MinLength"] = JsonSerialize(MinLength ?? 600),
+            ["MinLength"] = JsonSerialize(MinLength ?? 300),
             ["MaxLength"] = JsonSerialize(MaxLength ?? 99999),
             ["MaxConcurrentRips"] = JsonSerialize(MaxConcurrentRips ?? 1),
             ["MainFeature"] = JsonSerialize(MainFeature),
@@ -250,6 +253,15 @@ public class SettingsController(
         db.SystemDrives.Remove(drive);
         await db.SaveChangesAsync(ct);
         TempData["Message"] = $"Removed drive {drive.Mount}";
+        return RedirectToAction("Index");
+    }
+
+    [HttpPost("cleardiscdb-cache")]
+    public async Task<IActionResult> ClearDiscDbCache(CancellationToken ct = default)
+    {
+        var deleted = await db.DiscDbMappings.ExecuteDeleteAsync(ct);
+        TempData["Message"] = $"Cleared {deleted} DiscDb cache entr{(deleted == 1 ? "y" : "ies")}.";
+        TempData["ActiveTab"] = "tab3";
         return RedirectToAction("Index");
     }
 

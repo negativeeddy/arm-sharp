@@ -16,7 +16,10 @@ public sealed partial class IdentifyService(
     ILoggerFactory loggerFactory,
     ArmDbContext db,
     IOptions<ArmSettings> settings,
-    IHttpClientFactory httpClientFactory) : IIdentifyService
+    IHttpClientFactory httpClientFactory,
+    IDiscDbHashService discDbHashService,
+    IDiscDbQueryService discDbQueryService,
+    IDiscDbMappingService discDbMappingService) : IIdentifyService
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("IdentifyService");
     public async Task IdentifyAsync(Job job, CancellationToken ct = default)
@@ -73,6 +76,73 @@ public sealed partial class IdentifyService(
 
                 logger.LogInformation("Disc title post-ident: title={Title} year={Year} video_type={VideoType} disctype={DiscType}",
                     job.Title, job.Year, job.VideoType, job.DiscType);
+            }
+
+            // ── TheDiscDb hash computation and query ──
+            if (settings.Value.DiscDbEnabled && !string.IsNullOrEmpty(job.MountPoint))
+            {
+                job.ProgressMessage = "Querying TheDiscDb...";
+                await db.SaveChangesAsync(ct);
+
+                var hash = await discDbHashService.ComputeHashAsync(job.MountPoint!, job.DiscType, ct);
+                if (hash is not null)
+                {
+                    job.DiscDbHash = hash;
+                    logger.LogInformation("DiscDb content hash computed: {Hash}", hash);
+
+                    var mapping = await discDbMappingService.GetCachedMappingAsync(hash, ct);
+                    if (mapping is null)
+                    {
+                        mapping = await discDbQueryService.QueryByHashAsync(hash, ct);
+                        if (mapping is not null)
+                        {
+                            await discDbMappingService.SaveMappingAsync(hash, mapping, ct);
+                            logger.LogInformation("DiscDb mapping cached for hash {Hash}: {MediaTitle} ({MediaYear})",
+                                hash, mapping.Title, mapping.Year);
+                        }
+                    }
+                    else
+                    {
+                        await discDbMappingService.TouchMappingAsync(hash, ct);
+                        logger.LogInformation("DiscDb mapping cache hit for hash {Hash}: {MediaTitle} ({MediaYear})",
+                            hash, mapping.Title, mapping.Year);
+                    }
+
+                    if (mapping is not null)
+                    {
+                        // Populate job-level metadata from DiscDb
+                        // TheDiscDb returns "Series" (not "tv") for TV shows
+                        if (!string.IsNullOrEmpty(mapping.Type) &&
+                            (mapping.Type.Equals("tv", StringComparison.OrdinalIgnoreCase) ||
+                             mapping.Type.Equals("Series", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            job.VideoType = "tv";
+                        }
+
+                        // Fill year if not already set by other metadata sources
+                        if (string.IsNullOrEmpty(job.YearAuto) && !string.IsNullOrEmpty(mapping.Year))
+                        {
+                            job.Year = job.YearAuto = mapping.Year;
+                        }
+
+                        // Fill poster from TheDiscDb if no valid poster already found
+                        // (OMDB frequently returns "N/A" for missing posters)
+                        if ((string.IsNullOrEmpty(job.PosterUrlAuto) ||
+                             job.PosterUrlAuto!.Equals("N/A", StringComparison.OrdinalIgnoreCase)) &&
+                            !string.IsNullOrEmpty(mapping.ImageUrl))
+                        {
+                            var posterUrl = BuildDiscDbImageUrl(mapping.ImageUrl);
+                            job.PosterUrl = job.PosterUrlAuto = posterUrl;
+                            logger.LogInformation("DiscDb poster URL set: {PosterUrl}", posterUrl);
+                        }
+                    }
+                }
+                else
+                {
+                    logger.LogWarning("DiscDb hash computation returned null (unsupported disc or I/O error)");
+                }
+
+                await db.SaveChangesAsync(ct);
             }
         }
 
@@ -532,8 +602,13 @@ public sealed partial class IdentifyService(
                     if (string.IsNullOrEmpty(job.ImdbIdAuto) && !string.IsNullOrEmpty(resultImdb))
                         job.ImdbId = job.ImdbIdAuto = resultImdb;
 
-                    if (string.IsNullOrEmpty(job.PosterUrlAuto) && !string.IsNullOrEmpty(resultPoster))
+                    if (string.IsNullOrEmpty(resultPoster))
+                        { }
+                    else if (string.IsNullOrEmpty(job.PosterUrlAuto) ||
+                             job.PosterUrlAuto.Equals("N/A", StringComparison.OrdinalIgnoreCase))
+                    {
                         job.PosterUrl = job.PosterUrlAuto = resultPoster;
+                    }
 
                     await db.SaveChangesAsync(ct);
 
@@ -555,9 +630,14 @@ public sealed partial class IdentifyService(
                                         detailDoc.RootElement.TryGetProperty("Year", out var detailYear))
                                         job.Year = job.YearAuto = detailYear.GetString();
 
-                                    if (string.IsNullOrEmpty(job.PosterUrlAuto) &&
-                                        detailDoc.RootElement.TryGetProperty("Poster", out var detailPoster))
-                                        job.PosterUrl = job.PosterUrlAuto = detailPoster.GetString();
+                                    if (string.IsNullOrEmpty(job.PosterUrlAuto) ||
+                                        job.PosterUrlAuto.Equals("N/A", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        if (detailDoc.RootElement.TryGetProperty("Poster", out var detailPoster) &&
+                                            !string.IsNullOrEmpty(detailPoster.GetString()) &&
+                                            !detailPoster.GetString().Equals("N/A", StringComparison.OrdinalIgnoreCase))
+                                            job.PosterUrl = job.PosterUrlAuto = detailPoster.GetString();
+                                    }
                                 }
                             }
                         }
@@ -840,5 +920,20 @@ public sealed partial class IdentifyService(
         public string ImdbId { get; init; } = "";
         public string VideoType { get; init; } = "";
         public string PosterUrl { get; init; } = "";
+    }
+
+    /// <summary>
+    /// Constructs a full image URL from a TheDiscDb relative imageUrl.
+    /// Example: "Movie/freaky-friday-2003/cover.jpg" → "https://thediscdb.com/images/Movie/freaky-friday-2003/cover.jpg"
+    /// </summary>
+    private static string BuildDiscDbImageUrl(string? imageUrl)
+    {
+        const string cdnBase = "https://thediscdb.com/images/";
+        if (string.IsNullOrWhiteSpace(imageUrl))
+            return string.Empty;
+
+        return imageUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? imageUrl
+            : cdnBase + imageUrl.TrimStart('/');
     }
 }

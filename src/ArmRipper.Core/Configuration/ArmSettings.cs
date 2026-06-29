@@ -31,7 +31,7 @@ public class ArmSettings
 
     public string? RipMethod { get; set; } = "mkv";
     public string? MkvArgs { get; set; } = "";
-    public int MinLength { get; set; } = 600;
+    public int MinLength { get; set; } = 300;
     public int MaxLength { get; set; } = 99999;
 
     public string? HbPresetDvd { get; set; } = "";
@@ -76,6 +76,13 @@ public class ArmSettings
     public string? MakeMkvPermaKey { get; set; }
     public bool TestMode { get; set; }
     public bool DisableLogin { get; set; } = true;
+
+    // ── TheDiscDb Integration ──
+    public bool DiscDbEnabled { get; set; } = true;
+    // public string? DiscDbApiBaseUrl { get; set; } = "https://api.thediscdb.com/graphql";
+    public string? DiscDbApiBaseUrl { get; set; } = "https://thediscdb.com/graphql";
+    public double DiscDbMinConfidence { get; set; } = 0.7;
+    public bool DiscDbRequireConfirmation { get; set; } = false;
 
     // Backward-compatible naming aliases.
     // Marked [JsonIgnore] so they are never persisted to the DB — only the

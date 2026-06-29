@@ -69,6 +69,12 @@ public class ConfigSnapshot
     public int? MaxConcurrentTranscodes { get; set; }
     public int? MaxConcurrentMakemkvInfo { get; set; }
 
+    // ── TheDiscDb Integration ──
+    public bool DiscDbEnabled { get; set; } = true;
+    public string? DiscDbApiBaseUrl { get; set; }
+    public double DiscDbMinConfidence { get; set; } = 0.7;
+    public bool DiscDbRequireConfirmation { get; set; } = false;
+
     [NotMapped]
     public bool PreventTrack99
     {

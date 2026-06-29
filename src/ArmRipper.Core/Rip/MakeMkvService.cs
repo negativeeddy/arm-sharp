@@ -110,13 +110,13 @@ public partial class MakeMkvService : IMakeMkvService
         }
     }
 
-    public async Task<List<Track>> GetTrackInfoAsync(Job job, string baseName, CancellationToken ct = default)
+    public async Task<List<Track>> GetTrackInfoAsync(Job job, string baseName, int? infoMinLength = null, CancellationToken ct = default)
     {
         await EnsureKeyAsync(ct);
 
         var tracks = new List<Track>();
         var discTracks = new List<DiscTrack>();
-        var minLength = job.Config?.MinLength ?? _settings.Value.MinLength;
+        var minLength = infoMinLength ?? job.Config?.MinLength ?? _settings.Value.MinLength;
 
         var fileName = "makemkvcon";
         var arguments = $"--robot --messages=-stdout info dev:{job.DevPath} --minlength={minLength}";
@@ -237,9 +237,11 @@ public partial class MakeMkvService : IMakeMkvService
         return tracks;
     }
 
-    public async Task<List<Track>> GetTrackInfoWithCacheAsync(Job job, string baseName, CancellationToken ct = default)
+    public async Task<List<Track>> GetTrackInfoWithCacheAsync(Job job, string baseName, int? infoMinLength = null, CancellationToken ct = default)
     {
-        if (!string.IsNullOrEmpty(job.DiscFingerprint))
+        // If a custom infoMinLength is provided, bypass cache — the cached data
+        // was created with a different minlength and would miss short tracks.
+        if (!string.IsNullOrEmpty(job.DiscFingerprint) && infoMinLength is null)
         {
             var cached = await _db.DiscMetadata
                 .AsNoTracking()
@@ -274,7 +276,7 @@ public partial class MakeMkvService : IMakeMkvService
             }
         }
 
-        return await GetTrackInfoAsync(job, baseName, ct);
+        return await GetTrackInfoAsync(job, baseName, infoMinLength, ct);
     }
 
     private static StreamAccum GetOrCreateAccum(Dictionary<int, StreamAccum> accums, int sid)

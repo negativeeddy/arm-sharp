@@ -255,6 +255,19 @@
             <button type="submit" class="btn btn-primary">Save Ripper Settings</button>
             <button type="submit" class="btn btn-outline-warning ml-2" form="resetForm">↻ Reset to file defaults</button>
         </form>
+
+        <hr class="my-4" />
+        <h3>TheDiscDb Cache</h3>
+        <p class="text-muted small">
+            DiscDb lookups are cached locally to avoid redundant API calls when re-ripping the same disc.
+            Clearing the cache forces fresh lookups on the next rip of each disc.
+        </p>
+        <form method="post" action="/settings/cleardiscdb-cache" onsubmit="return confirm('Clear all @ViewBag.DiscDbCacheCount cached DiscDb entr' + (@ViewBag.DiscDbCacheCount == 1 ? 'y' : 'ies') + '?');">
+            <p>
+                <strong>@ViewBag.DiscDbCacheCount</strong> cached disc entr@(ViewBag.DiscDbCacheCount == 1 ? "y" : "ies").
+                <button type="submit" class="btn btn-outline-danger btn-sm">🗑 Clear DiscDb Cache</button>
+            </p>
+        </form>
     </div>
 
     <!-- UI Settings -->

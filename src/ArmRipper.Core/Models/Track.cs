@@ -27,5 +27,20 @@ public class Track
     public int? Chapters { get; set; }
     public long? FileSize { get; set; }
 
+    /// <summary>Episode number within the season (null for movies/extras).</summary>
+    public int? EpisodeNumber { get; set; }
+
+    /// <summary>Episode title from TheDiscDb (e.g. "Pilot", "Ozymandias").</summary>
+    public string? EpisodeTitle { get; set; }
+
+    /// <summary>Content type from TheDiscDb: "movie", "episode", "extra", "trailer", "commentary", etc.</summary>
+    public string? ContentType { get; set; }
+
+    /// <summary>Season number for this specific track (may differ from Job.SeasonNumber for multi-season discs).</summary>
+    public int? TrackSeasonNumber { get; set; }
+
+    /// <summary>TheDiscDb item slug for this track's content.</summary>
+    public string? DiscDbItemSlug { get; set; }
+
     public Job Job { get; set; } = null!;
 }

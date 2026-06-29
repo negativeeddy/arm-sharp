@@ -120,9 +120,20 @@ else
                         }
                         dirTotalSize = 0;
                         var displayDir = string.IsNullOrEmpty(file.RelativeDirectory) ? "—" : file.RelativeDirectory;
+                        var fullDirPath = System.IO.Path.GetDirectoryName(file.FilePath);
                         <tr class="table-divider-dir">
-                            <td colspan="10">
+                            <td colspan="9">
                                 <span class="text-muted mr-2">📂</span>@displayDir
+                            </td>
+                            <td class="text-right text-nowrap" style="padding-right: 0.5rem;">
+                                @if (!string.IsNullOrEmpty(fullDirPath))
+                                {
+                                    <button type="button" class="btn btn-outline-danger btn-sm delete-folder-btn"
+                                            title="Delete entire folder"
+                                            style="padding:0.1rem 0.4rem; font-size:0.75rem;"
+                                            data-dirpath="@fullDirPath"
+                                            data-dirname="@displayDir">🗑</button>
+                                }
                             </td>
                         </tr>
                     }
@@ -338,6 +349,38 @@ else
         </div>
     </div>
 
+    <!-- Delete Folder Modal -->
+    <div class="modal fade" id="deleteFolderModal" tabindex="-1" role="dialog" aria-labelledby="deleteFolderModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteFolderModalLabel">🗑 Delete Folder</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-danger py-2 small">
+                        Are you sure you want to delete <strong id="deleteFolderName"></strong>?
+                        <span id="deleteFolderCount" class="d-block mt-1"></span>
+                    </div>
+                    <div class="mb-0">
+                        <label class="text-muted small">Files that will be deleted:</label>
+                        <ul id="deleteFolderFileList" class="list-group list-group-flush small" style="max-height:300px; overflow-y:auto;">
+                        </ul>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                    <form method="post" action="/completed/delete-folder" id="deleteFolderForm">
+                        <input type="hidden" name="dirPath" id="deleteFolderPath" />
+                        <button type="submit" class="btn btn-danger">🗑 Delete Folder</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         $(function () {
             // Rename modal plumbing
@@ -399,6 +442,47 @@ else
 
             $fixdirModal.on('shown.bs.modal', function () {
                 $fixdirInput.trigger('focus').select();
+            });
+
+            // ── Delete Folder modal ──
+            var $dfModal = $('#deleteFolderModal');
+            var $dfPath = $('#deleteFolderPath');
+            var $dfName = $('#deleteFolderName');
+            var $dfCount = $('#deleteFolderCount');
+            var $dfList = $('#deleteFolderFileList');
+
+            $(document).on('click', '.delete-folder-btn', function () {
+                var $btn = $(this);
+                var dirPath = $btn.data('dirpath');
+                var dirName = $btn.data('dirname');
+
+                $dfPath.val(dirPath);
+                $dfName.text(dirName);
+                $dfList.html('<li class="list-group-item text-muted small">Loading...</li>');
+                $dfModal.modal('show');
+
+                // Fetch file list for preview
+                $.get('/completed/delete-folder-preview', { dirPath: dirPath })
+                    .done(function (data) {
+                        $dfName.text(data.dirName || dirName);
+                        $dfCount.text(data.total + ' file' + (data.total !== 1 ? 's' : ''));
+                        $dfList.empty();
+                        if (data.files.length === 0) {
+                            $dfList.html('<li class="list-group-item text-muted small">(empty folder)</li>');
+                        } else {
+                            // Show only filenames, not full paths
+                            $.each(data.files, function (i, f) {
+                                var fn = f.split('/').pop().split('\\').pop();
+                                $dfList.append('<li class="list-group-item py-1">' + $('<span>').text(fn).html() + '</li>');
+                            });
+                            if (data.truncated) {
+                                $dfList.append('<li class="list-group-item py-1 text-muted fst-italic">... and ' + data.moreCount + ' more file' + (data.moreCount !== 1 ? 's' : '') + '</li>');
+                            }
+                        }
+                    })
+                    .fail(function () {
+                        $dfList.html('<li class="list-group-item text-danger">Failed to load file list</li>');
+                    });
             });
         });
     </script>

@@ -52,6 +52,15 @@ public class Job
     /// <summary>If set, this job was forked from another job (e.g. a re-transcode of raw files).</summary>
     public int? OriginalJobId { get; set; }
 
+    /// <summary>TheDiscDb content hash for this disc (computed during identify).</summary>
+    public string? DiscDbHash { get; set; }
+
+    /// <summary>TMDB series ID (populated from TheDiscDb metadata or fallback).</summary>
+    public int? SeriesTmdbId { get; set; }
+
+    /// <summary>Season number for TV series discs (auto-detected or user-set).</summary>
+    public int? SeasonNumber { get; set; }
+
     /// <summary>Transient — current MakeMKV rip percentage (0–100). Goes over SignalR, NOT persisted to DB.</summary>
     [NotMapped]
     public int? MakeMkvProgress { get; set; }
