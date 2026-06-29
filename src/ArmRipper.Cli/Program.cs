@@ -81,6 +81,11 @@ builder.Services.AddHttpClient("Tvdb", client =>
     client.Timeout = TimeSpan.FromSeconds(10);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("arm-sharp/1.0 (tvdb-provider)");
 });
+builder.Services.AddHttpClient("Omdb", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("arm-sharp/1.0 (omdb-provider)");
+});
 builder.Services.AddArmMediaTvPipeline(builder.Configuration);
 
 // Per-job file logging

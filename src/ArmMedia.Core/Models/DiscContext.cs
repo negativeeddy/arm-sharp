@@ -33,6 +33,13 @@ public sealed class DiscContext
     public string? DiscDbHint { get; init; }
 
     /// <summary>
+    /// Gets the 1-based disc number within the season, parsed from the physical disc label
+    /// (e.g., <c>_D2</c> → 2). Defaults to 1 when no disc suffix is found.
+    /// Providers use this to offset into the full season episode list for multi-disc sets.
+    /// </summary>
+    public int DiscNumber { get; init; } = 1;
+
+    /// <summary>
     /// Gets the index of the track currently being prepared for transcoding.
     /// Used by the ArmSharp glue layer to select the correct <see cref="MappedTrack"/>.
     /// </summary>

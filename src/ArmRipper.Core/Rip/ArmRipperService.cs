@@ -644,19 +644,45 @@ public sealed class ArmRipperService(
         // When VideoType is series/tv but tracks have no EpisodeNumber assigned
         // (e.g., DiscDb had no matching record), assign sequential episode numbers
         // based on physical track order so output files get proper SxxExx names.
+        // Parses disc number from the label (e.g., "_D2" → disc 2) so multi-disc
+        // sets don't restart at episode 1 on every disc.
         if (job.VideoType == "series" || job.VideoType == "tv")
         {
-            var epCounter = 1;
-            foreach (var t in tracks.OrderBy(t => t.TrackNumberInt ?? 0))
+            int discNumber = ParseDiscNumber(job.Label);
+
+            // Count eligible tracks (those without EpisodeNumber, skipping
+            // sub-30-second items that are likely studio logos)
+            var eligible = tracks
+                .Where(t => t.EpisodeNumber is null)
+                .OrderBy(t => t.TrackNumberInt ?? 0)
+                .ToList();
+
+            // Let short (<30s) tracks pass through without an episode number;
+            // they'll be handled as extras by the MoveFiles routing logic.
+            var actualEpisodes = eligible
+                .Where(t => (t.Length ?? int.MaxValue) >= 30)
+                .ToList();
+
+            int startEpisode = ((discNumber - 1) * actualEpisodes.Count) + 1;
+
+            logger.LogInformation(
+                "Positional fallback: disc {Disc}, {Count} eligible tracks, starting at episode {StartEp}",
+                discNumber, actualEpisodes.Count, startEpisode);
+
+            int ep = startEpisode;
+            foreach (var t in eligible)
             {
-                if (t.EpisodeNumber is null)
+                // Only assign episode numbers to tracks >= 30 seconds.
+                // Short tracks (logos, warnings) keep EpisodeNumber=null and
+                // will be handled as unnamed extras by the move logic.
+                if ((t.Length ?? int.MaxValue) >= 30)
                 {
-                    t.EpisodeNumber = epCounter;
+                    t.EpisodeNumber = ep;
                     logger.LogDebug(
                         "Positional fallback: track {TrackNum} → episode {Episode}",
-                        t.TrackNumber ?? t.FileName, epCounter);
+                        t.TrackNumber ?? t.FileName, ep);
+                    ep++;
                 }
-                epCounter++;
             }
         }
 
@@ -881,6 +907,27 @@ public sealed class ArmRipperService(
     {
         var invalid = Path.GetInvalidFileNameChars();
         return string.Concat(name.Where(ch => !invalid.Contains(ch)));
+    }
+
+    /// <summary>
+    /// Parses the 1-based disc number from a disc label.
+    /// Handles formats like <c>_D1</c>, <c>D2</c>, <c>_DISC3</c>, <c>DISC4</c>.
+    /// Returns 1 when no disc suffix is found.
+    /// </summary>
+    internal static int ParseDiscNumber(string? label)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+            return 1;
+
+        // Match _D<num> or DISC<num> at the end of the label (case-insensitive)
+        var match = System.Text.RegularExpressions.Regex.Match(
+            label, @"[_\s]D(?:ISC)?(\d+)$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        if (match.Success && int.TryParse(match.Groups[1].Value, out var d) && d > 0)
+            return d;
+
+        return 1;
     }
 
     private static void MoveFileMain(string oldFile, string newFile, ILogger? logger = null)

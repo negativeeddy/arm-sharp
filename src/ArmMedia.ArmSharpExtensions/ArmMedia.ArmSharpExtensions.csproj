@@ -19,6 +19,7 @@
     <ProjectReference Include="..\ArmMedia.FileBotProvider\ArmMedia.FileBotProvider.csproj" />
     <ProjectReference Include="..\ArmMedia.TmdbProvider\ArmMedia.TmdbProvider.csproj" />
     <ProjectReference Include="..\ArmMedia.TvdbProvider\ArmMedia.TvdbProvider.csproj" />
+    <ProjectReference Include="..\ArmMedia.OmdbProvider\ArmMedia.OmdbProvider.csproj" />
     <ProjectReference Include="..\ArmMedia.Naming\ArmMedia.Naming.csproj" />
     <ProjectReference Include="..\ArmMedia.Linting\ArmMedia.Linting.csproj" />
     <ProjectReference Include="..\ArmRipper.Core\ArmRipper.Core.csproj" />
