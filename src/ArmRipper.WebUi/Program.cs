@@ -88,6 +88,11 @@ builder.Services.AddHttpClient("Tmdb", client =>
     client.Timeout = TimeSpan.FromSeconds(10);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("arm-sharp/1.0 (tmdb-provider)");
 });
+builder.Services.AddHttpClient("Tvdb", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("arm-sharp/1.0 (tvdb-provider)");
+});
 builder.Services.AddArmMediaTvPipeline(builder.Configuration);
 
 // Named HttpClient registrations (avoids socket exhaustion from per-call new HttpClient())

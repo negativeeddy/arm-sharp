@@ -458,7 +458,12 @@
                         <tr>
                             <td><label for="TmdbApiKey">TMDB API Key:</label></td>
                             <td><input type="text" class="form-control" id="TmdbApiKey" name="TmdbApiKey"
-                                   value="@(armSettings?.TmdbApiKey ?? "")" placeholder="Used for TV episode identification (v3 auth)" /></td>
+                                   value="@(armSettings?.TmdbApiKey ?? "")" placeholder="Used for TV episode identification (aired order)" /></td>
+                        </tr>
+                        <tr>
+                            <td><label for="TvdbApiKey">TVDB API Key:</label></td>
+                            <td><input type="text" class="form-control" id="TvdbApiKey" name="TvdbApiKey"
+                                   value="@(armSettings?.TvdbApiKey ?? "")" placeholder="Used for TV episode identification (DVD order — best for discs)" /></td>
                         </tr>
                         <tr>
                             <td><label for="ArmApiKey">ARM API Key:</label></td>

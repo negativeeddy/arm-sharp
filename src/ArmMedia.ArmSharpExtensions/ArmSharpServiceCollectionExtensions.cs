@@ -7,6 +7,7 @@ using ArmMedia.Linting.Rules;
 using ArmMedia.Naming;
 using ArmMedia.Naming.Abstractions;
 using ArmMedia.TmdbProvider;
+using ArmMedia.TvdbProvider;
 using ArmRipper.Core.Configuration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -41,7 +42,8 @@ public static class ArmSharpServiceCollectionExtensions
             // Add providers in preferred order; ProviderOrder in config overrides eval order.
             .AddProvider<ArmMedia.DiscDbProvider.DiscDbProvider>()
             .AddProvider<ArmMedia.FileBotProvider.FileBotProvider>()
-            .AddProvider<ArmMedia.TmdbProvider.TmdbProvider>();
+            .AddProvider<ArmMedia.TmdbProvider.TmdbProvider>()
+            .AddProvider<ArmMedia.TvdbProvider.TvdbProvider>();
 
         // Bridge the existing IDiscDbMappingService to the lightweight
         // IDiscDbLookupService used by the provider layer.
@@ -58,6 +60,11 @@ public static class ArmSharpServiceCollectionExtensions
         services.Configure<TmdbProviderOptions>(
             configuration.GetSection(TmdbProviderOptions.SectionName));
         services.AddSingleton<ITmdbApiKeySource, TmdbApiKeyResolver>();
+
+        // ── TVDB provider options ────────────────────────────────────────────
+        services.Configure<TvdbProviderOptions>(
+            configuration.GetSection(TvdbProviderOptions.SectionName));
+        services.AddSingleton<ITvdbApiKeySource, TvdbApiKeyResolver>();
 
         // ── Linting ──────────────────────────────────────────────────────────
         services.Configure<LintOptions>(configuration.GetSection(LintOptions.SectionName));

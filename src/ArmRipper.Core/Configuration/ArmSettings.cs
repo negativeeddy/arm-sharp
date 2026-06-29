@@ -59,6 +59,7 @@ public class ArmSettings
     public string? MetadataProvider { get; set; } = "omdb";
     public string? OmdbApiKey { get; set; }
     public string? TmdbApiKey { get; set; }
+    public string? TvdbApiKey { get; set; }
 
     public string? WebServerIp { get; set; } = "0.0.0.0";
     public int WebServerPort { get; set; } = 8080;
