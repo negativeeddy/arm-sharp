@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <AssemblyName>ArmMedia.Linting</AssemblyName>
+    <RootNamespace>ArmMedia.Linting</RootNamespace>
+    <Version>1.0.0</Version>
+    <Authors>ARM-Sharp Contributors</Authors>
+    <Description>Episode mapping lint rules and reporting for ARM-Sharp TV series ripping.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ArmMedia.Core\ArmMedia.Core.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.8" />
+  </ItemGroup>
+
+</Project>

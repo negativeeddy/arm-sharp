@@ -1,10 +1,17 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/ArmMedia.ArmSharpExtensions/ArmMedia.ArmSharpExtensions.csproj" />
+    <Project Path="src/ArmMedia.Core/ArmMedia.Core.csproj" />
+    <Project Path="src/ArmMedia.DiscDbProvider/ArmMedia.DiscDbProvider.csproj" />
+    <Project Path="src/ArmMedia.FileBotProvider/ArmMedia.FileBotProvider.csproj" />
+    <Project Path="src/ArmMedia.Linting/ArmMedia.Linting.csproj" />
+    <Project Path="src/ArmMedia.Naming/ArmMedia.Naming.csproj" />
     <Project Path="src/ArmRipper.WebUi/ArmRipper.WebUi.csproj" />
     <Project Path="src/ArmRipper.Cli/ArmRipper.Cli.csproj" />
     <Project Path="src/ArmRipper.Core/ArmRipper.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/ArmMedia.Tests/ArmMedia.Tests.csproj" />
     <Project Path="tests/ArmRipper.Core.Tests/ArmRipper.Core.Tests.csproj" />
     <Project Path="tests/ArmRipper.WebUi.Tests/ArmRipper.WebUi.Tests.csproj" />
   </Folder>

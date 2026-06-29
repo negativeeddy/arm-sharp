@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>ArmMedia.Tests</AssemblyName>
+    <RootNamespace>ArmMedia.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ArmMedia.Core\ArmMedia.Core.csproj" />
+    <ProjectReference Include="..\..\src\ArmMedia.DiscDbProvider\ArmMedia.DiscDbProvider.csproj" />
+    <ProjectReference Include="..\..\src\ArmMedia.Naming\ArmMedia.Naming.csproj" />
+    <ProjectReference Include="..\..\src\ArmMedia.Linting\ArmMedia.Linting.csproj" />
+    <ProjectReference Include="..\..\src\ArmMedia.FileBotProvider\ArmMedia.FileBotProvider.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk"          Version="17.12.0" />
+    <PackageReference Include="xunit"                           Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio"       Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector"              Version="6.0.3">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Moq"                             Version="4.20.72" />
+    <PackageReference Include="Microsoft.Extensions.Logging"    Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Options"    Version="10.0.8" />
+  </ItemGroup>
+
+  <!-- Copy sample sidecar files to output so integration tests can find them -->
+  <ItemGroup>
+    <None Update="TestData\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

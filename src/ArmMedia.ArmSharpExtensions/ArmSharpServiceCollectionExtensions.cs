@@ -1,0 +1,63 @@
+using ArmMedia.Core.Abstractions;
+using ArmMedia.Core.DependencyInjection;
+using ArmMedia.Core.Orchestration;
+using ArmMedia.Linting;
+using ArmMedia.Linting.Abstractions;
+using ArmMedia.Linting.Rules;
+using ArmMedia.Naming;
+using ArmMedia.Naming.Abstractions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace ArmMedia.ArmSharpExtensions;
+
+/// <summary>
+/// Service collection extensions for wiring the full ArmMedia episode identification
+/// stack into an ARM-Sharp host application.
+/// </summary>
+public static class ArmSharpServiceCollectionExtensions
+{
+    /// <summary>
+    /// Registers all ArmMedia services required by <see cref="ArmRipperServiceExtensions"/>:
+    /// <list type="bullet">
+    ///   <item>Episode identification orchestrator + DiscDb and FileBot providers</item>
+    ///   <item>Default episode renamer</item>
+    ///   <item>Default linting engine + built-in rules</item>
+    /// </list>
+    /// Call this once from your host's <c>Program.cs</c> or <c>Startup.ConfigureServices</c>.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configuration">Application configuration (appsettings.json).</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddArmMediaTvPipeline(
+        this IServiceCollection services,
+        IConfiguration          configuration)
+    {
+        // ── Identification pipeline ───────────────────────────────────────────
+        services
+            .AddEpisodeIdentification(configuration)
+            // Add providers in preferred order; ProviderOrder in config overrides eval order.
+            .AddProvider<ArmMedia.DiscDbProvider.DiscDbProvider>()
+            .AddProvider<ArmMedia.FileBotProvider.FileBotProvider>();
+
+        // Bridge the existing IDiscDbMappingService to the lightweight
+        // IDiscDbLookupService used by the provider layer.
+        services.AddSingleton<IDiscDbLookupService, DiscDbLookupAdapter>();
+
+        // ── Naming ───────────────────────────────────────────────────────────
+        services.Configure<NamingOptions>(configuration.GetSection(NamingOptions.SectionName));
+        services.AddSingleton<IEpisodeRenamer, DefaultEpisodeRenamer>();
+
+        // ── Linting ──────────────────────────────────────────────────────────
+        services.Configure<LintOptions>(configuration.GetSection(LintOptions.SectionName));
+        services.AddSingleton<ILintRule, DuplicateEpisodeLintRule>();
+        services.AddSingleton<ILintRule, EpisodeGapLintRule>();
+        services.AddSingleton<ILintRule, LowConfidenceLintRule>();
+        services.AddSingleton<ILintRule, RuntimeMismatchLintRule>();
+        services.AddSingleton<ILintRule, MultiPartDurationMismatchLintRule>();
+        services.AddSingleton<ILintRule, SeasonMismatchLintRule>();
+        services.AddSingleton<ILintingEngine, DefaultLintingEngine>();
+
+        return services;
+    }
+}
