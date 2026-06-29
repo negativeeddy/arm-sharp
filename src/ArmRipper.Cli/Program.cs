@@ -1,3 +1,4 @@
+using ArmMedia.ArmSharpExtensions;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
@@ -68,6 +69,9 @@ builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<IConductor, Conductor>();
 builder.Services.AddSingleton<INotificationBroadcaster, NullNotificationBroadcaster>();
 builder.Services.AddSingleton<IBackgroundRipService, BackgroundRipService>();
+
+// ── ArmMedia TV series identification pipeline ──
+builder.Services.AddArmMediaTvPipeline(builder.Configuration);
 
 // Per-job file logging
 var fileLogProvider = new JobFileLoggerProvider();

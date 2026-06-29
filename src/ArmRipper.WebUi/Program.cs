@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using ArmMedia.ArmSharpExtensions;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
@@ -80,6 +81,9 @@ builder.Services.AddHttpClient<OmdbService>();
 builder.Services.AddHttpClient<TmdbService>();
 builder.Services.AddSingleton<INotificationBroadcaster, SignalRNotificationBroadcaster>();
 builder.Services.AddSingleton<IBackgroundRipService, BackgroundRipService>();
+
+// ── ArmMedia TV series identification pipeline ──
+builder.Services.AddArmMediaTvPipeline(builder.Configuration);
 
 // Named HttpClient registrations (avoids socket exhaustion from per-call new HttpClient())
 builder.Services.AddHttpClient("Notifications", client =>
