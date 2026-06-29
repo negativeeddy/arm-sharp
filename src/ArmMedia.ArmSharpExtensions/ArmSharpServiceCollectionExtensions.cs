@@ -6,6 +6,7 @@ using ArmMedia.Linting.Abstractions;
 using ArmMedia.Linting.Rules;
 using ArmMedia.Naming;
 using ArmMedia.Naming.Abstractions;
+using ArmMedia.TmdbProvider;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -38,7 +39,8 @@ public static class ArmSharpServiceCollectionExtensions
             .AddEpisodeIdentification(configuration)
             // Add providers in preferred order; ProviderOrder in config overrides eval order.
             .AddProvider<ArmMedia.DiscDbProvider.DiscDbProvider>()
-            .AddProvider<ArmMedia.FileBotProvider.FileBotProvider>();
+            .AddProvider<ArmMedia.FileBotProvider.FileBotProvider>()
+            .AddProvider<ArmMedia.TmdbProvider.TmdbProvider>();
 
         // Bridge the existing IDiscDbMappingService to the lightweight
         // IDiscDbLookupService used by the provider layer.
@@ -47,6 +49,10 @@ public static class ArmSharpServiceCollectionExtensions
         // ── Naming ───────────────────────────────────────────────────────────
         services.Configure<NamingOptions>(configuration.GetSection(NamingOptions.SectionName));
         services.AddSingleton<IEpisodeRenamer, DefaultEpisodeRenamer>();
+
+        // ── TMDB provider options ────────────────────────────────────────────
+        services.Configure<TmdbProviderOptions>(
+            configuration.GetSection(TmdbProviderOptions.SectionName));
 
         // ── Linting ──────────────────────────────────────────────────────────
         services.Configure<LintOptions>(configuration.GetSection(LintOptions.SectionName));

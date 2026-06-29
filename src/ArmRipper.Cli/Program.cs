@@ -71,6 +71,11 @@ builder.Services.AddSingleton<INotificationBroadcaster, NullNotificationBroadcas
 builder.Services.AddSingleton<IBackgroundRipService, BackgroundRipService>();
 
 // ── ArmMedia TV series identification pipeline ──
+builder.Services.AddHttpClient("Tmdb", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("arm-sharp/1.0 (tmdb-provider)");
+});
 builder.Services.AddArmMediaTvPipeline(builder.Configuration);
 
 // Per-job file logging

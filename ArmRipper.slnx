@@ -7,6 +7,7 @@
     <Project Path="src/ArmMedia.Linting/ArmMedia.Linting.csproj" />
     <Project Path="src/ArmMedia.Naming/ArmMedia.Naming.csproj" />
     <Project Path="src/ArmRipper.WebUi/ArmRipper.WebUi.csproj" />
+    <Project Path="src/ArmMedia.TmdbProvider/ArmMedia.TmdbProvider.csproj" />
     <Project Path="src/ArmRipper.Cli/ArmRipper.Cli.csproj" />
     <Project Path="src/ArmRipper.Core/ArmRipper.Core.csproj" />
   </Folder>
