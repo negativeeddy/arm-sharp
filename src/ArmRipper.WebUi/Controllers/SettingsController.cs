@@ -472,6 +472,24 @@ public class SettingsController(
         return RedirectToAction("Index");
     }
 
+    [HttpPost("save-metadata")]
+    public async Task<IActionResult> SaveMetadata(
+        string? OmdbApiKey, string? TmdbApiKey, string? ArmApiKey,
+        CancellationToken ct = default)
+    {
+        var fields = new Dictionary<string, string?>
+        {
+            ["OmdbApiKey"] = OmdbApiKey is not null ? JsonSerialize(OmdbApiKey) : null,
+            ["TmdbApiKey"] = TmdbApiKey is not null ? JsonSerialize(TmdbApiKey) : null,
+            ["ArmApiKey"] = ArmApiKey is not null ? JsonSerialize(ArmApiKey) : null,
+        };
+
+        await SettingsHelper.MergeIntoDbAsync(db, fields, ct);
+        TempData["Message"] = "API keys saved.";
+        TempData["ActiveTab"] = "tab9";
+        return RedirectToAction("Index");
+    }
+
     [HttpPost("save-notifications")]
     public async Task<IActionResult> SaveNotifications(
         string? PbKey, string? IftttKey, string? PoUserKey,

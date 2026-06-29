@@ -4,7 +4,6 @@ using System.Text.Json.Serialization;
 using ArmMedia.Core.Abstractions;
 using ArmMedia.Core.Models;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace ArmMedia.TmdbProvider;
 
@@ -16,19 +15,19 @@ namespace ArmMedia.TmdbProvider;
 /// </summary>
 public sealed class TmdbProvider : IEpisodeIdentificationProvider
 {
-    private readonly TmdbProviderOptions        _options;
+    private readonly ITmdbApiKeySource          _apiKeySource;
     private readonly ILogger<TmdbProvider>      _logger;
     private readonly IHttpClientFactory?        _httpClientFactory;
 
     private const string BaseUrl = "https://api.themoviedb.org/3";
 
-    /// <summary>Initialises the provider with options, logger, and optional HTTP client factory.</summary>
+    /// <summary>Initialises the provider with an API key source, logger, and optional HTTP client factory.</summary>
     public TmdbProvider(
-        IOptions<TmdbProviderOptions>   options,
-        ILogger<TmdbProvider>           logger,
-        IHttpClientFactory?             httpClientFactory = null)
+        ITmdbApiKeySource            apiKeySource,
+        ILogger<TmdbProvider>        logger,
+        IHttpClientFactory?          httpClientFactory = null)
     {
-        _options            = options.Value;
+        _apiKeySource       = apiKeySource;
         _logger             = logger;
         _httpClientFactory  = httpClientFactory;
     }
@@ -41,7 +40,8 @@ public sealed class TmdbProvider : IEpisodeIdentificationProvider
         DiscContext       context,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(_options.ApiKey))
+        var apiKey = _apiKeySource.GetApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
         {
             _logger.LogDebug("[TmdbProvider] No API key configured; skipping TMDB lookup.");
             return [];
@@ -54,7 +54,7 @@ public sealed class TmdbProvider : IEpisodeIdentificationProvider
         }
 
         // ── Step 1: Search for the TV series ──────────────────────────────────
-        int? seriesId = await SearchSeriesAsync(context.SeriesTitle, cancellationToken);
+        int? seriesId = await SearchSeriesAsync(context.SeriesTitle, apiKey, cancellationToken);
         if (seriesId is null)
         {
             _logger.LogInformation(
@@ -69,7 +69,7 @@ public sealed class TmdbProvider : IEpisodeIdentificationProvider
 
         // ── Step 2: Get season episodes ───────────────────────────────────────
         var seasonEpisodes = await GetSeasonEpisodesAsync(
-            seriesId.Value, context.Season, cancellationToken);
+            seriesId.Value, context.Season, apiKey, cancellationToken);
 
         if (seasonEpisodes is null || seasonEpisodes.Count == 0)
         {
@@ -144,11 +144,11 @@ public sealed class TmdbProvider : IEpisodeIdentificationProvider
     }
 
     private async Task<int?> SearchSeriesAsync(
-        string title, CancellationToken ct)
+        string title, string apiKey, CancellationToken ct)
     {
         var client = CreateClient();
         var url = $"{BaseUrl}/search/tv" +
-                  $"?api_key={_options.ApiKey}" +
+                  $"?api_key={apiKey}" +
                   $"&query={Uri.EscapeDataString(title)}";
 
         TmdbSearchResponse? response;
@@ -171,11 +171,11 @@ public sealed class TmdbProvider : IEpisodeIdentificationProvider
     }
 
     private async Task<List<TmdbEpisode>?> GetSeasonEpisodesAsync(
-        int seriesId, int season, CancellationToken ct)
+        int seriesId, int season, string apiKey, CancellationToken ct)
     {
         var client = CreateClient();
         var url = $"{BaseUrl}/tv/{seriesId}/season/{season}" +
-                  $"?api_key={_options.ApiKey}";
+                  $"?api_key={apiKey}";
 
         TmdbSeasonResponse? response;
         try

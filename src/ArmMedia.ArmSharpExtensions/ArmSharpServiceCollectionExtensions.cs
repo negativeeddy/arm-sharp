@@ -7,6 +7,7 @@ using ArmMedia.Linting.Rules;
 using ArmMedia.Naming;
 using ArmMedia.Naming.Abstractions;
 using ArmMedia.TmdbProvider;
+using ArmRipper.Core.Configuration;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -51,8 +52,12 @@ public static class ArmSharpServiceCollectionExtensions
         services.AddSingleton<IEpisodeRenamer, DefaultEpisodeRenamer>();
 
         // ── TMDB provider options ────────────────────────────────────────────
+        // Bind the "Tmdb" appsettings section, then register a resolver that
+        // merges the DB-stored ArmSettings.TmdbApiKey at runtime so Web UI
+        // changes take effect without restarting the process.
         services.Configure<TmdbProviderOptions>(
             configuration.GetSection(TmdbProviderOptions.SectionName));
+        services.AddSingleton<ITmdbApiKeySource, TmdbApiKeyResolver>();
 
         // ── Linting ──────────────────────────────────────────────────────────
         services.Configure<LintOptions>(configuration.GetSection(LintOptions.SectionName));
