@@ -640,6 +640,26 @@ public sealed class ArmRipperService(
     {
         var tracks = job.Tracks.Where(t => t.Ripped).ToList();
 
+        // ── Positional fallback for TV series without DiscDb episode mapping ──
+        // When VideoType is series/tv but tracks have no EpisodeNumber assigned
+        // (e.g., DiscDb had no matching record), assign sequential episode numbers
+        // based on physical track order so output files get proper SxxExx names.
+        if (job.VideoType == "series" || job.VideoType == "tv")
+        {
+            var epCounter = 1;
+            foreach (var t in tracks.OrderBy(t => t.TrackNumberInt ?? 0))
+            {
+                if (t.EpisodeNumber is null)
+                {
+                    t.EpisodeNumber = epCounter;
+                    logger.LogDebug(
+                        "Positional fallback: track {TrackNum} → episode {Episode}",
+                        t.TrackNumber ?? t.FileName, epCounter);
+                }
+                epCounter++;
+            }
+        }
+
         foreach (var track in tracks)
         {
             if (tracks.Count == 1)
