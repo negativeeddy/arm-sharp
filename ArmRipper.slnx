@@ -1,6 +1,5 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/ArmMedia.ArmSharpExtensions/ArmMedia.ArmSharpExtensions.csproj" />
     <Project Path="src/ArmMedia.Core/ArmMedia.Core.csproj" />
     <Project Path="src/ArmMedia.DiscDbProvider/ArmMedia.DiscDbProvider.csproj" />
     <Project Path="src/ArmMedia.DvdCompareProvider/ArmMedia.DvdCompareProvider.csproj" />

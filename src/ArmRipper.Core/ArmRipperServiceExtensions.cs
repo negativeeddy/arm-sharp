@@ -6,17 +6,15 @@ using ArmMedia.Naming;
 using ArmMedia.Naming.Abstractions;
 using Microsoft.Extensions.Logging;
 
-namespace ArmMedia.ArmSharpExtensions;
+namespace ArmRipper.Core;
 
 /// <summary>
 /// Extension methods that integrate the ArmMedia episode identification pipeline
 /// into <c>ArmRipperService</c> from the ARM-Sharp host application.
-/// Target framework: net10.0
 /// </summary>
 /// <remarks>
 /// These extensions are designed to be called from within
-/// <c>ArmRipperService.PrepareTranscodeInputPathAsync</c>.  The host project
-/// references this assembly while the shared libraries remain on net9.0.
+/// <c>ArmRipperService.PrepareTranscodeInputPathAsync</c>.
 /// </remarks>
 public static class ArmRipperServiceExtensions
 {
@@ -76,12 +74,12 @@ public static class ArmRipperServiceExtensions
             var report = lintingEngine.Lint(episodeMap, lintOptions);
             if (report.HasErrors && lintOptions.FailOnError)
                 throw new InvalidOperationException(
-                    $"Episode map linting failed with {report.Issues.Count(i => i.Severity == Linting.Models.LintSeverity.Error)} error(s). " +
+                    $"Episode map linting failed with {report.Issues.Count(i => i.Severity == ArmMedia.Linting.Models.LintSeverity.Error)} error(s). " +
                     "Resolve lint issues or set Linting:FailOnError=false to continue.");
 
             if (report.HasWarnings && lintOptions.FailOnWarning)
                 throw new InvalidOperationException(
-                    $"Episode map linting failed with {report.Issues.Count(i => i.Severity == Linting.Models.LintSeverity.Warning)} warning(s). " +
+                    $"Episode map linting failed with {report.Issues.Count(i => i.Severity == ArmMedia.Linting.Models.LintSeverity.Warning)} warning(s). " +
                     "Resolve lint issues or set Linting:FailOnWarning=false to continue.");
         }
 

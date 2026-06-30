@@ -1,30 +1,30 @@
 using System.Text.Json;
 using ArmMedia.Core.Abstractions;
-using ArmMedia.TmdbProvider;
+using ArmMedia.OmdbProvider;
 using ArmRipper.Core.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
-namespace ArmMedia.ArmSharpExtensions;
+namespace ArmRipper.Core;
 
 /// <summary>
-/// Resolves the TMDB API key by checking the DB-stored override first,
-/// then falling back to the <c>Tmdb:ApiKey</c> appsettings.json configuration.
-/// Uses a scoped DB query on each call so Web UI changes take effect immediately.
+/// Resolves the OMDB API key by checking the DB-stored override first,
+/// then falling back to the <c>Omdb:ApiKey</c> appsettings.json configuration.
+/// Uses a scoped DB query so Web UI changes take effect immediately.
 /// </summary>
-public sealed class TmdbApiKeyResolver : ITmdbApiKeySource
+public sealed class OmdbApiKeyResolver : IOmdbApiKeySource
 {
-    private readonly IServiceScopeFactory                   _scopeFactory;
-    private readonly IOptionsMonitor<TmdbProviderOptions>     _tmdbOptions;
+    private readonly IServiceScopeFactory              _scopeFactory;
+    private readonly IOptionsMonitor<OmdbProviderOptions> _omdbOptions;
 
-    /// <summary>Initialises the resolver with a scope factory and TMDB options.</summary>
-    public TmdbApiKeyResolver(
-        IServiceScopeFactory                scopeFactory,
-        IOptionsMonitor<TmdbProviderOptions>  tmdbOptions)
+    /// <summary>Initialises the resolver with a scope factory and OMDB options.</summary>
+    public OmdbApiKeyResolver(
+        IServiceScopeFactory              scopeFactory,
+        IOptionsMonitor<OmdbProviderOptions> omdbOptions)
     {
         _scopeFactory = scopeFactory;
-        _tmdbOptions  = tmdbOptions;
+        _omdbOptions  = omdbOptions;
     }
 
     /// <inheritdoc/>
@@ -39,7 +39,7 @@ public sealed class TmdbApiKeyResolver : ITmdbApiKeySource
             if (saved?.SettingsJson is not null)
             {
                 using var doc = JsonDocument.Parse(saved.SettingsJson);
-                if (doc.RootElement.TryGetProperty("TmdbApiKey", out var el) &&
+                if (doc.RootElement.TryGetProperty("OmdbApiKey", out var el) &&
                     el.ValueKind == JsonValueKind.String)
                 {
                     var key = el.GetString();
@@ -54,8 +54,8 @@ public sealed class TmdbApiKeyResolver : ITmdbApiKeySource
         }
 
         // 2. Fallback to appsettings.json / YAML config
-        if (!string.IsNullOrWhiteSpace(_tmdbOptions.CurrentValue.ApiKey))
-            return _tmdbOptions.CurrentValue.ApiKey;
+        if (!string.IsNullOrWhiteSpace(_omdbOptions.CurrentValue.ApiKey))
+            return _omdbOptions.CurrentValue.ApiKey;
 
         return null;
     }

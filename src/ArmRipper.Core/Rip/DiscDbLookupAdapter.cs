@@ -1,9 +1,8 @@
 using ArmMedia.Core.Abstractions;
 using ArmMedia.Core.Models;
-using ArmRipper.Core.Rip;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace ArmMedia.ArmSharpExtensions;
+namespace ArmRipper.Core.Rip;
 
 /// <summary>
 /// Adapts the existing <see cref="IDiscDbMappingService"/> from ArmRipper.Core

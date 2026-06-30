@@ -12,10 +12,12 @@ using ArmMedia.OmdbProvider;
 using ArmMedia.TmdbProvider;
 using ArmMedia.TvdbProvider;
 using ArmRipper.Core.Configuration;
+using ArmRipper.Core.Infrastructure;
+using ArmRipper.Core.Rip;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace ArmMedia.ArmSharpExtensions;
+namespace ArmRipper.Core;
 
 /// <summary>
 /// Service collection extensions for wiring the full ArmMedia episode identification
@@ -67,7 +69,7 @@ public static class ArmSharpServiceCollectionExtensions
         // ICliProcessRunner to the FileBotCliService.
         services.AddSingleton<FileBotCliRunner>(sp =>
         {
-            var runner = sp.GetRequiredService<ArmRipper.Core.Infrastructure.ICliProcessRunner>();
+            var runner = sp.GetRequiredService<ICliProcessRunner>();
             return FileBotCliBridge.CreateRunner(runner);
         });
         services.AddSingleton<FileBotCliService>();

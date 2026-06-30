@@ -2,7 +2,6 @@
 
   <ItemGroup>
     <ProjectReference Include="../ArmRipper.Core/ArmRipper.Core.csproj" />
-    <ProjectReference Include="../ArmMedia.ArmSharpExtensions/ArmMedia.ArmSharpExtensions.csproj" />
   </ItemGroup>
 
   <ItemGroup>

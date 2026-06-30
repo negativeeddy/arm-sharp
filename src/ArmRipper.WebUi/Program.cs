@@ -1,5 +1,5 @@
 using System.Security.Claims;
-using ArmMedia.ArmSharpExtensions;
+using ArmRipper.Core;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;

@@ -1,7 +1,6 @@
 using ArmMedia.FileBotProvider;
-using ArmRipper.Core.Infrastructure;
 
-namespace ArmMedia.ArmSharpExtensions;
+namespace ArmRipper.Core.Infrastructure;
 
 /// <summary>
 /// Bridges the host's <see cref="ICliProcessRunner"/> to the

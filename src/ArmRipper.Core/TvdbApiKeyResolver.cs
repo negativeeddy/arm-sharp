@@ -1,30 +1,30 @@
 using System.Text.Json;
 using ArmMedia.Core.Abstractions;
-using ArmMedia.OmdbProvider;
+using ArmMedia.TvdbProvider;
 using ArmRipper.Core.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
-namespace ArmMedia.ArmSharpExtensions;
+namespace ArmRipper.Core;
 
 /// <summary>
-/// Resolves the OMDB API key by checking the DB-stored override first,
-/// then falling back to the <c>Omdb:ApiKey</c> appsettings.json configuration.
-/// Uses a scoped DB query so Web UI changes take effect immediately.
+/// Resolves the TVDB API key by checking the DB-stored override first,
+/// then falling back to the <c>Tvdb:ApiKey</c> appsettings.json configuration.
+/// Uses a scoped DB query on each call so Web UI changes take effect immediately.
 /// </summary>
-public sealed class OmdbApiKeyResolver : IOmdbApiKeySource
+public sealed class TvdbApiKeyResolver : ITvdbApiKeySource
 {
     private readonly IServiceScopeFactory              _scopeFactory;
-    private readonly IOptionsMonitor<OmdbProviderOptions> _omdbOptions;
+    private readonly IOptionsMonitor<TvdbProviderOptions> _tvdbOptions;
 
-    /// <summary>Initialises the resolver with a scope factory and OMDB options.</summary>
-    public OmdbApiKeyResolver(
+    /// <summary>Initialises the resolver with a scope factory and TVDB options.</summary>
+    public TvdbApiKeyResolver(
         IServiceScopeFactory              scopeFactory,
-        IOptionsMonitor<OmdbProviderOptions> omdbOptions)
+        IOptionsMonitor<TvdbProviderOptions> tvdbOptions)
     {
-        _scopeFactory = scopeFactory;
-        _omdbOptions  = omdbOptions;
+        _scopeFactory  = scopeFactory;
+        _tvdbOptions   = tvdbOptions;
     }
 
     /// <inheritdoc/>
@@ -39,7 +39,7 @@ public sealed class OmdbApiKeyResolver : IOmdbApiKeySource
             if (saved?.SettingsJson is not null)
             {
                 using var doc = JsonDocument.Parse(saved.SettingsJson);
-                if (doc.RootElement.TryGetProperty("OmdbApiKey", out var el) &&
+                if (doc.RootElement.TryGetProperty("TvdbApiKey", out var el) &&
                     el.ValueKind == JsonValueKind.String)
                 {
                     var key = el.GetString();
@@ -54,8 +54,8 @@ public sealed class OmdbApiKeyResolver : IOmdbApiKeySource
         }
 
         // 2. Fallback to appsettings.json / YAML config
-        if (!string.IsNullOrWhiteSpace(_omdbOptions.CurrentValue.ApiKey))
-            return _omdbOptions.CurrentValue.ApiKey;
+        if (!string.IsNullOrWhiteSpace(_tvdbOptions.CurrentValue.ApiKey))
+            return _tvdbOptions.CurrentValue.ApiKey;
 
         return null;
     }
