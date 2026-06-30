@@ -39,47 +39,38 @@ public sealed partial class DvdCompareProvider : IEpisodeIdentificationProvider
         DiscContext       context,
         CancellationToken cancellationToken = default)
     {
-        // ── Step 0: Resolve the comparison URL (search if not configured) ────
-        string? comparisonUrl = _options.ComparisonUrl;
-        if (string.IsNullOrWhiteSpace(comparisonUrl))
+        // ── Step 0: Search dvdcompare.net for the series ───────────────────
+        if (string.IsNullOrWhiteSpace(context.SeriesTitle))
         {
-            if (string.IsNullOrWhiteSpace(context.SeriesTitle))
-            {
-                _logger.LogDebug("[DvdCompareProvider] No ComparisonUrl or SeriesTitle; skipping.");
-                return [];
-            }
-
-            _logger.LogInformation(
-                "[DvdCompareProvider] No ComparisonUrl configured; searching dvdcompare.net for '{Series}' season {Season}.",
-                context.SeriesTitle, context.Season);
-
-            comparisonUrl = await SearchComparisonUrlAsync(context.SeriesTitle, context.Season, cancellationToken);
-
-            if (string.IsNullOrWhiteSpace(comparisonUrl))
-            {
-                _logger.LogWarning(
-                    "[DvdCompareProvider] No dvdcompare.net page found for '{Series}' season {Season}.",
-                    context.SeriesTitle, context.Season);
-                return [];
-            }
-
-            _logger.LogInformation(
-                "[DvdCompareProvider] Found comparison page via search: {Url}", comparisonUrl);
+            _logger.LogDebug("[DvdCompareProvider] No SeriesTitle; skipping.");
+            return [];
         }
 
-        // comparisonUrl is guaranteed non-null here (empty case returned above)
-        string resolvedUrl = comparisonUrl!;
         _logger.LogInformation(
-            "[DvdCompareProvider] Fetching comparison page: {Url}", resolvedUrl);
+            "[DvdCompareProvider] Searching dvdcompare.net for '{Series}' season {Season}.",
+            context.SeriesTitle, context.Season);
+
+        string? comparisonUrl = await SearchComparisonUrlAsync(context.SeriesTitle, context.Season, cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(comparisonUrl))
+        {
+            _logger.LogWarning(
+                "[DvdCompareProvider] No dvdcompare.net page found for '{Series}' season {Season}.",
+                context.SeriesTitle, context.Season);
+            return [];
+        }
+
+        _logger.LogInformation(
+            "[DvdCompareProvider] Found comparison page: {Url}", comparisonUrl);
 
         // ── Step 1: Fetch and parse the comparison page ───────────────────────
         List<DiscEpisodeGroup>? discGroups;
         try
         {
-            var html = await FetchPageAsync(resolvedUrl, cancellationToken);
+            var html = await FetchPageAsync(comparisonUrl, cancellationToken);
             if (string.IsNullOrWhiteSpace(html))
             {
-                _logger.LogWarning("[DvdCompareProvider] Empty response from {Url}.", resolvedUrl);
+                _logger.LogWarning("[DvdCompareProvider] Empty response from {Url}.", comparisonUrl);
                 return [];
             }
 
@@ -87,13 +78,13 @@ public sealed partial class DvdCompareProvider : IEpisodeIdentificationProvider
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[DvdCompareProvider] Failed to fetch or parse {Url}.", resolvedUrl);
+            _logger.LogWarning(ex, "[DvdCompareProvider] Failed to fetch or parse {Url}.", comparisonUrl);
             return [];
         }
 
         if (discGroups is null || discGroups.Count == 0)
         {
-            _logger.LogWarning("[DvdCompareProvider] No disc/episode data found at {Url}.", resolvedUrl);
+            _logger.LogWarning("[DvdCompareProvider] No disc/episode data found at {Url}.", comparisonUrl);
             return [];
         }
 

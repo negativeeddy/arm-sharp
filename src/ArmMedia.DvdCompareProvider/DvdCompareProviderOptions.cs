@@ -10,14 +10,6 @@ public sealed class DvdCompareProviderOptions
     public const string SectionName = "DvdCompare";
 
     /// <summary>
-    /// Gets or sets the dvdcompare.net comparison URL for the TV series season.
-    /// When empty (default), the provider will search dvdcompare.net automatically
-    /// using the series title and season from the disc context.
-    /// Example: <c>https://dvdcompare.net/comparisons/film.php?fid=9923</c>
-    /// </summary>
-    public string ComparisonUrl { get; set; } = "";
-
-    /// <summary>
     /// Gets or sets the runtime tolerance in seconds for matching tracks to
     /// episode listings. Tracks whose duration is within this tolerance of
     /// a listed episode runtime will be considered a match.
