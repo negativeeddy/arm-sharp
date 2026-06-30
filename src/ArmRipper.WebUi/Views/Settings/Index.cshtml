@@ -443,7 +443,7 @@
 
     <!-- Online DB -->
     <div class="tab-pane fade @(ViewBag.ActiveTab == "tab9" ? "show active" : "")" id="tab9" role="tabpanel">
-        <h2>ARM Online Database</h2>
+        <h2>Metadata &amp; Online Database</h2>
 
         <div class="card mb-3">
             <div class="card-header"><h5 class="mb-0">API Keys</h5></div>
@@ -453,28 +453,55 @@
                     <table class="table table-sm mb-0">
                         <tr>
                             <td class="w-25"><label for="OmdbApiKey">OMDB API Key:</label></td>
-                            <td><input type="text" class="form-control" id="OmdbApiKey" name="OmdbApiKey"
-                                   value="@(armSettings?.OmdbApiKey ?? "")" placeholder="Used for movie/series metadata" /></td>
+                            <td>
+                                <div class="input-group">
+                                    <input type="password" class="form-control" id="OmdbApiKey" name="OmdbApiKey"
+                                           value="@(armSettings?.OmdbApiKey ?? "")" placeholder="Used for movie/series metadata" />
+                                    <div class="input-group-append">
+                                        <span class="input-group-text">
+                                            <a href="#" onclick="toggleFieldVisibility('OmdbApiKey')" title="Toggle visibility">👁️</a>
+                                        </span>
+                                    </div>
+                                </div>
+                            </td>
                         </tr>
                         <tr>
                             <td><label for="TmdbApiKey">TMDB API Key:</label></td>
-                            <td><input type="text" class="form-control" id="TmdbApiKey" name="TmdbApiKey"
-                                   value="@(armSettings?.TmdbApiKey ?? "")" placeholder="Used for TV episode identification (aired order)" /></td>
+                            <td>
+                                <div class="input-group">
+                                    <input type="password" class="form-control" id="TmdbApiKey" name="TmdbApiKey"
+                                           value="@(armSettings?.TmdbApiKey ?? "")" placeholder="Used for TV episode identification (aired order)" />
+                                    <div class="input-group-append">
+                                        <span class="input-group-text">
+                                            <a href="#" onclick="toggleFieldVisibility('TmdbApiKey')" title="Toggle visibility">👁️</a>
+                                        </span>
+                                    </div>
+                                </div>
+                            </td>
                         </tr>
                         <tr>
                             <td><label for="TvdbApiKey">TVDB API Key:</label></td>
-                            <td><input type="text" class="form-control" id="TvdbApiKey" name="TvdbApiKey"
-                                   value="@(armSettings?.TvdbApiKey ?? "")" placeholder="Used for TV episode identification (DVD order — best for discs)" /></td>
+                            <td>
+                                <div class="input-group">
+                                    <input type="password" class="form-control" id="TvdbApiKey" name="TvdbApiKey"
+                                           value="@(armSettings?.TvdbApiKey ?? "")" placeholder="Used for TV episode identification (DVD order — best for discs)" />
+                                    <div class="input-group-append">
+                                        <span class="input-group-text">
+                                            <a href="#" onclick="toggleFieldVisibility('TvdbApiKey')" title="Toggle visibility">👁️</a>
+                                        </span>
+                                    </div>
+                                </div>
+                            </td>
                         </tr>
                         <tr>
                             <td><label for="ArmApiKey">ARM API Key:</label></td>
                             <td>
                                 <div class="input-group">
-                                    <input type="text" class="form-control" id="ArmApiKey" name="ArmApiKey"
+                                    <input type="password" class="form-control" id="ArmApiKey" name="ArmApiKey"
                                            value="@(armSettings?.ArmApiKey ?? "")" placeholder="Enter your API key" />
                                     <div class="input-group-append">
                                         <span class="input-group-text">
-                                            <a href="#" onclick="toggleApiKey()" title="Toggle visibility">👁️</a>
+                                            <a href="#" onclick="toggleFieldVisibility('ArmApiKey')" title="Toggle visibility">👁️</a>
                                         </span>
                                     </div>
                                 </div>
@@ -544,8 +571,8 @@
             return div.innerHTML;
         }
 
-        function toggleApiKey() {
-            var input = document.getElementById("ArmApiKey");
+        function toggleFieldVisibility(id) {
+            var input = document.getElementById(id);
             input.type = input.type === "password" ? "text" : "password";
         }
 

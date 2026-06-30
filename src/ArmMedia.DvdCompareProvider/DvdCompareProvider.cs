@@ -349,7 +349,15 @@ public sealed partial class DvdCompareProvider : IEpisodeIdentificationProvider
         @"-\s*""(.*?)""\s*\((\d+):(\d+)\)",
         RegexOptions.IgnoreCase)]
     private static partial Regex EpisodeLinePattern();
-
+    /// <summary>
+    /// Regex that captures the explicit episode count from a disc header line
+    /// like <c>7 Episodes (with Play All)</c> or <c>3 Episodes (with Play All) (67:04)</c>.
+    /// Group 1: the episode count number.
+    /// </summary>
+    [GeneratedRegex(
+        @"(\\d+)\\s+Episodes\\b",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex EpisodeCountPattern();
     /// <summary>
     /// Parses disc/episode groups from the HTML content of a dvdcompare.net comparison page.
     /// Uses the release at <paramref name="releaseIndex"/> (0-based).
@@ -370,6 +378,9 @@ public sealed partial class DvdCompareProvider : IEpisodeIdentificationProvider
 
     /// <summary>
     /// Parses disc groups from the inner content of one Extras description block.
+    /// Uses the explicit "X Episodes" count from each disc header to exclude
+    /// non-episode lines (e.g. deleted scenes in commentary sections) that also
+    /// match the episode title/runtime pattern.
     /// </summary>
     public static List<DiscEpisodeGroup> ParseDiscsFromExtrasContent(string content)
     {
@@ -387,15 +398,25 @@ public sealed partial class DvdCompareProvider : IEpisodeIdentificationProvider
 
             string section = content[sectionStart..sectionEnd];
 
-            // Parse episode lines from this section
-            var episodes = new List<DvdEpisode>();
-            var epMatches = EpisodeLinePattern().Matches(section);
+            // Determine episode count from the "X Episodes" line
+            var countMatch = EpisodeCountPattern().Match(section);
+            int? episodeCount = countMatch.Success
+                ? int.Parse(countMatch.Groups[1].Value)
+                : null;
 
-            foreach (Match epMatch in epMatches)
+            // Parse episode lines from this section
+            var epMatches = EpisodeLinePattern().Matches(section);
+            var episodes = new List<DvdEpisode>();
+
+            for (int i = 0; i < epMatches.Count; i++)
             {
-                string title = epMatch.Groups[1].Value.Trim();
-                int minutes = int.Parse(epMatch.Groups[2].Value);
-                int seconds = int.Parse(epMatch.Groups[3].Value);
+                // Stop if we've reached the explicit episode count
+                if (episodeCount.HasValue && episodes.Count >= episodeCount.Value)
+                    break;
+
+                string title = epMatches[i].Groups[1].Value.Trim();
+                int minutes = int.Parse(epMatches[i].Groups[2].Value);
+                int seconds = int.Parse(epMatches[i].Groups[3].Value);
 
                 episodes.Add(new DvdEpisode
                 {

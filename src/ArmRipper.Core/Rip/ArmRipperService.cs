@@ -686,7 +686,7 @@ public sealed class ArmRipperService(
             var ctx = new DiscContext
             {
                 DiscId      = discId,
-                SeriesTitle = job.Title ?? job.Label ?? "Unknown",
+                SeriesTitle = CleanSeriesTitle(job.Title ?? job.Label ?? "Unknown"),
                 Season      = season,
                 Tracks      = trackContexts,
                 DiscDbHint  = makeMkvOutPath,  // FileBot CLI uses this for raw file path
