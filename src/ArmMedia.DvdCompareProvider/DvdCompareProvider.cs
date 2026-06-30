@@ -174,7 +174,7 @@ public sealed partial class DvdCompareProvider : IEpisodeIdentificationProvider
                     Episodes     = [bestMatch.EpisodeNumber],
                     Title        = bestMatch.Title,
                     IsExtra      = false,
-                    Confidence   = Confidence.Medium,
+                    Confidence   = Confidence.High,
                     ProviderName = ProviderName
                 });
             }
