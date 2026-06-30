@@ -88,7 +88,18 @@ public sealed class ArmRipperService(
             }
         }
 
-        // ── 4. Transcode (idempotent) ──
+        // ── 4. TV episode identification (runs after rip, before transcode) ──
+        // Run the full provider chain (DiscDb → DvdCompare → FileBot → TMDB →
+        // TVDB → OMDB) to identify TV episode assignments for naming, so the
+        // transcode and move steps can use episode numbers/titles.
+        await db.Entry(job).Collection(j => j.Tracks).LoadAsync(ct);
+        if (episodeOrchestrator is not null &&
+            (job.VideoType == "series" || job.VideoType == "tv"))
+        {
+            await RunEpisodeIdentificationAsync(job, makeMkvOutPath, ct);
+        }
+
+        // ── 5. Transcode (idempotent) ──
         if (job.IsStageComplete(RipStage.Transcode))
         {
             logger.LogInformation("Stage 'transcode' already completed — skipping transcode");
@@ -101,7 +112,7 @@ public sealed class ArmRipperService(
             await BroadcastJobUpdateAsync(job);
         }
 
-        // ── 5. Finalize: manual title, file moves, Emby, cleanup ──
+        // ── 6. Finalize: manual title, file moves, Emby, cleanup ──
         job.Stage = RipStage.Finalize;
         job.ProgressMessage = "Finalizing...";
         await db.SaveChangesAsync(ct);
@@ -127,18 +138,6 @@ public sealed class ArmRipperService(
             finalDirectory = CheckForDupeFolder(hasDupes, finalDirectory, job);
             job.Path = finalDirectory;
             await db.SaveChangesAsync(ct);
-        }
-
-        await db.Entry(job).Collection(j => j.Tracks).LoadAsync(ct);
-
-        // ── ArmMedia TV episode identification pipeline ──────────────────────
-        // Run the full provider chain (DiscDb → FileBot → TMDB → TVDB → OMDB)
-        // to identify TV episode assignments before moving files to the output
-        // directory. Providers populate track EpisodeNumber/EpisodeTitle fields.
-        if (episodeOrchestrator is not null &&
-            (job.VideoType == "series" || job.VideoType == "tv"))
-        {
-            await RunEpisodeIdentificationAsync(job, makeMkvOutPath, ct);
         }
 
         await MoveFilesPostAsync(transcodeOutPath, job, ct);
