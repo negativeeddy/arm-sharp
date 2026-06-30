@@ -16,6 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ArmMedia.Core\ArmMedia.Core.csproj" />
     <ProjectReference Include="..\ArmMedia.DiscDbProvider\ArmMedia.DiscDbProvider.csproj" />
+    <ProjectReference Include="..\ArmMedia.DvdCompareProvider\ArmMedia.DvdCompareProvider.csproj" />
     <ProjectReference Include="..\ArmMedia.FileBotProvider\ArmMedia.FileBotProvider.csproj" />
     <ProjectReference Include="..\ArmMedia.TmdbProvider\ArmMedia.TmdbProvider.csproj" />
     <ProjectReference Include="..\ArmMedia.TvdbProvider\ArmMedia.TvdbProvider.csproj" />

@@ -15,6 +15,7 @@
     <ProjectReference Include="..\..\src\ArmMedia.DiscDbProvider\ArmMedia.DiscDbProvider.csproj" />
     <ProjectReference Include="..\..\src\ArmMedia.Naming\ArmMedia.Naming.csproj" />
     <ProjectReference Include="..\..\src\ArmMedia.Linting\ArmMedia.Linting.csproj" />
+    <ProjectReference Include="..\..\src\ArmMedia.DvdCompareProvider\ArmMedia.DvdCompareProvider.csproj" />
     <ProjectReference Include="..\..\src\ArmMedia.FileBotProvider\ArmMedia.FileBotProvider.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk"          Version="17.12.0" />
     <PackageReference Include="xunit"                           Version="2.9.3" />

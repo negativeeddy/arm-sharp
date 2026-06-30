@@ -1,6 +1,7 @@
 using ArmMedia.Core.Abstractions;
 using ArmMedia.Core.DependencyInjection;
 using ArmMedia.Core.Orchestration;
+using ArmMedia.DvdCompareProvider;
 using ArmMedia.FileBotProvider;
 using ArmMedia.Linting;
 using ArmMedia.Linting.Abstractions;
@@ -43,6 +44,7 @@ public static class ArmSharpServiceCollectionExtensions
             .AddEpisodeIdentification(configuration)
             // Add providers in preferred order; ProviderOrder in config overrides eval order.
             .AddProvider<ArmMedia.DiscDbProvider.DiscDbProvider>()
+            .AddProvider<ArmMedia.DvdCompareProvider.DvdCompareProvider>()
             .AddProvider<ArmMedia.FileBotProvider.FileBotProvider>()
             .AddProvider<ArmMedia.TmdbProvider.TmdbProvider>()
             .AddProvider<ArmMedia.TvdbProvider.TvdbProvider>()
@@ -51,6 +53,10 @@ public static class ArmSharpServiceCollectionExtensions
         // Bridge the existing IDiscDbMappingService to the lightweight
         // IDiscDbLookupService used by the provider layer.
         services.AddSingleton<IDiscDbLookupService, DiscDbLookupAdapter>();
+
+        // ── DvdCompare provider options ─────────────────────────────────────
+        services.Configure<DvdCompareProviderOptions>(
+            configuration.GetSection(DvdCompareProviderOptions.SectionName));
 
         // ── FileBot CLI service ──────────────────────────────────────────────
         // Bind options so the provider can configure the FileBot database.

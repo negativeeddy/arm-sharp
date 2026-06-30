@@ -98,6 +98,11 @@ builder.Services.AddHttpClient("Omdb", client =>
     client.Timeout = TimeSpan.FromSeconds(10);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("arm-sharp/1.0 (omdb-provider)");
 });
+builder.Services.AddHttpClient("DvdCompare", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+});
 builder.Services.AddArmMediaTvPipeline(builder.Configuration);
 
 // Named HttpClient registrations (avoids socket exhaustion from per-call new HttpClient())

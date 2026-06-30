@@ -22,4 +22,12 @@ public sealed class FileBotProviderOptions
     /// Other options: <c>AniDB</c>, <c>TVmaze</c>, <c>OMDb</c>.
     /// </summary>
     public string FileBotDb { get; set; } = "TheTVDB";
+
+    /// <summary>
+    /// Gets or sets a value indicating whether to pass the <c>-non-strict</c>
+    /// flag to FileBot. When <c>true</c> (default), FileBot uses fuzzy matching
+    /// which is more tolerant of filename discrepancies and often necessary
+    /// for raw MakeMKV output file names.
+    /// </summary>
+    public bool NonStrict { get; set; } = true;
 }

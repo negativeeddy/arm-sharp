@@ -104,6 +104,7 @@ public class SettingsController(
         // would incorrectly return false. Instead check if "true" is present.
         bool MainFeature = Request.Form["MainFeature"].Contains("true");
         bool AutoEject = Request.Form["AutoEject"].Contains("true");
+        bool FileBotNonStrict = Request.Form["FileBotNonStrict"].Contains("true");
 
         var fields = new Dictionary<string, string?>
         {
@@ -114,6 +115,7 @@ public class SettingsController(
             ["MaxConcurrentRips"] = JsonSerialize(MaxConcurrentRips ?? 1),
             ["MainFeature"] = JsonSerialize(MainFeature),
             ["AutoEject"] = JsonSerialize(AutoEject),
+            ["FileBotNonStrict"] = JsonSerialize(FileBotNonStrict),
         };
 
         await SettingsHelper.MergeIntoDbAsync(db, fields, ct);

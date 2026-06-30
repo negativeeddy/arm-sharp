@@ -91,7 +91,8 @@ public sealed partial class FileBotCliService
             : "";
 
         string format = $"{{s}} | S{{s00}}E{{e00}} | {{t}}";
-        string args = $"-rename --db {db}{seriesFilter} --action test --format \"{format}\" \"{EscapeArg(rawFilePath)}\"";
+        string strictFlag = _options.NonStrict ? " -non-strict" : "";
+        string args = $"-rename --db {db}{seriesFilter}{strictFlag} --action test --format \"{format}\" \"{EscapeArg(rawFilePath)}\"";
 
         _logger.LogDebug("[FileBotCli] Running: filebot {Args}", args);
 
