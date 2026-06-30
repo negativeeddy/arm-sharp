@@ -144,7 +144,7 @@ public sealed class ArmRipperService(
 
         await ScanEmbyAsync(job, ct);
 
-        await SetPermissionsAsync(finalDirectory, job, ct);
+        await SetPermissionsAsync(job.Path ?? finalDirectory, job, ct);
 
         var delRaw = job.Config?.DelRawFiles ?? settings.Value.DelRawFiles;
         if (delRaw)
@@ -166,7 +166,7 @@ public sealed class ArmRipperService(
         await BroadcastJobUpdateAsync(job);
 
         logger.LogInformation("************* ARM processing complete *************");
-        return finalDirectory;
+        return job.Path ?? finalDirectory;
     }
 
     private async Task<string?> PrepareTranscodeInputPathAsync(Job job, string jobTitle, string makeMkvOutPath, CancellationToken ct)

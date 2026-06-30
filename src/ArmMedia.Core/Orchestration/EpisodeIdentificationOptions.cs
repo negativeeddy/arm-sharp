@@ -32,7 +32,7 @@ public sealed class EpisodeIdentificationOptions
     /// Gets or sets the maximum duration delta in seconds between two adjacent tracks
     /// to consider them candidates for multi-part episode merging.
     /// </summary>
-    public int MultiPartDurationToleranceSeconds { get; set; } = 300;
+    public int MultiPartDurationToleranceSeconds { get; set; } = 10;
 
     /// <summary>
     /// Gets or sets the maximum duration in seconds below which a track with no

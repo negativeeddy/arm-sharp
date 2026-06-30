@@ -57,7 +57,7 @@ public sealed class EpisodeIdentificationOrchestrator : IEpisodeIdentificationOr
             foreach (var result in results)
             {
                 if (!bestResults.TryGetValue(result.TrackIndex, out var existing) ||
-                    result.Confidence > existing.Confidence)
+                    result.Confidence >= existing.Confidence)
                 {
                     bestResults[result.TrackIndex] = result;
                     _logger.LogDebug("  Track {Track}: assigned {Provider} ({Confidence})",
