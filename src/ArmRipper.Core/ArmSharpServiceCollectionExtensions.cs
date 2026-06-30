@@ -2,7 +2,6 @@ using ArmMedia.Core.Abstractions;
 using ArmMedia.Core.DependencyInjection;
 using ArmMedia.Core.Orchestration;
 using ArmMedia.DvdCompareProvider;
-using ArmMedia.FileBotProvider;
 using ArmMedia.Linting;
 using ArmMedia.Linting.Abstractions;
 using ArmMedia.Linting.Rules;
@@ -28,7 +27,7 @@ public static class ArmSharpServiceCollectionExtensions
     /// <summary>
     /// Registers all ArmMedia services required by <see cref="ArmRipperServiceExtensions"/>:
     /// <list type="bullet">
-    ///   <item>Episode identification orchestrator + DiscDb and FileBot providers</item>
+    ///   <item>Episode identification orchestrator + DiscDb providers</item>
     ///   <item>Default episode renamer</item>
     ///   <item>Default linting engine + built-in rules</item>
     /// </list>
@@ -47,7 +46,6 @@ public static class ArmSharpServiceCollectionExtensions
             // Add providers in preferred order; ProviderOrder in config overrides eval order.
             .AddProvider<ArmMedia.DiscDbProvider.DiscDbProvider>()
             .AddProvider<ArmMedia.DvdCompareProvider.DvdCompareProvider>()
-            .AddProvider<ArmMedia.FileBotProvider.FileBotProvider>()
             .AddProvider<ArmMedia.TmdbProvider.TmdbProvider>()
             .AddProvider<ArmMedia.TvdbProvider.TvdbProvider>()
             .AddProvider<ArmMedia.OmdbProvider.OmdbProvider>();
@@ -59,20 +57,6 @@ public static class ArmSharpServiceCollectionExtensions
         // ── DvdCompare provider options ─────────────────────────────────────
         services.Configure<DvdCompareProviderOptions>(
             configuration.GetSection(DvdCompareProviderOptions.SectionName));
-
-        // ── FileBot CLI service ──────────────────────────────────────────────
-        // Bind options so the provider can configure the FileBot database.
-        services.Configure<FileBotProviderOptions>(
-            configuration.GetSection(FileBotProviderOptions.SectionName));
-
-        // Register the CLI runner delegate that bridges the host's
-        // ICliProcessRunner to the FileBotCliService.
-        services.AddSingleton<FileBotCliRunner>(sp =>
-        {
-            var runner = sp.GetRequiredService<ICliProcessRunner>();
-            return FileBotCliBridge.CreateRunner(runner);
-        });
-        services.AddSingleton<FileBotCliService>();
 
         // ── Naming ───────────────────────────────────────────────────────────
         services.Configure<NamingOptions>(configuration.GetSection(NamingOptions.SectionName));
