@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using ArmMedia.ArmSharpExtensions;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
@@ -80,6 +81,29 @@ builder.Services.AddHttpClient<OmdbService>();
 builder.Services.AddHttpClient<TmdbService>();
 builder.Services.AddSingleton<INotificationBroadcaster, SignalRNotificationBroadcaster>();
 builder.Services.AddSingleton<IBackgroundRipService, BackgroundRipService>();
+
+// ── ArmMedia TV series identification pipeline ──
+builder.Services.AddHttpClient("Tmdb", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("arm-sharp/1.0 (tmdb-provider)");
+});
+builder.Services.AddHttpClient("Tvdb", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("arm-sharp/1.0 (tvdb-provider)");
+});
+builder.Services.AddHttpClient("Omdb", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("arm-sharp/1.0 (omdb-provider)");
+});
+builder.Services.AddHttpClient("DvdCompare", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+});
+builder.Services.AddArmMediaTvPipeline(builder.Configuration);
 
 // Named HttpClient registrations (avoids socket exhaustion from per-call new HttpClient())
 builder.Services.AddHttpClient("Notifications", client =>

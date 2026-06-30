@@ -1,3 +1,5 @@
+using ArmMedia.Core.Abstractions;
+using ArmMedia.Core.Models;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
@@ -22,7 +24,8 @@ public sealed class ArmRipperService(
     IEnumerable<INotificationBroadcaster> broadcasters,
     IIdentifyService identifyService,
     IDiscDbMappingService discDbMappingService,
-    ITrackMapperService trackMapperService) : IArmRipperService
+    ITrackMapperService trackMapperService,
+    IEpisodeIdentificationOrchestrator? episodeOrchestrator = null) : IArmRipperService
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("ArmRipperService");
     private static readonly TimeSpan ProgressBroadcastInterval = TimeSpan.FromMilliseconds(200);
@@ -85,7 +88,18 @@ public sealed class ArmRipperService(
             }
         }
 
-        // ── 4. Transcode (idempotent) ──
+        // ── 4. TV episode identification (runs after rip, before transcode) ──
+        // Run the full provider chain (DiscDb → DvdCompare → FileBot → TMDB →
+        // TVDB → OMDB) to identify TV episode assignments for naming, so the
+        // transcode and move steps can use episode numbers/titles.
+        await db.Entry(job).Collection(j => j.Tracks).LoadAsync(ct);
+        if (episodeOrchestrator is not null &&
+            (job.VideoType == "series" || job.VideoType == "tv"))
+        {
+            await RunEpisodeIdentificationAsync(job, makeMkvOutPath, ct);
+        }
+
+        // ── 5. Transcode (idempotent) ──
         if (job.IsStageComplete(RipStage.Transcode))
         {
             logger.LogInformation("Stage 'transcode' already completed — skipping transcode");
@@ -98,7 +112,7 @@ public sealed class ArmRipperService(
             await BroadcastJobUpdateAsync(job);
         }
 
-        // ── 5. Finalize: manual title, file moves, Emby, cleanup ──
+        // ── 6. Finalize: manual title, file moves, Emby, cleanup ──
         job.Stage = RipStage.Finalize;
         job.ProgressMessage = "Finalizing...";
         await db.SaveChangesAsync(ct);
@@ -125,8 +139,6 @@ public sealed class ArmRipperService(
             job.Path = finalDirectory;
             await db.SaveChangesAsync(ct);
         }
-
-        await db.Entry(job).Collection(j => j.Tracks).LoadAsync(ct);
 
         await MoveFilesPostAsync(transcodeOutPath, job, ct);
 
@@ -636,9 +648,142 @@ public sealed class ArmRipperService(
         }
     }
 
+    /// <summary>
+    /// Runs the ArmMedia TV episode identification pipeline and merges
+    /// results back into the job's tracks (EpisodeNumber, EpisodeTitle, etc.).
+    /// </summary>
+    private async Task RunEpisodeIdentificationAsync(
+        Job job, string makeMkvOutPath, CancellationToken ct)
+    {
+        try
+        {
+            var tracks = job.Tracks.Where(t => t.Ripped).OrderBy(t => t.TrackNumberInt ?? 0).ToList();
+            if (tracks.Count == 0)
+                return;
+
+            var trackContexts = tracks.Select(t =>
+            {
+                var rawProps = new Dictionary<string, string>();
+                if (!string.IsNullOrEmpty(t.FileName))
+                    rawProps["FileName"] = t.FileName;
+                if (!string.IsNullOrEmpty(t.TrackNumber))
+                    rawProps["TrackNumber"] = t.TrackNumber;
+
+                return new TrackContext
+                {
+                    TrackIndex    = t.TrackNumberInt ?? 0,
+                    Duration      = TimeSpan.FromSeconds(t.Length ?? 0),
+                    SizeBytes     = t.FileSize ?? 0,
+                    ChapterCount  = t.Chapters,
+                    DiscDbTrackId = t.DiscDbItemSlug,
+                    RawProperties = rawProps
+                };
+            }).ToList().AsReadOnly();
+
+            var discId = job.DiscDbHash ?? job.Label ?? job.DevPath ?? "unknown";
+            var season = job.SeasonNumber ?? 1;
+
+            var ctx = new DiscContext
+            {
+                DiscId      = discId,
+                SeriesTitle = job.Title ?? job.Label ?? "Unknown",
+                Season      = season,
+                Tracks      = trackContexts,
+                DiscDbHint  = makeMkvOutPath,  // FileBot CLI uses this for raw file path
+                DiscNumber  = ParseDiscNumber(job.Label)
+            };
+
+            logger.LogInformation(
+                "[ArmMedia] Running episode identification for '{Title}' S{Season} (disc {Disc}, {Count} tracks)...",
+                ctx.SeriesTitle, ctx.Season, ctx.DiscNumber, ctx.Tracks.Count);
+
+            var episodeMap = await episodeOrchestrator!.IdentifyAsync(ctx, ct);
+
+            // Merge results back into job tracks
+            foreach (var mapped in episodeMap.Tracks)
+            {
+                var track = tracks.FirstOrDefault(t => t.TrackNumberInt == mapped.TrackIndex);
+                if (track is not null)
+                {
+                    track.EpisodeNumber   = mapped.Episodes.FirstOrDefault();
+                    track.EpisodeTitle    = mapped.Title;
+                    track.TrackSeasonNumber = mapped.Season;
+
+                    if (!string.IsNullOrEmpty(mapped.WinningProvider))
+                    {
+                        logger.LogDebug(
+                            "[ArmMedia] Track {Track} → S{Season}E{Ep} '{Title}' ({Provider})",
+                            track.TrackNumber, mapped.Season,
+                            mapped.Episodes.FirstOrDefault(), track.EpisodeTitle,
+                            mapped.WinningProvider);
+                    }
+                }
+            }
+
+            await db.SaveChangesAsync(ct);
+            await BroadcastJobUpdateAsync(job);
+
+            logger.LogInformation(
+                "[ArmMedia] Episode identification complete. {Count} tracks mapped.",
+                episodeMap.Tracks.Count);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "[ArmMedia] Episode identification failed for job {JobId}; falling back to positional naming.",
+                job.Id);
+        }
+    }
+
     private async Task MoveFilesPostAsync(string transcodeOutPath, Job job, CancellationToken ct)
     {
         var tracks = job.Tracks.Where(t => t.Ripped).ToList();
+
+        // ── Positional fallback for TV series without DiscDb episode mapping ──
+        // When VideoType is series/tv but tracks have no EpisodeNumber assigned
+        // (e.g., DiscDb had no matching record), assign sequential episode numbers
+        // based on physical track order so output files get proper SxxExx names.
+        // Parses disc number from the label (e.g., "_D2" → disc 2) so multi-disc
+        // sets don't restart at episode 1 on every disc.
+        if (job.VideoType == "series" || job.VideoType == "tv")
+        {
+            int discNumber = ParseDiscNumber(job.Label);
+
+            // Count eligible tracks (those without EpisodeNumber, skipping
+            // sub-30-second items that are likely studio logos)
+            var eligible = tracks
+                .Where(t => t.EpisodeNumber is null)
+                .OrderBy(t => t.TrackNumberInt ?? 0)
+                .ToList();
+
+            // Let short (<30s) tracks pass through without an episode number;
+            // they'll be handled as extras by the MoveFiles routing logic.
+            var actualEpisodes = eligible
+                .Where(t => (t.Length ?? int.MaxValue) >= 30)
+                .ToList();
+
+            int startEpisode = ((discNumber - 1) * actualEpisodes.Count) + 1;
+
+            logger.LogInformation(
+                "Positional fallback: disc {Disc}, {Count} eligible tracks, starting at episode {StartEp}",
+                discNumber, actualEpisodes.Count, startEpisode);
+
+            int ep = startEpisode;
+            foreach (var t in eligible)
+            {
+                // Only assign episode numbers to tracks >= 30 seconds.
+                // Short tracks (logos, warnings) keep EpisodeNumber=null and
+                // will be handled as unnamed extras by the move logic.
+                if ((t.Length ?? int.MaxValue) >= 30)
+                {
+                    t.EpisodeNumber = ep;
+                    logger.LogDebug(
+                        "Positional fallback: track {TrackNum} → episode {Episode}",
+                        t.TrackNumber ?? t.FileName, ep);
+                    ep++;
+                }
+            }
+        }
 
         foreach (var track in tracks)
         {
@@ -654,6 +799,23 @@ public sealed class ArmRipperService(
                     break;
                 }
                 MoveFiles(transcodeOutPath, track.FileName!, job, track.MainFeature, track);
+            }
+        }
+
+        // ── Update job.Path for TV series: files now live under
+        //     {completed}/tv/Series Name/Season XX/ instead of the flat
+        //     {completed}/tv/DISC_LABEL/ directory that was set at startup.
+        //     The Conductor uses job.Path for the final output verification.
+        if (job.VideoType == "series" || job.VideoType == "tv")
+        {
+            var episodeTrack = tracks.FirstOrDefault(t => t.EpisodeNumber is not null);
+            if (episodeTrack is not null)
+            {
+                var cleanSeries = CleanSeriesTitle(job.Title ?? "Unknown Series");
+                var season = episodeTrack.TrackSeasonNumber ?? job.SeasonNumber ?? 1;
+                var completedBase = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value);
+                job.Path = Path.Combine(completedBase, "tv", SanitizeFileName(cleanSeries));
+                logger.LogInformation("Updated job path to series directory: {Path}", job.Path);
             }
         }
     }
@@ -755,14 +917,23 @@ public sealed class ArmRipperService(
         {
             var season = track!.TrackSeasonNumber ?? job.SeasonNumber ?? 1;
             var episode = track.EpisodeNumber!.Value;
+
+            // ── Plex / Jellyfin convention: Series Name / Season XX / SxxExx - Title.ext ──
+            var cleanSeries = CleanSeriesTitle(job.Title ?? "Unknown Series");
+            var completedBase = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value);
+            var seriesDir = Path.Combine(completedBase, "tv", SanitizeFileName(cleanSeries));
+            var seasonDir = Path.Combine(seriesDir, $"Season {season:D2}");
+
             var destExt = job.Config?.DestExt ?? settings.Value.DestExt ?? "mp4";
             var episodeTitle = !string.IsNullOrEmpty(track.EpisodeTitle)
                 ? $" - {SanitizeFileName(track.EpisodeTitle)}"
                 : "";
-            var episodeFile = Path.Combine(moviePath,
-                $"{FixJobTitle(job)} - S{season:D2}E{episode:D2}{episodeTitle}.{destExt}");
 
-            EnsureDirectory(moviePath);
+            var seriesFileName = SanitizeFileName(cleanSeries);
+            var episodeFile = Path.Combine(seasonDir,
+                $"{seriesFileName} - S{season:D2}E{episode:D2}{episodeTitle}.{destExt}");
+
+            EnsureDirectory(seasonDir);
             logger.LogInformation("Track is a TV episode. Moving '{Src}' to '{Dst}'",
                 Path.Combine(basePath, filename), episodeFile);
             MoveFileMain(Path.Combine(basePath, filename), episodeFile, logger);
@@ -861,6 +1032,61 @@ public sealed class ArmRipperService(
     {
         var invalid = Path.GetInvalidFileNameChars();
         return string.Concat(name.Where(ch => !invalid.Contains(ch)));
+    }
+
+    /// <summary>
+    /// Parses the 1-based disc number from a disc label.
+    /// Handles formats like <c>_D1</c>, <c>D2</c>, <c>_DISC3</c>, <c>DISC4</c>.
+    /// Returns 1 when no disc suffix is found.
+    /// </summary>
+    internal static int ParseDiscNumber(string? label)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+            return 1;
+
+        // Match _D<num> or DISC<num> at the end of the label (case-insensitive)
+        var match = System.Text.RegularExpressions.Regex.Match(
+            label, @"[_\s]D(?:ISC)?(\d+)$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        if (match.Success && int.TryParse(match.Groups[1].Value, out var d) && d > 0)
+            return d;
+
+        return 1;
+    }
+
+    /// <summary>
+    /// Converts a raw disc label or title to a clean human-readable series name
+    /// suitable for Plex / Jellyfin folder and file naming.
+    /// </summary>
+    /// <param name="raw">The raw disc label (e.g. "MY_NAME_IS_EARL_S1_D1") or title.</param>
+    /// <returns>A clean, human-readable series name (e.g. "My Name Is Earl").</returns>
+    internal static string CleanSeriesTitle(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return "Unknown Series";
+
+        // Strip year suffix: "My Name Is Earl (2005–2009)" → "My Name Is Earl"
+        var result = System.Text.RegularExpressions.Regex.Replace(
+            raw.Trim(), @"\s*\([^)]*\d{4}.*\)$", "");
+
+        // Strip season/disc suffix: "MY_NAME_IS_EARL_S1_D1" → "MY_NAME_IS_EARL"
+        result = System.Text.RegularExpressions.Regex.Replace(
+            result, @"[_\s][Ss]\d+[_\s][Dd](?:ISC)?\d+$", "",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        // Replace underscores with spaces
+        result = result.Replace('_', ' ').Trim();
+
+        // If the result is all-uppercase with no lowercase letters (disc label),
+        // convert to title case using CultureInfo.
+        if (result.Length > 0 && !result.Any(char.IsLower) && result.Any(char.IsUpper))
+        {
+            result = System.Globalization.CultureInfo.CurrentCulture.TextInfo
+                .ToTitleCase(result.ToLowerInvariant());
+        }
+
+        return string.IsNullOrWhiteSpace(result) ? "Unknown Series" : result;
     }
 
     private static void MoveFileMain(string oldFile, string newFile, ILogger? logger = null)

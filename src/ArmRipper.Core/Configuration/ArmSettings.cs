@@ -59,6 +59,7 @@ public class ArmSettings
     public string? MetadataProvider { get; set; } = "omdb";
     public string? OmdbApiKey { get; set; }
     public string? TmdbApiKey { get; set; }
+    public string? TvdbApiKey { get; set; }
 
     public string? WebServerIp { get; set; } = "0.0.0.0";
     public int WebServerPort { get; set; } = 8080;
@@ -83,6 +84,13 @@ public class ArmSettings
     public string? DiscDbApiBaseUrl { get; set; } = "https://thediscdb.com/graphql";
     public double DiscDbMinConfidence { get; set; } = 0.7;
     public bool DiscDbRequireConfirmation { get; set; } = false;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether FileBot should use the
+    /// <c>-non-strict</c> flag for fuzzy matching. Default is <c>true</c>
+    /// (non-strict/fuzzy matching enabled).
+    /// </summary>
+    public bool FileBotNonStrict { get; set; } = true;
 
     // Backward-compatible naming aliases.
     // Marked [JsonIgnore] so they are never persisted to the DB — only the

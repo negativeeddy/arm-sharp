@@ -485,3 +485,6 @@ $RECYCLE.BIN/
 # ARM Web data/config
 src/ArmRipper.WebUi/data/
 .scratch/
+coverage/
+coverage-report/
+samples/

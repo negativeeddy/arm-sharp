@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <AssemblyName>ArmMedia.ArmSharpExtensions</AssemblyName>
+    <RootNamespace>ArmMedia.ArmSharpExtensions</RootNamespace>
+    <Version>1.0.0</Version>
+    <Authors>ARM-Sharp Contributors</Authors>
+    <Description>Glue layer connecting ArmRipperService to the ArmMedia episode identification pipeline.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ArmMedia.Core\ArmMedia.Core.csproj" />
+    <ProjectReference Include="..\ArmMedia.DiscDbProvider\ArmMedia.DiscDbProvider.csproj" />
+    <ProjectReference Include="..\ArmMedia.DvdCompareProvider\ArmMedia.DvdCompareProvider.csproj" />
+    <ProjectReference Include="..\ArmMedia.FileBotProvider\ArmMedia.FileBotProvider.csproj" />
+    <ProjectReference Include="..\ArmMedia.TmdbProvider\ArmMedia.TmdbProvider.csproj" />
+    <ProjectReference Include="..\ArmMedia.TvdbProvider\ArmMedia.TvdbProvider.csproj" />
+    <ProjectReference Include="..\ArmMedia.OmdbProvider\ArmMedia.OmdbProvider.csproj" />
+    <ProjectReference Include="..\ArmMedia.Naming\ArmMedia.Naming.csproj" />
+    <ProjectReference Include="..\ArmMedia.Linting\ArmMedia.Linting.csproj" />
+    <ProjectReference Include="..\ArmRipper.Core\ArmRipper.Core.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.8" />
+  </ItemGroup>
+
+</Project>

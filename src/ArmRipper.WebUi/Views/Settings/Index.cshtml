@@ -251,6 +251,7 @@
                 <tr><td><label>Concurrent Jobs:</label>@Html.Raw(tip("MaxConcurrentRips", tips))</td><td><input type="number" name="MaxConcurrentRips" value="@(armSettings?.MaxConcurrentRips ?? 1)" class="form-control" min="1" step="1" /></td></tr>
                 <tr><td><label for="MainFeature">Main Feature:</label>@Html.Raw(tip("MainFeature", tips))</td><td><input type="hidden" name="MainFeature" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="MainFeature" name="MainFeature" value="true" checked="@armSettings?.MainFeature" /><label class="custom-control-label" for="MainFeature"></label></div></td></tr>
                 <tr><td><label for="AutoEject">Auto Eject:</label>@Html.Raw(tip("AutoEject", tips))</td><td><input type="hidden" name="AutoEject" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="AutoEject" name="AutoEject" value="true" checked="@armSettings?.AutoEject" /><label class="custom-control-label" for="AutoEject"></label></div></td></tr>
+                <tr><td><label for="FileBotNonStrict">FileBot Non-Strict:</label></td><td><input type="hidden" name="FileBotNonStrict" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="FileBotNonStrict" name="FileBotNonStrict" value="true" checked="@armSettings?.FileBotNonStrict" /><label class="custom-control-label" for="FileBotNonStrict">Enable fuzzy matching (-non-strict)</label></div><br /><small class="text-muted">When enabled, FileBot uses fuzzy matching — useful for raw MakeMKV output filenames. Disable for stricter matching when filenames match known titles.</small></td></tr>
             </table>
             <button type="submit" class="btn btn-primary">Save Ripper Settings</button>
             <button type="submit" class="btn btn-outline-warning ml-2" form="resetForm">↻ Reset to file defaults</button>
@@ -445,16 +446,28 @@
         <h2>ARM Online Database</h2>
 
         <div class="card mb-3">
-            <div class="card-header"><h5 class="mb-0">API Key</h5></div>
+            <div class="card-header"><h5 class="mb-0">API Keys</h5></div>
             <div class="card-body">
-                <p>Submit your DVD CRC64 hashes to the community database at
-                    <a href="https://1337server.pythonanywhere.com" target="_blank">1337server</a>
-                    to help others identify discs. Get a free API key
-                    <a href="https://1337server.pythonanywhere.com/request/key" target="_blank">here</a>.</p>
-                <form method="post" action="/settings/save-notifications">
+                <p>Configure API keys for metadata providers and the community ARM database.</p>
+                <form method="post" action="/settings/save-metadata">
                     <table class="table table-sm mb-0">
                         <tr>
-                            <td class="w-25"><label for="ArmApiKey">ARM API Key:</label></td>
+                            <td class="w-25"><label for="OmdbApiKey">OMDB API Key:</label></td>
+                            <td><input type="text" class="form-control" id="OmdbApiKey" name="OmdbApiKey"
+                                   value="@(armSettings?.OmdbApiKey ?? "")" placeholder="Used for movie/series metadata" /></td>
+                        </tr>
+                        <tr>
+                            <td><label for="TmdbApiKey">TMDB API Key:</label></td>
+                            <td><input type="text" class="form-control" id="TmdbApiKey" name="TmdbApiKey"
+                                   value="@(armSettings?.TmdbApiKey ?? "")" placeholder="Used for TV episode identification (aired order)" /></td>
+                        </tr>
+                        <tr>
+                            <td><label for="TvdbApiKey">TVDB API Key:</label></td>
+                            <td><input type="text" class="form-control" id="TvdbApiKey" name="TvdbApiKey"
+                                   value="@(armSettings?.TvdbApiKey ?? "")" placeholder="Used for TV episode identification (DVD order — best for discs)" /></td>
+                        </tr>
+                        <tr>
+                            <td><label for="ArmApiKey">ARM API Key:</label></td>
                             <td>
                                 <div class="input-group">
                                     <input type="text" class="form-control" id="ArmApiKey" name="ArmApiKey"
@@ -468,7 +481,7 @@
                             </td>
                         </tr>
                     </table>
-                    <button type="submit" class="btn btn-primary mt-2">Save API Key</button>
+                    <button type="submit" class="btn btn-primary mt-2">Save API Keys</button>
                 </form>
             </div>
         </div>

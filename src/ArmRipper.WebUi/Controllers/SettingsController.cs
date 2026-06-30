@@ -104,6 +104,7 @@ public class SettingsController(
         // would incorrectly return false. Instead check if "true" is present.
         bool MainFeature = Request.Form["MainFeature"].Contains("true");
         bool AutoEject = Request.Form["AutoEject"].Contains("true");
+        bool FileBotNonStrict = Request.Form["FileBotNonStrict"].Contains("true");
 
         var fields = new Dictionary<string, string?>
         {
@@ -114,6 +115,7 @@ public class SettingsController(
             ["MaxConcurrentRips"] = JsonSerialize(MaxConcurrentRips ?? 1),
             ["MainFeature"] = JsonSerialize(MainFeature),
             ["AutoEject"] = JsonSerialize(AutoEject),
+            ["FileBotNonStrict"] = JsonSerialize(FileBotNonStrict),
         };
 
         await SettingsHelper.MergeIntoDbAsync(db, fields, ct);
@@ -469,6 +471,25 @@ public class SettingsController(
         }
         await db.SaveChangesAsync(ct);
         TempData["Message"] = "System info updated.";
+        return RedirectToAction("Index");
+    }
+
+    [HttpPost("save-metadata")]
+    public async Task<IActionResult> SaveMetadata(
+        string? OmdbApiKey, string? TmdbApiKey, string? TvdbApiKey, string? ArmApiKey,
+        CancellationToken ct = default)
+    {
+        var fields = new Dictionary<string, string?>
+        {
+            ["OmdbApiKey"] = OmdbApiKey is not null ? JsonSerialize(OmdbApiKey) : null,
+            ["TmdbApiKey"] = TmdbApiKey is not null ? JsonSerialize(TmdbApiKey) : null,
+            ["TvdbApiKey"] = TvdbApiKey is not null ? JsonSerialize(TvdbApiKey) : null,
+            ["ArmApiKey"] = ArmApiKey is not null ? JsonSerialize(ArmApiKey) : null,
+        };
+
+        await SettingsHelper.MergeIntoDbAsync(db, fields, ct);
+        TempData["Message"] = "API keys saved.";
+        TempData["ActiveTab"] = "tab9";
         return RedirectToAction("Index");
     }
 
