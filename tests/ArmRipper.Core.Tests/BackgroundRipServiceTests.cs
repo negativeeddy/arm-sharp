@@ -89,8 +89,11 @@ public sealed class BackgroundRipServiceTests
             .ReturnsAsync(0)
             .Callback(() => conductorRun = true);
 
+        using var db = TestHelpers.CreateDbContext();
+
         var serviceProvider = new Mock<IServiceProvider>();
         serviceProvider.Setup(sp => sp.GetService(typeof(IConductor))).Returns(conductorMock.Object);
+        serviceProvider.Setup(sp => sp.GetService(typeof(ArmDbContext))).Returns(db);
         serviceProvider.Setup(sp => sp.GetService(typeof(ILogger<BackgroundRipService>)))
             .Returns(NullLoggerFactory.Instance);
 
@@ -111,6 +114,8 @@ public sealed class BackgroundRipServiceTests
     [Fact]
     public async Task StartRip_WhenConductorThrows_DoesNotCrash()
     {
+        using var db = TestHelpers.CreateDbContext();
+
         var conductorMock = new Mock<IConductor>();
         conductorMock
             .Setup(c => c.RunAsync("/dev/sr0", It.IsAny<CancellationToken>()))
@@ -118,6 +123,7 @@ public sealed class BackgroundRipServiceTests
 
         var serviceProvider = new Mock<IServiceProvider>();
         serviceProvider.Setup(sp => sp.GetService(typeof(IConductor))).Returns(conductorMock.Object);
+        serviceProvider.Setup(sp => sp.GetService(typeof(ArmDbContext))).Returns(db);
         serviceProvider.Setup(sp => sp.GetService(typeof(ILogger<BackgroundRipService>)))
             .Returns(NullLoggerFactory.Instance);
 
@@ -135,6 +141,8 @@ public sealed class BackgroundRipServiceTests
     [Fact]
     public async Task StartRip_CancellationToken_CancelsOperation()
     {
+        using var db = TestHelpers.CreateDbContext();
+
         var conductorMock = new Mock<IConductor>();
         conductorMock
             .Setup(c => c.RunAsync("/dev/sr0", It.IsAny<CancellationToken>()))
@@ -142,6 +150,7 @@ public sealed class BackgroundRipServiceTests
 
         var serviceProvider = new Mock<IServiceProvider>();
         serviceProvider.Setup(sp => sp.GetService(typeof(IConductor))).Returns(conductorMock.Object);
+        serviceProvider.Setup(sp => sp.GetService(typeof(ArmDbContext))).Returns(db);
         serviceProvider.Setup(sp => sp.GetService(typeof(ILogger<BackgroundRipService>)))
             .Returns(NullLoggerFactory.Instance);
 

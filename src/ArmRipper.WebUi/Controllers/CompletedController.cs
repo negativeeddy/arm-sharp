@@ -6,7 +6,6 @@ using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.WebUi.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,55 +13,49 @@ namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("completed")]
-public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache cache, ArmDbContext db, IBackgroundRipService backgroundRip) : Controller
+public class CompletedController(IOptions<ArmSettings> settings, ArmDbContext db, IBackgroundRipService backgroundRip) : Controller
 {
-    private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
-    private const string CacheKey = "CompletedFiles";
-
     [HttpGet("")]
-    public async Task<IActionResult> Index(bool refresh = false, CancellationToken ct = default)
+    public async Task<IActionResult> Index(CancellationToken ct = default)
     {
-        if (refresh)
-            cache.Remove(CacheKey);
-
-        var files = await cache.GetOrCreateAsync(CacheKey, async entry =>
-        {
-            entry.AbsoluteExpirationRelativeToNow = CacheDuration;
-            var cp = ArmPaths.GetCompletedPath(settings.Value);
-            var rp = ArmPaths.GetRawPath(settings.Value);
-            var tp = ArmPaths.GetTranscodePath(settings.Value);
-
-            // Scan the configured completed path.
-            var completed = await ScanFilesAsync(cp, FileSource.Completed, ct);
-            // Also scan the legacy base path so that files living
-            // directly under movies/, tv/, etc. (legacy layout or mixed configs) are found.
-            var basePath = ArmPaths.DefaultMediaRoot; // legacy fallback
-            if (!string.Equals(cp, basePath, StringComparison.OrdinalIgnoreCase) && Directory.Exists(basePath))
-            {
-                var baseFiles = await ScanFilesAsync(basePath, FileSource.Completed, ct);
-                var existing = new HashSet<string>(completed.Select(f => f.FilePath), StringComparer.OrdinalIgnoreCase);
-                completed.AddRange(baseFiles.Where(f => !existing.Contains(f.FilePath)));
-            }
-            var raw = await ScanFilesAsync(rp, FileSource.Raw, ct);
-            var transcode = await ScanFilesAsync(tp, FileSource.Transcode, ct);
-
-            // Raw/Transcode paths may be subdirectories of the completed/base path.
-            // Deduplicate: prefer the more specific source (Raw > Transcode > Output).
-            var all = completed
-                .Concat(transcode)
-                .Concat(raw)
-                .ToList();
-            var deduped = new List<CompletedFileInfo>();
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var f in all.OrderBy(f => f.Source == FileSource.Raw ? 0 : f.Source == FileSource.Transcode ? 1 : 2))
-            {
-                if (seen.Add(f.FilePath))
-                    deduped.Add(f);
-            }
-            return deduped;
-        });
-
+        var files = await ScanAllFilesAsync(ct);
         return View(files);
+    }
+
+    private async Task<List<CompletedFileInfo>> ScanAllFilesAsync(CancellationToken ct)
+    {
+        var cp = ArmPaths.GetCompletedPath(settings.Value);
+        var rp = ArmPaths.GetRawPath(settings.Value);
+        var tp = ArmPaths.GetTranscodePath(settings.Value);
+
+        // Scan the configured completed path.
+        var completed = await ScanFilesAsync(cp, FileSource.Completed, ct);
+        // Also scan the legacy base path so that files living
+        // directly under movies/, tv/, etc. (legacy layout or mixed configs) are found.
+        var basePath = ArmPaths.DefaultMediaRoot; // legacy fallback
+        if (!string.Equals(cp, basePath, StringComparison.OrdinalIgnoreCase) && Directory.Exists(basePath))
+        {
+            var baseFiles = await ScanFilesAsync(basePath, FileSource.Completed, ct);
+            var existing = new HashSet<string>(completed.Select(f => f.FilePath), StringComparer.OrdinalIgnoreCase);
+            completed.AddRange(baseFiles.Where(f => !existing.Contains(f.FilePath)));
+        }
+        var raw = await ScanFilesAsync(rp, FileSource.Raw, ct);
+        var transcode = await ScanFilesAsync(tp, FileSource.Transcode, ct);
+
+        // Raw/Transcode paths may be subdirectories of the completed/base path.
+        // Deduplicate: prefer the more specific source (Raw > Transcode > Output).
+        var all = completed
+            .Concat(transcode)
+            .Concat(raw)
+            .ToList();
+        var deduped = new List<CompletedFileInfo>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in all.OrderBy(f => f.Source == FileSource.Raw ? 0 : f.Source == FileSource.Transcode ? 1 : 2))
+        {
+            if (seen.Add(f.FilePath))
+                deduped.Add(f);
+        }
+        return deduped;
     }
 
     [HttpGet("probe")]
@@ -91,7 +84,6 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         try
         {
             System.IO.File.Delete(filePath);
-            cache.Remove(CacheKey);
             TempData["SuccessMessage"] = $"Deleted {Path.GetFileName(filePath)}";
         }
         catch (Exception ex)
@@ -114,7 +106,6 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         try
         {
             Directory.Delete(dirPath, recursive: true);
-            cache.Remove(CacheKey);
             TempData["SuccessMessage"] = $"Deleted folder {Path.GetFileName(dirPath)}";
         }
         catch (Exception ex)
@@ -189,7 +180,6 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         try
         {
             System.IO.File.Move(filePath, targetPath);
-            cache.Remove(CacheKey);
             TempData["SuccessMessage"] = $"Renamed {Path.GetFileName(filePath)} → {safeName}";
         }
         catch (Exception ex)
@@ -248,7 +238,6 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
             Directory.CreateDirectory(targetDir);
             System.IO.File.Move(filePath, targetFile);
 
-            cache.Remove(CacheKey);
             TempData["SuccessMessage"] = $"Moved \"{Path.GetFileName(filePath)}\" to movies/{safeTitle}";
         }
         catch (Exception ex)
@@ -309,7 +298,6 @@ public class CompletedController(IOptions<ArmSettings> settings, IMemoryCache ca
         }
 
         backgroundRip.StartForkedJob(jobId.Value, filePath, ct);
-        cache.Remove(CacheKey);
 
         TempData["SuccessMessage"] = $"Forked transcode job started for {Path.GetFileName(filePath)} (original job #{jobId})";
         return RedirectToAction("Index");

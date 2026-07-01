@@ -14,8 +14,10 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
     : IBackgroundRipService
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("BackgroundRipService");
+    private readonly IOptions<ArmSettings> _settings = settings;
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeRips = new();
-    private readonly SemaphoreSlim _ripSemaphore = new(settings.Value.MaxConcurrentRips, settings.Value.MaxConcurrentRips);
+    private readonly SemaphoreSlim _operationLock = new(1, 1);
+    private int _activeOperationCount = 0;
 
     public void StartRip(string devPath, CancellationToken ct = default)
     {
@@ -46,7 +48,10 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
             using var scope = scopeFactory.CreateScope();
             try
             {
-                await _ripSemaphore.WaitAsync(cts.Token);
+                var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+                var effectiveSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, _settings.Value, cts.Token);
+
+                await WaitForOperationSlotAsync(effectiveSettings.MaxConcurrentRips, cts.Token);
                 try
                 {
                     var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
@@ -55,7 +60,7 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
                 }
                 finally
                 {
-                    _ripSemaphore.Release();
+                    ReleaseOperationSlot();
                 }
             }
             catch (OperationCanceledException)
@@ -89,7 +94,10 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
             using var scope = scopeFactory.CreateScope();
             try
             {
-                await _ripSemaphore.WaitAsync(cts.Token);
+                var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+                var effectiveSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, _settings.Value, cts.Token);
+
+                await WaitForOperationSlotAsync(effectiveSettings.MaxConcurrentRips, cts.Token);
                 try
                 {
                     var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
@@ -99,7 +107,7 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
                 }
                 finally
                 {
-                    _ripSemaphore.Release();
+                    ReleaseOperationSlot();
                 }
             }
             catch (OperationCanceledException)
@@ -150,6 +158,53 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
         {
             logger.LogWarning(ex, "Failed to check ripping state for {DevPath}; assuming ripping in progress", devPath);
             return true; // safe default — block the new rip
+        }
+    }
+
+    /// <summary>
+    /// Waits until the number of active operations is below <paramref name="maxConcurrent"/>,
+    /// then increments the counter and returns. Uses the effective MaxConcurrentRips
+    /// setting read from the DB at runtime so that user changes via the UI are respected
+    /// immediately without requiring an app restart.
+    /// </summary>
+    private async Task WaitForOperationSlotAsync(int maxConcurrent, CancellationToken ct)
+    {
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            await _operationLock.WaitAsync(ct);
+            try
+            {
+                if (_activeOperationCount < maxConcurrent)
+                {
+                    _activeOperationCount++;
+                    return;
+                }
+            }
+            finally
+            {
+                _operationLock.Release();
+            }
+
+            // All slots are busy — wait a short moment before retrying
+            await Task.Delay(250, ct);
+        }
+    }
+
+    /// <summary>
+    /// Decrements the active operation counter, allowing a waiting operation to proceed.
+    /// </summary>
+    private void ReleaseOperationSlot()
+    {
+        _operationLock.Wait();
+        try
+        {
+            _activeOperationCount--;
+        }
+        finally
+        {
+            _operationLock.Release();
         }
     }
 }
