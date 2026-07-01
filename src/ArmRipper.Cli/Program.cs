@@ -136,13 +136,17 @@ var reidentifyJobStr = args.FirstOrDefault(a => a.StartsWith("--reidentify-job="
 
 if (reidentifyJobStr is not null && int.TryParse(reidentifyJobStr, out int reidentifyJobId))
 {
-    return await RunReidentifyJobAsync(host.Services, reidentifyJobId);
+    bool save = args.Any(a => a is "--save" or "-s");
+    return await RunReidentifyJobAsync(host.Services, reidentifyJobId, save);
 }
 
 if (deviceArg is null && reidentifyJobStr is null)
 {
     Console.Error.WriteLine("Usage: ArmRipper.Cli --device /dev/sr0 [--test]");
-    Console.Error.WriteLine("       ArmRipper.Cli --reidentify-job <jobId>");
+    Console.Error.WriteLine("       ArmRipper.Cli --reidentify-job <jobId> [--save]");
+    Console.Error.WriteLine("  --test             Rip only first title and transcode 2 minutes per track");
+    Console.Error.WriteLine("  --reidentify-job   Re-run episode identification on a completed job");
+    Console.Error.WriteLine("  --save             Write results back to the database");
     Console.Error.WriteLine("  --test             Rip only first title and transcode 2 minutes per track");
     Console.Error.WriteLine("  --reidentify-job   Re-run episode identification on a completed job");
     return 1;
@@ -160,7 +164,7 @@ return exitCode;
 
 // ── Re-identification helper ────────────────────────────────────────────────
 
-static async Task<int> RunReidentifyJobAsync(IServiceProvider services, int jobId)
+static async Task<int> RunReidentifyJobAsync(IServiceProvider services, int jobId, bool save)
 {
     var logger = services.GetRequiredService<ILogger<Program>>();
     var db = services.GetRequiredService<ArmDbContext>();
@@ -275,6 +279,29 @@ static async Task<int> RunReidentifyJobAsync(IServiceProvider services, int jobI
         else
             Console.WriteLine($"  → S{mapped.Season:D2}E{mapped.Episodes.FirstOrDefault():D2} '{mapped.Title}' ({mapped.WinningProvider} / {mapped.Confidence})");
         Console.WriteLine();
+    }
+
+    // ── Save results back to DB if requested ──
+    if (save)
+    {
+        foreach (var mapped in episodeMap.Tracks)
+        {
+            var track = rippedTracks.FirstOrDefault(t => t.TrackNumberInt == mapped.TrackIndex);
+            if (track is not null)
+            {
+                track.EpisodeNumber      = mapped.Episodes.Length > 0 ? mapped.Episodes[0] : null;
+                track.EpisodeTitle       = mapped.Title;
+                track.TrackSeasonNumber  = mapped.Season;
+            }
+        }
+
+        await scopedDb.SaveChangesAsync();
+        Console.WriteLine($"✓ Saved {episodeMap.Tracks.Count} track mappings to DB.");
+        Console.WriteLine("  Run with --dry-run (omit --save) to preview without saving.");
+    }
+    else
+    {
+        Console.WriteLine("  (Preview only — add --save to write results to DB)");
     }
 
     return 0;

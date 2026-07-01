@@ -27,6 +27,9 @@ public sealed class EpisodeIdentificationOrchestrator : IEpisodeIdentificationOr
             .ToList();
         _options   = options.Value;
         _logger    = logger;
+
+        _logger.LogInformation("Provider execution order: {Order}",
+            string.Join(" → ", _providers.Select(p => p.ProviderName)));
     }
 
     /// <inheritdoc/>
@@ -59,9 +62,11 @@ public sealed class EpisodeIdentificationOrchestrator : IEpisodeIdentificationOr
                 if (!bestResults.TryGetValue(result.TrackIndex, out var existing) ||
                     result.Confidence >= existing.Confidence)
                 {
+                    bool overridden = existing is not null && result.Confidence >= existing.Confidence;
                     bestResults[result.TrackIndex] = result;
-                    _logger.LogDebug("  Track {Track}: assigned {Provider} ({Confidence})",
-                        result.TrackIndex, provider.ProviderName, result.Confidence);
+                    _logger.LogInformation("  Track {Track}: assigned {Provider} ({Confidence}){Overridden}",
+                        result.TrackIndex, provider.ProviderName, result.Confidence,
+                        overridden ? $" (overrode {existing!.ProviderName} {existing!.Confidence})" : "");
                 }
 
                 if (result.Confidence == Confidence.Definitive)

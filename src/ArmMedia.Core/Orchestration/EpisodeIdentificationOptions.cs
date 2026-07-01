@@ -14,7 +14,7 @@ public sealed class EpisodeIdentificationOptions
     /// Providers not in this list are invoked last in registration order.
     /// </summary>
     public List<string> ProviderOrder { get; set; } =
-        ["DiscDb", "FileBot", "Tmdb", "Tvdb", "PositionalFallback"];
+        ["DiscDb", "Tmdb", "Tvdb", "Omdb", "DvdCompare", "PositionalFallback"];
 
     /// <summary>
     /// Gets or sets a value indicating whether the pipeline should stop
