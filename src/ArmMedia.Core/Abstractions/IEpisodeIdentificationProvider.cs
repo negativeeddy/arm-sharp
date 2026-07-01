@@ -3,7 +3,7 @@ using ArmMedia.Core.Models;
 namespace ArmMedia.Core.Abstractions;
 
 /// <summary>
-/// Identifies episodes for the tracks described by <paramref name="context"/>.
+/// Identifies episodes for the tracks described by the disc context.
 /// Providers are stateless and thread-safe; each returns results only for
 /// tracks it can confidently resolve, leaving the rest to the orchestrator.
 /// </summary>

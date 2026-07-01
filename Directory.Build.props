@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- SQLitePCLRaw.lib.e_sqlite3 2.1.11 has CVE-2025-6965 with no patched version -->
+    <NoWarn>$(NoWarn);NU1903</NoWarn>
+  </PropertyGroup>
+</Project>

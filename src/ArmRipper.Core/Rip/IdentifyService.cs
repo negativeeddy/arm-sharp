@@ -635,7 +635,7 @@ public sealed partial class IdentifyService(
                                     {
                                         if (detailDoc.RootElement.TryGetProperty("Poster", out var detailPoster) &&
                                             !string.IsNullOrEmpty(detailPoster.GetString()) &&
-                                            !detailPoster.GetString().Equals("N/A", StringComparison.OrdinalIgnoreCase))
+                                            !string.Equals(detailPoster.GetString(), "N/A", StringComparison.OrdinalIgnoreCase))
                                             job.PosterUrl = job.PosterUrlAuto = detailPoster.GetString();
                                     }
                                 }

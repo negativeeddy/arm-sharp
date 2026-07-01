@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using ArmRipper.Core.Models;
 
 namespace ArmRipper.Core.Rip;
@@ -6,7 +5,7 @@ namespace ArmRipper.Core.Rip;
 public interface IMakeMkvService
 {
     Task EnsureKeyAsync(CancellationToken ct = default);
-    IAsyncEnumerable<T> RunAsync<T>(string[] options, MakeMkvOutputType select, [EnumeratorCancellation] CancellationToken ct = default);
+    IAsyncEnumerable<T> RunAsync<T>(string[] options, MakeMkvOutputType select, CancellationToken ct = default);
     /// <param name="infoMinLength">Optional override for the --minlength passed to makemkvcon info.
     /// When null (default), uses job.Config.MinLength or settings default. Pass 0 to get ALL tracks
     /// (used when DiscDb is enabled so short extras can be discovered and promoted).</param>

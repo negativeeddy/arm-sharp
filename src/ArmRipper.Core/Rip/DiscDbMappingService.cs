@@ -83,7 +83,7 @@ public sealed class DiscDbMappingService(
                     Episode = t.Item?.Episode,
                     ItemType = t.Item?.Type
                 })
-                .ToList();
+                .ToList() ?? [];
 
             var mapping = new DiscDbMapping
             {

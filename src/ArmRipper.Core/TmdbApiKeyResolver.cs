@@ -35,7 +35,7 @@ public sealed class TmdbApiKeyResolver : ITmdbApiKeySource
         {
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-            var saved = db.RipperSettings.FirstOrDefault();
+            var saved = db.RipperSettings.OrderBy(s => s.Id).FirstOrDefault();
             if (saved?.SettingsJson is not null)
             {
                 using var doc = JsonDocument.Parse(saved.SettingsJson);

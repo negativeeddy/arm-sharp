@@ -22,8 +22,7 @@ public static class DatabaseHelper
         catch
         {
             db.Database.EnsureCreated();
-            db.Database.ExecuteSqlRaw(
-                "CREATE TABLE IF NOT EXISTS \"__EFMigrationsHistory\" (\"MigrationId\" TEXT NOT NULL, \"ProductVersion\" TEXT NOT NULL);");
+            db.Database.ExecuteSql($"CREATE TABLE IF NOT EXISTS \"__EFMigrationsHistory\" (\"MigrationId\" TEXT NOT NULL, \"ProductVersion\" TEXT NOT NULL);");
 
             // Idempotent schema patches for migrations that may not have been applied
             TryAlterColumn(db, "jobs", "Warnings");
@@ -34,8 +33,7 @@ public static class DatabaseHelper
             TryAlterColumn(db, "jobs", "OriginalJobId", "INTEGER");
             TryAlterColumn(db, "config", "MaxConcurrentRips");
 
-            db.Database.ExecuteSqlRaw(
-                "INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('20260610044322_Initial', '10.0.0');");
+            db.Database.ExecuteSql($"INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('20260610044322_Initial', '10.0.0');");
             TryInsertMigration(db, "20260610053400_AddProgressMessage");
             TryInsertMigration(db, "20260610055000_AddManualWaitTime");
             TryInsertMigration(db, "20260612035456_AddDiscTrackFileName");
@@ -45,19 +43,19 @@ public static class DatabaseHelper
             TryInsertMigration(db, "20260626033421_AddOriginalJobId");
         }
 
-        db.Database.ExecuteSqlRaw("PRAGMA busy_timeout = 5000;");
+        db.Database.ExecuteSql($"PRAGMA busy_timeout = 5000;");
     }
 
     private static void TryAlterColumn(ArmDbContext db, string table, string column, string? type = null)
     {
-        try { db.Database.ExecuteSqlRaw($"ALTER TABLE {table} ADD COLUMN {column} {(type ?? "TEXT")} NULL;"); } catch { }
+        try { db.Database.ExecuteSql($"ALTER TABLE {table} ADD COLUMN {column} {(type ?? "TEXT")} NULL;"); } catch { }
     }
 
     private static void TryInsertMigration(ArmDbContext db, string migrationId)
     {
         try
         {
-            db.Database.ExecuteSqlRaw(
+            db.Database.ExecuteSql(
                 $"INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('{migrationId}', '10.0.0');");
         }
         catch { }

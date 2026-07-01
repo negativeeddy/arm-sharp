@@ -4,7 +4,7 @@ namespace ArmMedia.Core.Abstractions;
 
 /// <summary>
 /// Runs the ordered provider pipeline and returns a merged <see cref="EpisodeMap"/>
-/// for all tracks on the disc described by <paramref name="context"/>.
+/// for all tracks on the disc described by the disc context.
 /// </summary>
 public interface IEpisodeIdentificationOrchestrator
 {
