@@ -19,7 +19,18 @@ var builder = Host.CreateApplicationBuilder(args);
 var yamlValues = ArmYamlConfigLoader.LoadYamlValues("/etc/arm/config/arm.yaml");
 builder.Configuration.AddInMemoryCollection(yamlValues);
 
-var connectionString = builder.Configuration["ConnectionStrings:ArmDb"] ?? "Data Source=/etc/arm/config/arm-sharp.db";
+// Allow --db to override the database path
+var dbOverride = args.FirstOrDefault(a => a.StartsWith("--db="))?.Split('=', 2)[1];
+if (dbOverride is null)
+{
+    var dbIdx = Array.IndexOf(args, "--db");
+    if (dbIdx >= 0 && dbIdx + 1 < args.Length)
+        dbOverride = args[dbIdx + 1];
+}
+
+var connectionString = dbOverride is not null
+    ? $"Data Source={dbOverride}"
+    : builder.Configuration["ConnectionStrings:ArmDb"] ?? "Data Source=/etc/arm/config/arm-sharp.db";
 builder.Services.AddDbContext<ArmDbContext>(options =>
     options.UseSqlite(connectionString));
 
@@ -143,12 +154,13 @@ if (reidentifyJobStr is not null && int.TryParse(reidentifyJobStr, out int reide
 if (deviceArg is null && reidentifyJobStr is null)
 {
     Console.Error.WriteLine("Usage: ArmRipper.Cli --device /dev/sr0 [--test]");
-    Console.Error.WriteLine("       ArmRipper.Cli --reidentify-job <jobId> [--save]");
-    Console.Error.WriteLine("  --test             Rip only first title and transcode 2 minutes per track");
-    Console.Error.WriteLine("  --reidentify-job   Re-run episode identification on a completed job");
-    Console.Error.WriteLine("  --save             Write results back to the database");
-    Console.Error.WriteLine("  --test             Rip only first title and transcode 2 minutes per track");
-    Console.Error.WriteLine("  --reidentify-job   Re-run episode identification on a completed job");
+    Console.Error.WriteLine("       ArmRipper.Cli --reidentify-job <jobId> [--save] [--db <path>]");
+    Console.Error.WriteLine();
+    Console.Error.WriteLine("  --device /dev/sr0     CD/DVD/BD device to rip");
+    Console.Error.WriteLine("  --test                Rip only first title and transcode 2 minutes per track");
+    Console.Error.WriteLine("  --reidentify-job <id> Re-run episode identification on a completed job");
+    Console.Error.WriteLine("  --save                Write re-identification results to the database");
+    Console.Error.WriteLine("  --db <path>           Override the SQLite database file path");
     return 1;
 }
 
