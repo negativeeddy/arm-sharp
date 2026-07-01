@@ -1070,13 +1070,23 @@ public sealed class ArmRipperService(
         var result = System.Text.RegularExpressions.Regex.Replace(
             raw.Trim(), @"\s*\([^)]*\d{4}.*\)$", "");
 
-        // Strip season/disc suffix: "MY_NAME_IS_EARL_S1_D1" → "MY_NAME_IS_EARL"
+        // Strip season/disc suffix — handles both formats:
+        //   "MY_NAME_IS_EARL_S1_D1"     → "MY_NAME_IS_EARL"
+        //   "MY_NAME_IS_EARL_SEASON1_DISC2" → "MY_NAME_IS_EARL"
         result = System.Text.RegularExpressions.Regex.Replace(
-            result, @"[_\s][Ss]\d+[_\s][Dd](?:ISC)?\d+$", "",
+            result, @"[_\s][Ss](?:EASON)?\d+[_\s][Dd](?:ISC)?\d+$", "",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         // Replace underscores with spaces
         result = result.Replace('_', ' ').Trim();
+
+        // After underscore→space conversion, also strip trailing
+        // "Season 1 Disc 2" / "S1 D2" style suffixes (e.g. from
+        // labels where underscores were already spaces or were
+        // partially converted).
+        result = System.Text.RegularExpressions.Regex.Replace(
+            result, @"\s+[Ss](?:EASON)?\d+\s+[Dd](?:ISC)?\d+$", "",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         // If the result is all-uppercase with no lowercase letters (disc label),
         // convert to title case using CultureInfo.
