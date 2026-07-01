@@ -1028,7 +1028,7 @@ public sealed class ArmRipperService(
     }
 
     /// <summary>Removes characters that are invalid in filenames.</summary>
-    private static string SanitizeFileName(string name)
+    public static string SanitizeFileName(string name)
     {
         var invalid = Path.GetInvalidFileNameChars();
         return string.Concat(name.Where(ch => !invalid.Contains(ch)));
@@ -1039,7 +1039,7 @@ public sealed class ArmRipperService(
     /// Handles formats like <c>_D1</c>, <c>D2</c>, <c>_DISC3</c>, <c>DISC4</c>.
     /// Returns 1 when no disc suffix is found.
     /// </summary>
-    internal static int ParseDiscNumber(string? label)
+    public static int ParseDiscNumber(string? label)
     {
         if (string.IsNullOrWhiteSpace(label))
             return 1;
@@ -1061,7 +1061,7 @@ public sealed class ArmRipperService(
     /// </summary>
     /// <param name="raw">The raw disc label (e.g. "MY_NAME_IS_EARL_S1_D1") or title.</param>
     /// <returns>A clean, human-readable series name (e.g. "My Name Is Earl").</returns>
-    internal static string CleanSeriesTitle(string raw)
+    public static string CleanSeriesTitle(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
             return "Unknown Series";

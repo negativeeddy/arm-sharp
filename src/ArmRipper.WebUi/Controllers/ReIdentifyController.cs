@@ -1,9 +1,9 @@
-using System.Text.RegularExpressions;
 using ArmMedia.Core.Abstractions;
 using ArmMedia.Core.Models;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
+using ArmRipper.Core.Rip;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -209,7 +209,7 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
             {
                 var completedBase = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value);
                 var cleanSeries = CleanSeriesTitle(job.Title ?? job.Label ?? "Unknown Series");
-                var seriesDir = Path.Combine(completedBase, "tv", SanitizeFileName(cleanSeries));
+                var seriesDir = Path.Combine(completedBase, "tv", ArmRipperService.SanitizeFileName(cleanSeries));
                 if (Directory.Exists(seriesDir))
                 {
                     RemoveEmptyDirectories(seriesDir);
@@ -240,38 +240,16 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static string CleanSeriesTitle(string title)
-    {
-        var cleaned = Regex.Replace(title, @"_S\d+_D\d+$", "", RegexOptions.IgnoreCase);
-        cleaned = cleaned.Replace('_', ' ');
-        var words = cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        for (int i = 0; i < words.Length; i++)
-        {
-            if (words[i].Length > 0)
-                words[i] = char.ToUpperInvariant(words[i][0]) + words[i][1..].ToLowerInvariant();
-        }
-        return string.Join(' ', words);
-    }
+        => ArmRipperService.CleanSeriesTitle(title);
 
     private static int ParseDiscNumber(string? label)
-    {
-        if (string.IsNullOrWhiteSpace(label))
-            return 1;
-        var match = Regex.Match(label, @"_D(\d+)$", RegexOptions.IgnoreCase);
-        return match.Success && int.TryParse(match.Groups[1].Value, out var discNum) ? discNum : 1;
-    }
+        => ArmRipperService.ParseDiscNumber(label);
 
     private static string FormatDuration(TimeSpan d)
     {
         if (d.TotalHours >= 1)
             return $"{(int)d.TotalHours}h{d.Minutes:D2}m";
         return $"{d.Minutes}m{d.Seconds:D2}s";
-    }
-
-    /// <summary>Removes characters that are invalid in file names.</summary>
-    private static string SanitizeFileName(string name)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        return string.Concat(name.Where(ch => !invalid.Contains(ch)));
     }
 
     /// <summary>
@@ -283,15 +261,16 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
         var season = track.TrackSeasonNumber ?? job.SeasonNumber ?? 1;
         var episode = track.EpisodeNumber!.Value;
 
-        var cleanSeries = CleanSeriesTitle(job.Title ?? "Unknown Series");
+        var cleanSeries = ArmRipperService.CleanSeriesTitle(job.Title ?? "Unknown Series");
         var completedBase = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(armSettings);
-        var seriesFileName = SanitizeFileName(cleanSeries);
+        var seriesFileName = ArmRipperService.SanitizeFileName(cleanSeries);
         var seriesDir = Path.Combine(completedBase, "tv", seriesFileName);
         var seasonDir = Path.Combine(seriesDir, $"Season {season:D2}");
 
-        var destExt = job.Config?.DestExt ?? armSettings.DestExt ?? "mkv";
+        // IMPORTANT: Must match MoveFiles() exactly — fallback to "mp4" for consistency.
+        var destExt = job.Config?.DestExt ?? armSettings.DestExt ?? "mp4";
         var episodeTitle = !string.IsNullOrEmpty(track.EpisodeTitle)
-            ? $" - {SanitizeFileName(track.EpisodeTitle)}"
+            ? $" - {ArmRipperService.SanitizeFileName(track.EpisodeTitle)}"
             : "";
 
         return Path.Combine(seasonDir,
