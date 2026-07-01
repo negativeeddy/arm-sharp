@@ -230,9 +230,27 @@ public sealed partial class DvdCompareProvider : IEpisodeIdentificationProvider
         {
             html = await FetchPageAsync(searchUrl, ct);
         }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogError(ex,
+                "[DvdCompareProvider] NETWORK TIMEOUT connecting to dvdcompare.net. "
+                + "Check internet connectivity or https://dvdcompare.net status. "
+                + "Search URL: {Url}", searchUrl);
+            return null;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex,
+                "[DvdCompareProvider] NETWORK ERROR connecting to dvdcompare.net. "
+                + "DNS or HTTP failure — check internet connectivity. "
+                + "Search URL: {Url}", searchUrl);
+            return null;
+        }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[DvdCompareProvider] Search failed for '{Title}'.", seriesTitle);
+            _logger.LogWarning(ex,
+                "[DvdCompareProvider] Unexpected error searching dvdcompare.net for '{Title}'.",
+                seriesTitle);
             return null;
         }
 
