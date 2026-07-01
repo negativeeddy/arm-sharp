@@ -67,7 +67,7 @@ public sealed class OmdbProvider : IEpisodeIdentificationProvider
             "[OmdbProvider] Loaded {Count} episodes for '{Title}' S{Season}.",
             episodes.Count, context.SeriesTitle, context.Season);
 
-        // ── Step 2: Map tracks to episodes sequentially (no disc offset) ──────
+        // ── Step 2: Map tracks to episodes sequentially ──────────────────────
         // DvdCompare (which runs last in the ProviderOrder) handles per-disc
         // episode numbering. Sequential assignment from episode 1 is safer than
         // the old (discNumber - 1) * episodesPerDisc math which produces wrong
@@ -76,6 +76,14 @@ public sealed class OmdbProvider : IEpisodeIdentificationProvider
             .Where(t => t.Duration.TotalSeconds >= 120)
             .OrderBy(t => t.TrackIndex)
             .ToList();
+
+        var offset = (context.StartingEpisodeNumber ?? 1) - 1; // 0-based index into episodes[]
+        if (context.StartingEpisodeNumber is not null)
+        {
+            _logger.LogInformation(
+                "[OmdbProvider] Using manual starting episode offset {Offset}.",
+                context.StartingEpisodeNumber);
+        }
 
         _logger.LogInformation(
             "[OmdbProvider] Disc {Disc}: {EpsPerDisc} episode tracks, mapping sequentially.",
@@ -88,9 +96,10 @@ public sealed class OmdbProvider : IEpisodeIdentificationProvider
         {
             var track = episodeTracks[i];
 
-            if (i < episodes.Count)
+            var episodeIndex = offset + i;
+            if (episodeIndex < episodes.Count)
             {
-                var ep = episodes[i];
+                var ep = episodes[episodeIndex];
                 results.Add(new ProviderResult
                 {
                     TrackIndex   = track.TrackIndex,

@@ -122,7 +122,7 @@ public sealed class EpisodeIdentificationOrchestrator : IEpisodeIdentificationOr
 
     private static void FillPositionalFallback(DiscContext ctx, Dictionary<int, ProviderResult> results)
     {
-        int episodeCounter = 1;
+        int episodeCounter = ctx.StartingEpisodeNumber ?? 1;
         foreach (var track in ctx.Tracks.OrderBy(t => t.TrackIndex))
         {
             if (!results.ContainsKey(track.TrackIndex))

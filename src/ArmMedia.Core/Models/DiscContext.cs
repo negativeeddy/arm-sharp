@@ -44,4 +44,13 @@ public sealed class DiscContext
     /// Used by the ArmSharp glue layer to select the correct <see cref="MappedTrack"/>.
     /// </summary>
     public int? CurrentTrackIndex { get; init; }
+
+    /// <summary>
+    /// Gets an optional starting episode number override for sequential/positional
+    /// providers (Omdb, Tmdb, Tvdb, PositionalFallback). When set, the first
+    /// track will be assigned this episode number instead of 1.
+    /// Providers that know the actual disc layout (DvdCompare, DiscDb) ignore
+    /// this value and use their own numbering.
+    /// </summary>
+    public int? StartingEpisodeNumber { get; init; }
 }

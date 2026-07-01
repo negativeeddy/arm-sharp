@@ -27,7 +27,7 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
     }
 
     [HttpPost("run")]
-    public async Task<IActionResult> Run(int jobId, bool save = false, CancellationToken ct = default)
+    public async Task<IActionResult> Run(int jobId, bool save = false, int? startingEpisodeNumber = null, CancellationToken ct = default)
     {
         var job = await db.Jobs
             .Include(j => j.Tracks)
@@ -84,11 +84,12 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
 
         var ctx = new DiscContext
         {
-            DiscId      = job.DiscDbHash ?? job.Label ?? job.DevPath ?? "unknown",
-            SeriesTitle = seriesTitle,
-            Season      = job.SeasonNumber ?? 1,
-            Tracks      = trackContexts,
-            DiscNumber  = discNumber
+            DiscId                = job.DiscDbHash ?? job.Label ?? job.DevPath ?? "unknown",
+            SeriesTitle           = seriesTitle,
+            Season                = job.SeasonNumber ?? 1,
+            Tracks                = trackContexts,
+            DiscNumber            = discNumber,
+            StartingEpisodeNumber = startingEpisodeNumber
         };
 
         // ── Run identification ──
@@ -164,6 +165,7 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
             discLabel     = job.Label,
             videoType     = job.VideoType,
             trackCount    = rippedTracks.Count,
+            startingEpisodeNumber,
             comparison,
             saved         = save
         });

@@ -114,13 +114,22 @@ public sealed class TvdbProvider : IEpisodeIdentificationProvider
         var orderedTracks = context.Tracks.OrderBy(t => t.TrackIndex).ToList();
         var results = new List<ProviderResult>();
 
+        var offset = (context.StartingEpisodeNumber ?? 1) - 1; // 0-based index into seasonEpisodes[]
+        if (context.StartingEpisodeNumber is not null)
+        {
+            _logger.LogInformation(
+                "[TvdbProvider] Using manual starting episode offset {Offset}.",
+                context.StartingEpisodeNumber);
+        }
+
         for (int i = 0; i < orderedTracks.Count; i++)
         {
             var track = orderedTracks[i];
 
             TvdbEpisode? matchingEpisode = null;
-            if (i < seasonEpisodes.Count)
-                matchingEpisode = seasonEpisodes[i];
+            var episodeIndex = offset + i;
+            if (episodeIndex < seasonEpisodes.Count)
+                matchingEpisode = seasonEpisodes[episodeIndex];
 
             if (matchingEpisode is not null)
             {
