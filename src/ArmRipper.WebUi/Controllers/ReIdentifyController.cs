@@ -1,17 +1,19 @@
 using System.Text.RegularExpressions;
 using ArmMedia.Core.Abstractions;
 using ArmMedia.Core.Models;
+using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("reidentify")]
-public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchestrator orchestrator) : Controller
+public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchestrator orchestrator, IOptions<ArmSettings> settings) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken ct = default)
@@ -27,7 +29,7 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
     }
 
     [HttpPost("run")]
-    public async Task<IActionResult> Run(int jobId, bool save = false, int? startingEpisodeNumber = null, CancellationToken ct = default)
+    public async Task<IActionResult> Run(int jobId, bool save = false, bool renameFiles = false, int? startingEpisodeNumber = null, CancellationToken ct = default)
     {
         var job = await db.Jobs
             .Include(j => j.Tracks)
@@ -141,6 +143,19 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
             };
         }).ToList();
 
+        // ── Compute old file paths (before save) for rename tracking ──
+        var oldFilePaths = new Dictionary<int, string?>();
+        if (renameFiles)
+        {
+            foreach (var t in rippedTracks)
+            {
+                if (t.EpisodeNumber.HasValue)
+                {
+                    oldFilePaths[t.Id] = BuildEpisodeFilePath(job, t, settings.Value);
+                }
+            }
+        }
+
         // ── Save if requested ──
         if (save)
         {
@@ -157,6 +172,55 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
             await db.SaveChangesAsync(ct);
         }
 
+        // ── Rename completed files if requested ──
+        var renameResults = new List<object>();
+        if (renameFiles && save)
+        {
+            foreach (var mapped in episodeMap.Tracks)
+            {
+                var track = rippedTracks.FirstOrDefault(t => t.TrackNumberInt == mapped.TrackIndex);
+                if (track is null)
+                    continue;
+
+                // Only rename tracks that have episode data
+                if (!mapped.Episodes.Any())
+                    continue;
+
+                var oldPath = oldFilePaths.GetValueOrDefault(track.Id);
+                if (string.IsNullOrEmpty(oldPath))
+                    continue;
+
+                var newPath = BuildEpisodeFilePath(job, track, settings.Value);
+
+                // Skip if the path hasn't changed
+                if (string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    renameResults.Add(new { track.Id, trackIndex = mapped.TrackIndex, status = "unchanged", oldPath, newPath });
+                    continue;
+                }
+
+                // Perform the rename if the old file exists
+                var result = RenameFileOnDisk(oldPath, newPath, mapped.TrackIndex);
+                renameResults.Add(result);
+            }
+
+            // Try to clean up empty directories after renames
+            try
+            {
+                var completedBase = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value);
+                var cleanSeries = CleanSeriesTitle(job.Title ?? job.Label ?? "Unknown Series");
+                var seriesDir = Path.Combine(completedBase, "tv", SanitizeFileName(cleanSeries));
+                if (Directory.Exists(seriesDir))
+                {
+                    RemoveEmptyDirectories(seriesDir);
+                }
+            }
+            catch
+            {
+                // Best-effort cleanup
+            }
+        }
+
         return Json(new
         {
             jobId         = job.Id,
@@ -167,7 +231,9 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
             trackCount    = rippedTracks.Count,
             startingEpisodeNumber,
             comparison,
-            saved         = save
+            saved         = save,
+            renamed       = renameFiles && save,
+            renameResults = renameFiles && save ? renameResults : null
         });
     }
 
@@ -199,5 +265,123 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
         if (d.TotalHours >= 1)
             return $"{(int)d.TotalHours}h{d.Minutes:D2}m";
         return $"{d.Minutes}m{d.Seconds:D2}s";
+    }
+
+    /// <summary>Removes characters that are invalid in file names.</summary>
+    private static string SanitizeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        return string.Concat(name.Where(ch => !invalid.Contains(ch)));
+    }
+
+    /// <summary>
+    /// Builds the expected file path for a TV-series track, mirroring the logic
+    /// in <c>ArmRipperService.MoveFiles</c> for episode naming.
+    /// </summary>
+    private static string BuildEpisodeFilePath(Job job, Track track, ArmSettings armSettings)
+    {
+        var season = track.TrackSeasonNumber ?? job.SeasonNumber ?? 1;
+        var episode = track.EpisodeNumber!.Value;
+
+        var cleanSeries = CleanSeriesTitle(job.Title ?? "Unknown Series");
+        var completedBase = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(armSettings);
+        var seriesFileName = SanitizeFileName(cleanSeries);
+        var seriesDir = Path.Combine(completedBase, "tv", seriesFileName);
+        var seasonDir = Path.Combine(seriesDir, $"Season {season:D2}");
+
+        var destExt = job.Config?.DestExt ?? armSettings.DestExt ?? "mkv";
+        var episodeTitle = !string.IsNullOrEmpty(track.EpisodeTitle)
+            ? $" - {SanitizeFileName(track.EpisodeTitle)}"
+            : "";
+
+        return Path.Combine(seasonDir,
+            $"{seriesFileName} - S{season:D2}E{episode:D2}{episodeTitle}.{destExt}");
+    }
+
+    /// <summary>
+    /// Renames a file on disk from <paramref name="oldPath"/> to <paramref name="newPath"/>.
+    /// Returns a result object with status information.
+    /// </summary>
+    private static object RenameFileOnDisk(string oldPath, string newPath, int trackIndex)
+    {
+        if (!System.IO.File.Exists(oldPath))
+        {
+            return new
+            {
+                trackIndex,
+                oldPath,
+                newPath,
+                status = "not_found",
+                message = $"Old file not found on disk: {oldPath}"
+            };
+        }
+
+        if (string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return new { trackIndex, oldPath, newPath, status = "unchanged", message = "" };
+        }
+
+        // Ensure the target directory exists
+        var dir = Path.GetDirectoryName(newPath);
+        if (dir is not null && !Directory.Exists(dir))
+        {
+            try { Directory.CreateDirectory(dir); } catch { }
+        }
+
+        // Check if destination already exists
+        if (System.IO.File.Exists(newPath))
+        {
+            return new
+            {
+                trackIndex,
+                oldPath,
+                newPath,
+                status = "skipped",
+                message = $"Destination already exists: {newPath}"
+            };
+        }
+
+        try
+        {
+            System.IO.File.Move(oldPath, newPath);
+            return new
+            {
+                trackIndex,
+                oldPath,
+                newPath,
+                status = "renamed",
+                message = ""
+            };
+        }
+        catch (Exception ex)
+        {
+            return new
+            {
+                trackIndex,
+                oldPath,
+                newPath,
+                status = "error",
+                message = ex.Message
+            };
+        }
+    }
+
+    /// <summary>Recursively removes empty directories under the given path.</summary>
+    private static void RemoveEmptyDirectories(string directory)
+    {
+        if (!Directory.Exists(directory))
+            return;
+
+        foreach (var subDir in Directory.GetDirectories(directory))
+        {
+            RemoveEmptyDirectories(subDir);
+        }
+
+        // Only remove if the directory is a season folder or series folder and is empty
+        var name = Path.GetFileName(directory);
+        if ((name.StartsWith("Season ", StringComparison.OrdinalIgnoreCase) || !Directory.GetFileSystemEntries(directory).Any()))
+        {
+            try { Directory.Delete(directory); } catch { }
+        }
     }
 }

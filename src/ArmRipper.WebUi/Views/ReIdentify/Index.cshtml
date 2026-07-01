@@ -89,15 +89,44 @@
                 </table>
             </div>
         </div>
-        <div class="card-footer text-right" id="saveFooter">
+        <div class="card-footer d-flex justify-content-between align-items-center flex-wrap" id="saveFooter">
+            <div class="form-check">
+                <input type="checkbox" id="renameCheck" class="form-check-input" checked />
+                <label class="form-check-label" for="renameCheck">
+                    Also rename completed files on disk to match new episode numbers
+                </label>
+            </div>
             <button type="button" id="saveBtn" class="btn btn-success">
-                💾 Save to Database
+                💾 Save &amp; Rename
             </button>
         </div>
     </div>
 </div>
 
 <div id="errorArea" style="display:none;" class="alert alert-danger"></div>
+
+<div id="renameResultsArea" style="display:none;" class="card mb-4">
+    <div class="card-header">
+        <span>📁 File Rename Results</span>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="thead-light">
+                    <tr>
+                        <th>#</th>
+                        <th>Status</th>
+                        <th>Old Path</th>
+                        <th>New Path</th>
+                        <th>Message</th>
+                    </tr>
+                </thead>
+                <tbody id="renameResultsBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 
 @section Scripts {
 <script>
@@ -119,6 +148,7 @@
             $('#runBtn').prop('disabled', true);
             $('#spinner').show();
             $('#resultsArea').hide();
+            $('#renameResultsArea').hide();
             $('#errorArea').hide();
 
             var startEp = $('#startEpInput').val().trim();
@@ -155,11 +185,15 @@
 
             $('#saveBtn').prop('disabled', true).text('Saving...');
             $('#saveBadge').hide();
+            $('#renameResultsArea').hide();
 
             var startEp = $('#startEpInput').val().trim();
             var postData = { jobId: currentJobId, save: true };
             if (startEp) {
                 postData.startingEpisodeNumber = parseInt(startEp);
+            }
+            if ($('#renameCheck').is(':checked')) {
+                postData.renameFiles = true;
             }
 
             $.ajax({
@@ -173,13 +207,16 @@
                         return;
                     }
                     renderResults(data);
+                    if (data.renameResults) {
+                        renderRenameResults(data.renameResults);
+                    }
                 },
                 error: function (xhr) {
                     var msg = 'Save failed: ' + (xhr.responseJSON?.error || xhr.statusText || 'Unknown error');
                     $('#errorArea').text(msg).show();
                 },
                 complete: function () {
-                    $('#saveBtn').prop('disabled', false).text('💾 Save to Database');
+                    $('#saveBtn').prop('disabled', false).text('💾 Save & Rename');
                 }
             });
         });
@@ -252,6 +289,56 @@
 
             // Scroll to results
             $('html, body').animate({ scrollTop: $('#resultsArea').offset().top - 80 }, 300);
+        }
+
+        function renderRenameResults(results) {
+            var tbody = $('#renameResultsBody');
+            tbody.empty();
+
+            var renamedCount = 0, skippedCount = 0, errorCount = 0, notFoundCount = 0;
+
+            $.each(results, function (i, r) {
+                var statusClass = 'text-muted';
+                var statusIcon = '➖';
+                if (r.status === 'renamed') {
+                    statusClass = 'text-success';
+                    statusIcon = '✅';
+                    renamedCount++;
+                } else if (r.status === 'skipped') {
+                    statusClass = 'text-warning';
+                    statusIcon = '⚠️';
+                    skippedCount++;
+                } else if (r.status === 'not_found') {
+                    statusClass = 'text-muted';
+                    statusIcon = '🔍';
+                    notFoundCount++;
+                } else if (r.status === 'error') {
+                    statusClass = 'text-danger';
+                    statusIcon = '❌';
+                    errorCount++;
+                }
+
+                var row = '<tr>'
+                    + '<td>' + r.trackIndex + '</td>'
+                    + '<td class="' + statusClass + '">' + statusIcon + ' ' + r.status + '</td>'
+                    + '<td class="small">' + escapeHtml(r.oldPath) + '</td>'
+                    + '<td class="small">' + escapeHtml(r.newPath) + '</td>'
+                    + '<td class="small text-muted">' + escapeHtml(r.message || '') + '</td>'
+                    + '</tr>';
+                tbody.append(row);
+            });
+
+            // Show summary in the card header
+            var summary = [];
+            if (renamedCount > 0) summary.push(renamedCount + ' renamed');
+            if (skippedCount > 0) summary.push(skippedCount + ' skipped');
+            if (notFoundCount > 0) summary.push(notFoundCount + ' not found');
+            if (errorCount > 0) summary.push(errorCount + ' errors');
+            $('#renameResultsArea .card-header').html(
+                '<span>📁 File Rename Results — ' + (summary.length > 0 ? summary.join(', ') : 'No changes') + '</span>'
+            );
+
+            $('#renameResultsArea').show();
         }
 
         function escapeHtml(str) {
