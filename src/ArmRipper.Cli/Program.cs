@@ -1,3 +1,5 @@
+using ArmMedia.Core.Abstractions;
+using ArmMedia.Core.Models;
 using ArmRipper.Core;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
@@ -128,10 +130,21 @@ var deviceArg = args.FirstOrDefault(a => a.StartsWith("--device="))?.Split('=')[
     ?? args.Select((a, i) => a is "--device" or "-d" && i + 1 < args.Length ? args[i + 1] : null).FirstOrDefault(a => a is not null)
     ?? (args.Length > 0 && !args[0].StartsWith('-') ? args[0] : null);
 
-if (deviceArg is null)
+// ── Re-identify mode: re-run episode IDs against raw files without re-ripping ──
+var reidentifyJobStr = args.FirstOrDefault(a => a.StartsWith("--reidentify-job="))?.Split('=')[1]
+    ?? args.Select((a, i) => a == "--reidentify-job" && i + 1 < args.Length ? args[i + 1] : null).FirstOrDefault(a => a is not null);
+
+if (reidentifyJobStr is not null && int.TryParse(reidentifyJobStr, out int reidentifyJobId))
+{
+    return await RunReidentifyJobAsync(host.Services, reidentifyJobId);
+}
+
+if (deviceArg is null && reidentifyJobStr is null)
 {
     Console.Error.WriteLine("Usage: ArmRipper.Cli --device /dev/sr0 [--test]");
-    Console.Error.WriteLine("  --test         Rip only first title and transcode 2 minutes per track");
+    Console.Error.WriteLine("       ArmRipper.Cli --reidentify-job <jobId>");
+    Console.Error.WriteLine("  --test             Rip only first title and transcode 2 minutes per track");
+    Console.Error.WriteLine("  --reidentify-job   Re-run episode identification on a completed job");
     return 1;
 }
 
@@ -144,3 +157,162 @@ var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
 var exitCode = await conductor.RunAsync(deviceArg);
 logger.LogInformation("ARM ripper exiting with code {ExitCode}", exitCode);
 return exitCode;
+
+// ── Re-identification helper ────────────────────────────────────────────────
+
+static async Task<int> RunReidentifyJobAsync(IServiceProvider services, int jobId)
+{
+    var logger = services.GetRequiredService<ILogger<Program>>();
+    var db = services.GetRequiredService<ArmDbContext>();
+    var orchestrator = services.GetRequiredService<IEpisodeIdentificationOrchestrator>();
+    var settings = services.GetRequiredService<IOptions<ArmSettings>>().Value;
+
+    using var scope = services.CreateScope();
+    var scopedDb = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+
+    var job = await scopedDb.Jobs
+        .Include(j => j.Tracks)
+        .FirstOrDefaultAsync(j => j.Id == jobId);
+
+    if (job is null)
+    {
+        logger.LogError("Job {JobId} not found in database.", jobId);
+        return 1;
+    }
+
+    // Only run on series/tv jobs
+    if (job.VideoType != "series" && job.VideoType != "tv")
+    {
+        logger.LogError("Job {JobId} is not a TV series (type={Type}).", jobId, job.VideoType);
+        return 1;
+    }
+
+    var rippedTracks = job.Tracks
+        .Where(t => t.Ripped)
+        .OrderBy(t => t.TrackNumberInt ?? 0)
+        .ToList();
+
+    if (rippedTracks.Count == 0)
+    {
+        logger.LogError("Job {JobId} has no ripped tracks.", jobId);
+        return 1;
+    }
+
+    Console.WriteLine($"\n=== Re-identifying Job {jobId}: {job.Title} (S{job.SeasonNumber}) Disc {job.Label} ===\n");
+    Console.WriteLine($"Tracks ripped: {rippedTracks.Count}");
+    Console.WriteLine();
+
+    // Build DiscContext from job data
+    var trackContexts = rippedTracks.Select(t =>
+    {
+        var rawProps = new Dictionary<string, string>();
+        if (!string.IsNullOrEmpty(t.FileName))
+            rawProps["FileName"] = t.FileName;
+        if (!string.IsNullOrEmpty(t.TrackNumber))
+            rawProps["TrackNumber"] = t.TrackNumber;
+
+        return new TrackContext
+        {
+            TrackIndex    = t.TrackNumberInt ?? 0,
+            Duration      = TimeSpan.FromSeconds(t.Length ?? 0),
+            SizeBytes     = t.FileSize ?? 0,
+            ChapterCount  = t.Chapters,
+            DiscDbTrackId = t.DiscDbItemSlug,
+            RawProperties = rawProps
+        };
+    }).ToList().AsReadOnly();
+
+    var discNumber = ParseDiscNumber(job.Label);
+    var seriesTitle = CleanSeriesTitle(job.Title ?? job.Label ?? "Unknown");
+    var season = job.SeasonNumber ?? 1;
+
+    var ctx = new DiscContext
+    {
+        DiscId      = job.DiscDbHash ?? job.Label ?? job.DevPath ?? "unknown",
+        SeriesTitle = seriesTitle,
+        Season      = season,
+        Tracks      = trackContexts,
+        DiscDbHint  = null,
+        DiscNumber  = discNumber
+    };
+
+    logger.LogInformation("Running episode identification for '{Title}' S{Season} disc {Disc}...",
+        ctx.SeriesTitle, ctx.Season, ctx.DiscNumber);
+
+    var episodeMap = await orchestrator.IdentifyAsync(ctx, CancellationToken.None);
+
+    // ── Display results ──
+    Console.WriteLine($"Results: {episodeMap.Tracks.Count} tracks mapped\n");
+
+    // ── Table header ──
+    Console.WriteLine($"{"Idx",-4} {"SxE",-8} {"Title",-35} {"Duration",-10} {"Provider",-15} {"Confidence",-12}");
+    Console.WriteLine(new string('-', 84));
+
+    foreach (var mapped in episodeMap.Tracks.OrderBy(t => t.TrackIndex))
+    {
+        var trackCtx = ctx.Tracks.FirstOrDefault(t => t.TrackIndex == mapped.TrackIndex);
+        var dur = trackCtx?.Duration ?? TimeSpan.Zero;
+        var epStr = mapped.IsExtra
+            ? $"S00E{mapped.Episodes.FirstOrDefault():D2}"
+            : $"S{mapped.Season:D2}E{mapped.Episodes.FirstOrDefault():D2}";
+
+        Console.WriteLine(
+            $"{mapped.TrackIndex,-4} {epStr,-8} {Truncate(mapped.Title ?? "", 35),-35} {FormatDuration(dur),-10} {Truncate(mapped.WinningProvider ?? "", 15),-15} {mapped.Confidence,-12}");
+    }
+
+    Console.WriteLine();
+
+    // ── Per-track details ──
+    Console.WriteLine("=== Track Details ===\n");
+    foreach (var mapped in episodeMap.Tracks.OrderBy(t => t.TrackIndex))
+    {
+        var trackCtx = ctx.Tracks.FirstOrDefault(t => t.TrackIndex == mapped.TrackIndex);
+        var fileName = trackCtx?.RawProperties?.TryGetValue("FileName", out var fn) == true ? fn : "?";
+        Console.WriteLine($"Track {mapped.TrackIndex}: {fileName}");
+        Console.WriteLine($"  Duration: {FormatDuration(trackCtx?.Duration ?? TimeSpan.Zero)}");
+        if (mapped.IsExtra)
+            Console.WriteLine($"  → Extra S00E{mapped.Episodes.FirstOrDefault():D2} '{mapped.Title}' ({mapped.WinningProvider} / {mapped.Confidence})");
+        else
+            Console.WriteLine($"  → S{mapped.Season:D2}E{mapped.Episodes.FirstOrDefault():D2} '{mapped.Title}' ({mapped.WinningProvider} / {mapped.Confidence})");
+        Console.WriteLine();
+    }
+
+    return 0;
+}
+
+// ── Helpers shared with re-identification ──────────────────────────────────
+
+static string Truncate(string value, int maxLen) =>
+    value.Length <= maxLen ? value : value[..(maxLen - 3)] + "...";
+
+static string FormatDuration(TimeSpan d) =>
+    d.TotalHours >= 1
+        ? $"{(int)d.TotalHours}h{d.Minutes:D2}m"
+        : $"{d.Minutes}m{d.Seconds:D2}s";
+
+static int ParseDiscNumber(string? label)
+{
+    if (string.IsNullOrWhiteSpace(label))
+        return 1;
+
+    // Match _D1, _D2, _D3 etc. at end of label
+    var match = System.Text.RegularExpressions.Regex.Match(label, @"_D(\d+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    return match.Success && int.TryParse(match.Groups[1].Value, out int discNum)
+        ? discNum
+        : 1;
+}
+
+static string CleanSeriesTitle(string title)
+{
+    // Strip _S1_D2 suffix then title-case
+    var cleaned = System.Text.RegularExpressions.Regex.Replace(title, @"_S\d+_D\d+$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    cleaned = cleaned.Replace('_', ' ');
+    // Title case: capitalise first letter of each word
+    var words = cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    for (int i = 0; i < words.Length; i++)
+    {
+        if (words[i].Length > 0)
+            words[i] = char.ToUpperInvariant(words[i][0]) + words[i][1..].ToLowerInvariant();
+    }
+    return string.Join(' ', words);
+}
