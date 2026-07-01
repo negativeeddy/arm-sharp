@@ -47,7 +47,7 @@ public static class SettingsHelper
         }
 
         // Override with DB-stored values
-        var saved = await db.RipperSettings.FirstOrDefaultAsync(ct);
+        var saved = await db.RipperSettings.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
         if (saved is not null)
         {
             var dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(saved.SettingsJson);
@@ -102,7 +102,7 @@ public static class SettingsHelper
         bool force = false,
         CancellationToken ct = default)
     {
-        var existing = await db.RipperSettings.FirstOrDefaultAsync(ct);
+        var existing = await db.RipperSettings.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
 
         if (existing is not null && !force)
             return; // already seeded, nothing to do
@@ -137,7 +137,7 @@ public static class SettingsHelper
         Dictionary<string, string?> fields,
         CancellationToken ct = default)
     {
-        var existingRow = await db.RipperSettings.FirstOrDefaultAsync(ct);
+        var existingRow = await db.RipperSettings.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
         Dictionary<string, JsonElement>? existingDict = null;
 
         if (existingRow is not null && !string.IsNullOrEmpty(existingRow.SettingsJson))

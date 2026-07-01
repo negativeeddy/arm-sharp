@@ -53,9 +53,15 @@ public static class DatabaseHelper
     {
         try
         {
-            // SQLite doesn't accept parameters in ALTER TABLE DDL.
-            // Values are controlled by our own code — safe to use ExecuteSqlRaw.
+            // Check column existence via PRAGMA before attempting ALTER —
+            // avoids spurious EF error logs for columns added by a prior migration.
 #pragma warning disable EF1002
+            var sql = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{column}'";
+            var count = db.Database.SqlQueryRaw<int>(sql).FirstOrDefault();
+            if (count > 0)
+                return;
+
+            // SQLite doesn't accept parameters in ALTER TABLE DDL.
             db.Database.ExecuteSqlRaw(
                 $"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {(type ?? "TEXT")} NULL;");
 #pragma warning restore EF1002
