@@ -38,7 +38,12 @@
             <div class="form-group row">
                 <label for="startEpInput" class="col-sm-2 col-form-label">Starting Episode</label>
                 <div class="col-sm-3">
-                    <input type="number" id="startEpInput" name="startingEpisodeNumber" class="form-control" min="1" placeholder="Auto (default)" />
+                    <div class="input-group">
+                        <input type="number" id="startEpInput" name="startingEpisodeNumber" class="form-control" min="1" placeholder="Auto (default)" />
+                        <div class="input-group-append">
+                            <button type="button" id="clearStartEpBtn" class="btn btn-outline-secondary" title="Reset to default">&times;</button>
+                        </div>
+                    </div>
                     <small class="form-text text-muted">Optional — sequential providers will start counting from this number. Ignored by providers that know the disc layout (DvdCompare).</small>
                 </div>
             </div>
@@ -98,6 +103,11 @@
 <script>
     $(function () {
         var currentJobId = null;
+
+        // Clear starting episode input
+        $('#clearStartEpBtn').on('click', function () {
+            $('#startEpInput').val('');
+        });
 
         $('#reidentifyForm').on('submit', function (e) {
             e.preventDefault();
