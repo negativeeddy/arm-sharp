@@ -1,6 +1,6 @@
 @{
     ViewData["Title"] = "Re-Identify Episodes — ARM";
-    var jobs = ViewBag.CompletedJobs as List<dynamic> ?? [];
+    var jobs = ((System.Collections.IEnumerable)ViewBag.CompletedJobs).Cast<dynamic>().ToList();
 }
 
 <h1>Re-Identify Episodes</h1>
@@ -32,18 +32,6 @@
                             <option value="@job.Id">@label</option>
                         }
                     </select>
-                </div>
-            </div>
-
-            <div class="form-group row">
-                <div class="col-sm-10 offset-sm-2">
-                    <div class="form-check">
-                        <input type="checkbox" id="saveCheck" name="save" value="true" class="form-check-input" />
-                        <label class="form-check-label" for="saveCheck">
-                            <strong>Save to database</strong>
-                            <small class="text-muted"> — write the new episode numbers/titles back to the database (irreversible)</small>
-                        </label>
-                    </div>
                 </div>
             </div>
 
@@ -88,6 +76,11 @@
                 </table>
             </div>
         </div>
+        <div class="card-footer text-right" id="saveFooter">
+            <button type="button" id="saveBtn" class="btn btn-success">
+                💾 Save to Database
+            </button>
+        </div>
     </div>
 </div>
 
@@ -96,13 +89,15 @@
 @section Scripts {
 <script>
     $(function () {
+        var currentJobId = null;
+
         $('#reidentifyForm').on('submit', function (e) {
             e.preventDefault();
 
             var jobId = $('#jobSelect').val();
             if (!jobId) return;
 
-            var save = $('#saveCheck').is(':checked');
+            currentJobId = parseInt(jobId);
             $('#runBtn').prop('disabled', true);
             $('#spinner').show();
             $('#resultsArea').hide();
@@ -111,7 +106,7 @@
             $.ajax({
                 url: '/reidentify/run',
                 method: 'POST',
-                data: { jobId: parseInt(jobId), save: save },
+                data: { jobId: currentJobId, save: false },
                 dataType: 'json',
                 success: function (data) {
                     if (data.error) {
@@ -131,6 +126,34 @@
             });
         });
 
+        $('#saveBtn').on('click', function () {
+            if (!currentJobId) return;
+
+            $('#saveBtn').prop('disabled', true).text('Saving...');
+            $('#saveBadge').hide();
+
+            $.ajax({
+                url: '/reidentify/run',
+                method: 'POST',
+                data: { jobId: currentJobId, save: true },
+                dataType: 'json',
+                success: function (data) {
+                    if (data.error) {
+                        $('#errorArea').text(data.error).show();
+                        return;
+                    }
+                    renderResults(data);
+                },
+                error: function (xhr) {
+                    var msg = 'Save failed: ' + (xhr.responseJSON?.error || xhr.statusText || 'Unknown error');
+                    $('#errorArea').text(msg).show();
+                },
+                complete: function () {
+                    $('#saveBtn').prop('disabled', false).text('💾 Save to Database');
+                }
+            });
+        });
+
         function renderResults(data) {
             $('#resultTitle').text(
                 'Job ' + data.jobId + ': ' + data.title
@@ -141,8 +164,10 @@
 
             if (data.saved) {
                 $('#saveBadge').show();
+                $('#saveFooter').hide();
             } else {
                 $('#saveBadge').hide();
+                $('#saveFooter').show();
             }
 
             var tbody = $('#comparisonBody');
