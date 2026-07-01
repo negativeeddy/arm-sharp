@@ -51,15 +51,26 @@ public static class DatabaseHelper
 
     private static void TryAlterColumn(ArmDbContext db, string table, string column, string? type = null)
     {
-        try { db.Database.ExecuteSql($"ALTER TABLE {table} ADD COLUMN {column} {(type ?? "TEXT")} NULL;"); } catch { }
+        try
+        {
+            // SQLite doesn't accept parameters in ALTER TABLE DDL.
+            // Values are controlled by our own code — safe to use ExecuteSqlRaw.
+#pragma warning disable EF1002
+            db.Database.ExecuteSqlRaw(
+                $"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {(type ?? "TEXT")} NULL;");
+#pragma warning restore EF1002
+        }
+        catch { }
     }
 
     private static void TryInsertMigration(ArmDbContext db, string migrationId)
     {
         try
         {
-            db.Database.ExecuteSql(
+#pragma warning disable EF1002
+            db.Database.ExecuteSqlRaw(
                 $"INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('{migrationId}', '10.0.0');");
+#pragma warning restore EF1002
         }
         catch { }
     }

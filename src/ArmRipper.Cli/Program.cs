@@ -170,7 +170,7 @@ logger.LogInformation("ARM .NET Ripper starting for device {Device}", deviceArg)
 using var scope = host.Services.CreateScope();
 var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
 
-var exitCode = await conductor.RunAsync(deviceArg);
+var exitCode = await conductor.RunAsync(deviceArg!);
 logger.LogInformation("ARM ripper exiting with code {ExitCode}", exitCode);
 return exitCode;
 

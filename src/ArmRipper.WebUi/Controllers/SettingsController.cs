@@ -24,8 +24,8 @@ public class SettingsController(
     public async Task<IActionResult> Index(CancellationToken ct = default)
     {
         var drives = await db.SystemDrives.ToListAsync(ct);
-        var systemInfo = await db.SystemInfos.FirstOrDefaultAsync(ct);
-        var uiCfg = await db.UiSettings.FirstOrDefaultAsync(ct);
+        var systemInfo = await db.SystemInfos.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
+        var uiCfg = await db.UiSettings.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
 
         ViewBag.Drives = drives;
         ViewBag.ActiveJobDevPaths = (await db.Jobs
@@ -388,7 +388,7 @@ public class SettingsController(
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveUi(string theme, int refreshRate, string iconStyle, CancellationToken ct = default)
     {
-        var ui = await db.UiSettings.FirstOrDefaultAsync(ct);
+        var ui = await db.UiSettings.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
         if (ui is null)
         {
             ui = new UiSettings { Theme = theme, RefreshRate = refreshRate, IconStyle = iconStyle };
@@ -449,7 +449,7 @@ public class SettingsController(
     [HttpGet("sysinfo")]
     public async Task<IActionResult> RefreshSysInfo(CancellationToken ct = default)
     {
-        var existing = await db.SystemInfos.FirstOrDefaultAsync(ct);
+        var existing = await db.SystemInfos.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
         if (existing is null)
         {
             existing = new SystemInfo

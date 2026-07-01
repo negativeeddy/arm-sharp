@@ -63,7 +63,7 @@ public sealed class MultiPartDetectionTests
         var map = await orchestrator.IdentifyAsync(ctx);
 
         // Expect a single merged track
-        var merged = Assert.Single(map.Tracks.Where(t => !t.IsExtra));
+        var merged = Assert.Single(map.Tracks, t => !t.IsExtra);
         Assert.True(merged.IsMultiPart);
         Assert.Equal([3, 4], merged.Episodes);
         Assert.Equal(1, merged.TrackIndex); // winning track index is the first
