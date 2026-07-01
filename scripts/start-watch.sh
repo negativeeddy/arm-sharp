@@ -16,6 +16,6 @@ if [ -f "$PID_FILE" ]; then
 fi
 
 mkdir -p "$(dirname "$LOG")"
-nohup bash "$SCRIPT" > "$LOG" 2>&1 &
+nohup bash "$SCRIPT" > /dev/null 2>&1 &
 echo $! > "$PID_FILE"
 echo "Watch started (PID $(cat $PID_FILE)), logging to $LOG"

@@ -45,6 +45,8 @@ release_rip_lock() {
     rm -f "$LOCK_FILE"
 }
 
+trap release_rip_lock EXIT
+
 start_rip() {
     local dev="$1"
     local label

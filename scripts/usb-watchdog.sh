@@ -19,8 +19,6 @@ set -euo pipefail
 LOG_FILE="${1:-/home/arm/logs/usb-watchdog.log}"
 POLL_SECONDS="${USB_WATCHDOG_POLL:-1}"
 STATE_DIR="${USB_WATCHDOG_STATE:-/tmp/usb-watchdog-state}"
-DRIVE_MODEL="${USB_WATCHDOG_MODEL:-HL-DT-ST BD-RE BU40N}"
-
 mkdir -p "$STATE_DIR" "$(dirname "$LOG_FILE")"
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_FILE"; }
@@ -158,15 +156,15 @@ log "═════════════════════════
 
 # Start background dmesg monitor
 tail_dmesg
+DMESG_PID=$!
+trap 'kill "$DMESG_PID" 2>/dev/null; echo "$(date "+%Y-%m-%d %H:%M:%S") USB Watchdog shutting down" >> "$LOG_FILE"' EXIT
 
 # Initialize state
 for sysblock in /sys/class/block/sr*; do
     [ -d "$sysblock" ] || continue
-    local devname
     devname=$(basename "$sysblock")
-    local nums_file="$sysblock/dev"
+    nums_file="$sysblock/dev"
     if [ -f "$nums_file" ]; then
-        local nums
         nums=$(cat "$nums_file")
         prev_major_minor["$devname"]="$nums"
     fi
@@ -182,9 +180,8 @@ while true; do
     for sysblock in /sys/class/block/sr*; do
         [ -d "$sysblock" ] || continue
 
-        local devname
         devname=$(basename "$sysblock")
-        local nums_file="$sysblock/dev"
+        nums_file="$sysblock/dev"
 
         if [ ! -f "$nums_file" ]; then
             # Device disappeared from sysfs
@@ -195,9 +192,8 @@ while true; do
             continue
         fi
 
-        local nums
         nums=$(cat "$nums_file")
-        local prev_nums="${prev_major_minor[$devname]:-}"
+        prev_nums="${prev_major_minor[$devname]:-}"
 
         if [ "$nums" != "$prev_nums" ]; then
             # Device changed or is new — recreate node(s)
@@ -206,7 +202,7 @@ while true; do
             prev_major_minor["$devname"]="$nums"
         else
             # Same numbers — still ensure node exists (handles container restarts)
-            local devpath="/dev/$devname"
+            devpath="/dev/$devname"
             if [ ! -e "$devpath" ]; then
                 log "DEVICE NODE MISSING $devpath → recreating"
                 create_or_fix_device_node "$sysblock"

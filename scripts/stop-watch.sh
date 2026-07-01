@@ -13,5 +13,5 @@ if [ -f "$PID_FILE" ]; then
     fi
     rm -f "$PID_FILE"
 else
-    pkill -f watch-discs.sh 2>/dev/null && echo "Watch stopped via pkill" || echo "Watch not running"
+    echo "Watch not running (no PID file)"
 fi
