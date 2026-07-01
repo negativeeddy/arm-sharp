@@ -199,7 +199,7 @@ public sealed partial class DvdCompareProvider : IEpisodeIdentificationProvider
     private HttpClient CreateClient()
     {
         var client = _httpClientFactory?.CreateClient("DvdCompare")
-            ?? new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+            ?? new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd(
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         return client;

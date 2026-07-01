@@ -67,19 +67,19 @@ public sealed class OmdbProvider : IEpisodeIdentificationProvider
             "[OmdbProvider] Loaded {Count} episodes for '{Title}' S{Season}.",
             episodes.Count, context.SeriesTitle, context.Season);
 
-        // ── Step 2: Calculate the disc offset ─────────────────────────────────
-        // Count actual episode-length tracks on this disc (exclude sub-2min logos)
+        // ── Step 2: Map tracks to episodes sequentially (no disc offset) ──────
+        // DvdCompare (which runs last in the ProviderOrder) handles per-disc
+        // episode numbering. Sequential assignment from episode 1 is safer than
+        // the old (discNumber - 1) * episodesPerDisc math which produces wrong
+        // offsets when discs have varying episode counts.
         var episodeTracks = context.Tracks
             .Where(t => t.Duration.TotalSeconds >= 120)
             .OrderBy(t => t.TrackIndex)
             .ToList();
 
-        int episodesPerDisc = episodeTracks.Count;
-        int startIndex = (context.DiscNumber - 1) * episodesPerDisc;
-
         _logger.LogInformation(
-            "[OmdbProvider] Disc {Disc}: {EpsPerDisc} episode tracks, starting at season index {Start}.",
-            context.DiscNumber, episodesPerDisc, startIndex);
+            "[OmdbProvider] Disc {Disc}: {EpsPerDisc} episode tracks, mapping sequentially.",
+            context.DiscNumber, episodeTracks.Count);
 
         // ── Step 3: Map tracks to episodes ───────────────────────────────────
         var results = new List<ProviderResult>();
@@ -87,11 +87,10 @@ public sealed class OmdbProvider : IEpisodeIdentificationProvider
         for (int i = 0; i < episodeTracks.Count; i++)
         {
             var track = episodeTracks[i];
-            var epIndex = startIndex + i;
 
-            if (epIndex < episodes.Count)
+            if (i < episodes.Count)
             {
-                var ep = episodes[epIndex];
+                var ep = episodes[i];
                 results.Add(new ProviderResult
                 {
                     TrackIndex   = track.TrackIndex,
@@ -112,7 +111,7 @@ public sealed class OmdbProvider : IEpisodeIdentificationProvider
             {
                 _logger.LogDebug(
                     "[OmdbProvider] No episode match for track {TrackIdx} (index {Idx} beyond {Max}).",
-                    track.TrackIndex, epIndex, episodes.Count);
+                    track.TrackIndex, i, episodes.Count);
             }
         }
 
