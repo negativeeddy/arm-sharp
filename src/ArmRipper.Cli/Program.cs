@@ -186,6 +186,9 @@ static async Task<int> RunReidentifyJobAsync(IServiceProvider services, int jobI
     using var scope = services.CreateScope();
     var scopedDb = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
 
+    // Ensure schema is up to date (handle older DBs missing newer columns)
+    DatabaseHelper.EnsureMigrated(scopedDb);
+
     var job = await scopedDb.Jobs
         .Include(j => j.Tracks)
         .FirstOrDefaultAsync(j => j.Id == jobId);
