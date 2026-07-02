@@ -32,10 +32,9 @@ services:
     restart: unless-stopped
 
     # ── Mode selection ──
-    # "supervise" — watch-discs + web UI (default, drop-in replacement for ARM)
-    # "webui"     — web UI only (no disc watching)
+    # "webui"     — web UI with built-in disc polling (default)
     # "cli"       — one-shot CLI rip (use `docker compose run` for this)
-    command: supervise
+    command: webui
 
     # ── Environment ──
     environment:

@@ -98,6 +98,13 @@ Configuration is read from two sources, merged in order (later wins):
 | `MaxConcurrentTranscodes` | `MAX_CONCURRENT_TRANSCODES` | `2` | Max parallel transcodes |
 | `MaxConcurrentMakemkvInfo` | `MAX_CONCURRENT_MAKEMKVINFO` | `1` | Max parallel MakeMKV info scans |
 
+### Disc Polling (ARM-Sharp)
+
+| Property | YAML Key | Default | Description |
+|----------|----------|---------|-------------|
+| `DiscPollingEnabled` | `DISC_POLLING_ENABLED` | `true` | Enable in-process disc detection polling |
+| `DiscPollIntervalSeconds` | `DISC_POLL_INTERVAL` | `5` | Polling interval in seconds |
+
 ### MakeMKV
 
 | Property | YAML Key | Description |

@@ -53,7 +53,6 @@ gpus: all
 ```
 
 ### Potential issues to watch for:
-- `watch-discs.sh` needs Blinuxt/udev access inside `--privileged` container
 - Web UI first-run sets up admin user — test login flow
 - MakeMKV key handling — `EnsureKeyAsync` runs automatically
 - Volume mount permissions — `ARM_UID`/`ARM_GID` entrypoint handles this

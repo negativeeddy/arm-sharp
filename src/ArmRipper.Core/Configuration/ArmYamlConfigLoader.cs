@@ -64,6 +64,10 @@ public static class ArmYamlConfigLoader
         ["MAX_CONCURRENT_MAKEMKVINFO"] = "Arm:MaxConcurrentMakemkvInfo",
         ["MAKEMKV_PERMA_KEY"] = "Arm:MakeMkvPermaKey",
         ["DISABLE_LOGIN"] = "Arm:DisableLogin",
+
+        // ── Disc polling (ARM-Sharp specific) ──
+        ["DISC_POLLING_ENABLED"] = "Arm:DiscPollingEnabled",
+        ["DISC_POLL_INTERVAL"] = "Arm:DiscPollIntervalSeconds",
     };
 
     public static Dictionary<string, string?> LoadYamlValues(string yamlPath)

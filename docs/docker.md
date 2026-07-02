@@ -101,21 +101,6 @@ docker run -d --privileged \
   arm-sharp webui
 ```
 
-### Supervise Mode (watch-discs + Web UI)
-
-```bash
-docker run -d --privileged \
-  --name arm-sharp \
-  -p 8080:8080 \
-  -v /dev/sr0:/dev/sr0 \
-  -v /opt/arm/media:/home/arm/media \
-  -v /opt/arm/logs:/home/arm/logs \
-  -v /etc/arm/config:/etc/arm/config \
-  arm-sharp supervise
-```
-
-This is the default command in `docker-compose.yml` — it runs the disc-watching loop (`watch-discs.sh`) in the background alongside the Web UI.
-
 ---
 
 ## Volume Mappings
@@ -192,9 +177,8 @@ The image uses `docker-entrypoint.sh` as the entry point:
 | Command | Behaviour |
 |---------|-----------|
 | `docker run <image> cli [options]` | Runs `ArmRipper.Cli` (one-shot rip) |
-| `docker run <image> webui` | Runs `ArmRipper.WebUi` listening on port 8080 |
-| `docker run <image> supervise` | Runs `watch-discs.sh` + Web UI |
-| `docker run <image>` (default) | Same as `supervise` (runs both) |
+| `docker run <image> webui` | Runs `ArmRipper.WebUi` with built-in disc polling on port 8080 |
+| `docker run <image>` (default) | Same as `webui` |
 
 ---
 

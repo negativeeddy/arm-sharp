@@ -78,6 +78,12 @@ public class ArmSettings
     public bool TestMode { get; set; }
     public bool DisableLogin { get; set; } = true;
 
+    // ── Disc auto-polling ──
+    /// <summary>Whether to poll optical drives for disc insertion. Default: true.</summary>
+    public bool DiscPollingEnabled { get; set; } = true;
+    /// <summary>Poll interval in seconds. Default: 5.</summary>
+    public int DiscPollIntervalSeconds { get; set; } = 5;
+
     // ── TheDiscDb Integration ──
     public bool DiscDbEnabled { get; set; } = true;
     // public string? DiscDbApiBaseUrl { get; set; } = "https://api.thediscdb.com/graphql";

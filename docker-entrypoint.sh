@@ -28,12 +28,7 @@ case "${1:-}" in
     webui)
         exec /app/webui/ArmRipper.WebUi
         ;;
-    supervise)
-        exec /opt/arm/scripts/supervise.sh
-        ;;
     *)
-        # Default: run webui (foreground, main process) and supervise (background)
-        /opt/arm/scripts/supervise.sh &
         exec /app/webui/ArmRipper.WebUi
         ;;
 esac
