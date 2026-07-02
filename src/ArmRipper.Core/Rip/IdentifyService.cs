@@ -37,6 +37,17 @@ public sealed partial class IdentifyService(
         }
         else
         {
+            // CheckMountAsync already verified no media — don't bother with
+            // fallback detection.  Mark the job as failed immediately;
+            // there is no disc to identify.
+            if (!CheckMediaPresent(job.DevPath!))
+            {
+                job.DiscType = DiscType.Unknown;
+                logger.LogWarning(
+                    "No media detected on {DevPath} — skipping identification", job.DevPath);
+                return;
+            }
+
             job.ProgressMessage = "Detecting disc type (fallback)...";
             await db.SaveChangesAsync(ct);
             job.DiscType = await DetectDiscTypeFallbackAsync(job, ct);
@@ -166,7 +177,19 @@ public sealed partial class IdentifyService(
             return true;
         }
 
-        // Try to mount the disc — retry with tray cycle if initial attempt fails
+        // Check whether media is actually present BEFORE attempting to
+        // mount.  The mount(2) syscall sends SCSI commands that physically
+        // close the tray — even an empty tray — so we must not call mount
+        // if no disc is in the drive.
+        if (!CheckMediaPresent(job.DevPath!))
+        {
+            logger.LogWarning(
+                "Skipping mount for {DevPath} — no media detected (sysfs returned 0 sectors)",
+                job.DevPath);
+            return false;
+        }
+
+        // Try to mount the disc with simple retries.
         for (var attempt = 0; attempt < 3; attempt++)
         {
             logger.LogInformation("Mount attempt {Attempt}: trying to mount disc at {DevPath}...", attempt + 1, job.DevPath);
@@ -189,19 +212,8 @@ public sealed partial class IdentifyService(
                 }
             }
 
-            // If mount failed (e.g. "no medium found"), try re-seating the drive tray
-            if (!string.IsNullOrEmpty(mountResult.StdErr) &&
-                mountResult.StdErr.Contains("no medium", StringComparison.OrdinalIgnoreCase))
-            {
-                logger.LogWarning("Mount failed — no medium detected. Attempting tray re-seat (eject -t)...");
-                await runner.RunAsync("eject", $"-t {job.DevPath!}", timeoutMs: 15_000, ct: ct);
-                // Give the drive time to settle after re-seat
-                await Task.Delay(3000, ct);
-                continue;
-            }
-
-            // Mount failed for a reason other than "no medium" — no point retrying
-            break;
+            // Mount failed — wait briefly before retry
+            await Task.Delay(1000, ct);
         }
 
         if (!string.IsNullOrEmpty(job.MountPoint))
@@ -874,6 +886,16 @@ public sealed partial class IdentifyService(
         if (!settings.Value.AutoEject)
             return;
 
+        // Don't call `eject` if no media is present — on some drives the
+        // CDROMEJECT ioctl toggles the tray (closes it when already open)
+        // or returns a confusing success code for an already-open tray.
+        if (!CheckMediaPresent(job.DevPath!))
+        {
+            logger.LogDebug(
+                "Skipping EjectAsync for {DevPath} — no media detected", job.DevPath);
+            return;
+        }
+
         try
         {
             await runner.RunAsync("umount", job.DevPath!, timeoutMs: 10_000, ct: ct);
@@ -891,6 +913,33 @@ public sealed partial class IdentifyService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Failed to eject disc from {DevPath}", job.DevPath);
+        }
+    }
+
+    /// <summary>
+    /// Check whether sysfs reports readable media on the device.
+    /// Reads <c>/sys/block/{devName}/size</c> which is kernel-cached and
+    /// does NOT issue SCSI commands — safe to call without closing the tray.
+    /// Returns <c>true</c> if the sector count is > 0 (media present).
+    /// </summary>
+    private static bool CheckMediaPresent(string devPath)
+    {
+        try
+        {
+            var devName = Path.GetFileName(devPath.TrimEnd('/'));
+            var sysfsPath = $"/sys/block/{devName}/size";
+            if (!File.Exists(sysfsPath))
+                return false;
+
+            var content = File.ReadAllText(sysfsPath).Trim();
+            if (long.TryParse(content, out var size))
+                return size > 0;
+
+            return false;
+        }
+        catch
+        {
+            return false;
         }
     }
 

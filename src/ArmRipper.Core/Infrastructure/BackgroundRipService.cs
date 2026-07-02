@@ -82,18 +82,28 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
 
             try
             {
+                // ── Final sysfs check ─────────────────────────────
+                // Even after the cooldown expires, verify via sysfs
+                // that media is actually present before touching the
+                // drive.  This catches the edge case where sysfs
+                // reports stale cached data after cooldown expiry.
+                if (!IsMediaPresent(devPath))
+                {
+                    logger.LogInformation(
+                        "Not starting rip for {DevPath} — no media detected via sysfs", devPath);
+                    return;
+                }
+
+                // ── Acquire concurrency slot ──────────────────────
+                // The slot is released in the finally block below so
+                // it's guaranteed to be freed even if the conductor or
+                // its dependency resolution throws.
                 var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
                 await WaitForOperationSlotAsync(effectiveSettings.MaxConcurrentRips, cts.Token);
-                try
-                {
-                    var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
-                    await conductor.RunAsync(devPath, cts.Token);
-                    logger.LogInformation("Background rip completed for {DevPath}", devPath);
-                }
-                finally
-                {
-                    ReleaseOperationSlot();
-                }
+
+                var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
+                await conductor.RunAsync(devPath, cts.Token);
+                logger.LogInformation("Background rip completed for {DevPath}", devPath);
             }
             catch (OperationCanceledException)
             {
@@ -105,6 +115,7 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
             }
             finally
             {
+                ReleaseOperationSlot();
                 _activeRips.TryRemove(devPath, out _);
 
                 // Enter eject cooldown so the monitor doesn't re-trigger a rip
@@ -137,18 +148,13 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
                 var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
                 var effectiveSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, _settings.Value, cts.Token);
 
+                // ── Acquire concurrency slot ──────────────────────
                 await WaitForOperationSlotAsync(effectiveSettings.MaxConcurrentRips, cts.Token);
-                try
-                {
-                    var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
-                    await conductor.RunForkedTranscodeAsync(originalJobId, rawFilePath, cts.Token);
-                    logger.LogInformation("Forked transcode completed for job {OriginalJobId}, raw path {RawPath}",
-                        originalJobId, rawFilePath);
-                }
-                finally
-                {
-                    ReleaseOperationSlot();
-                }
+
+                var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
+                await conductor.RunForkedTranscodeAsync(originalJobId, rawFilePath, cts.Token);
+                logger.LogInformation("Forked transcode completed for job {OriginalJobId}, raw path {RawPath}",
+                    originalJobId, rawFilePath);
             }
             catch (OperationCanceledException)
             {
@@ -160,6 +166,7 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
             }
             finally
             {
+                ReleaseOperationSlot();
                 _activeRips.TryRemove(key, out _);
                 cts.Dispose();
             }
@@ -197,6 +204,33 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
     }
 
     public int ActiveCount => _activeRips.Count;
+
+    public void RecordManualEject(string devPath)
+    {
+        // Read the cooldown from settings so we use whatever the user configured
+        var cooldownSec = Math.Max(1, _settings.Value.EjectCooldownSeconds);
+        _ejectCooldowns[devPath] = DateTime.UtcNow.AddSeconds(cooldownSec);
+        logger.LogInformation("Manual eject recorded for {DevPath} — cooldown {Cooldown}s",
+            devPath, cooldownSec);
+    }
+
+    /// <summary>Check sysfs for media presence without touching the device node.</summary>
+    private static bool IsMediaPresent(string devPath)
+    {
+        try
+        {
+            var devName = Path.GetFileName(devPath.TrimEnd('/'));
+            var path = $"/sys/block/{devName}/size";
+            if (!File.Exists(path))
+                return false;
+            var content = File.ReadAllText(path).Trim();
+            return long.TryParse(content, out var size) && size > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     /// <summary>Queries the DB to see if any non-terminal job on the given
     /// devPath is in a ripping state (i.e. still using the optical drive).</summary>
@@ -256,18 +290,18 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
     }
 
     /// <summary>
-    /// Decrements the active operation counter, allowing a waiting operation to proceed.
+    /// Decrements the active operation counter.  Safe to call even if no slot
+    /// was acquired (the counter is clamped to never go negative).
     /// </summary>
     private void ReleaseOperationSlot()
     {
-        _operationLock.Wait();
-        try
+        var newCount = Interlocked.Decrement(ref _activeOperationCount);
+        if (newCount < 0)
         {
-            _activeOperationCount--;
-        }
-        finally
-        {
-            _operationLock.Release();
+            // Defensive: clamp to 0.  This can happen if the finally
+            // block fires after an early return that never acquired a slot
+            // (e.g. IsMediaPresent check).
+            Interlocked.Exchange(ref _activeOperationCount, 0);
         }
     }
 }

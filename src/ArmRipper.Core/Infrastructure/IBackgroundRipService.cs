@@ -12,4 +12,12 @@ public interface IBackgroundRipService
 
     /// <summary>Number of currently active jobs.</summary>
     int ActiveCount { get; }
+
+    /// <summary>
+    /// Records a manual user-initiated eject on the given device so the
+    /// eject-cooldown logic prevents any auto-rip on that device for the
+    /// configured cooldown period.  Call this after a UI-triggered eject
+    /// to prevent the drive from auto-closing and re-ripping.
+    /// </summary>
+    void RecordManualEject(string devPath);
 }

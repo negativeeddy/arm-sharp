@@ -26,7 +26,8 @@ public sealed class DiscPollingService(
     IServiceScopeFactory scopeFactory,
     IOptions<ArmSettings> settings,
     ILoggerFactory loggerFactory,
-    INotificationBroadcaster broadcaster)
+    INotificationBroadcaster broadcaster,
+    IBackgroundRipService backgroundRipService)
     : BackgroundService
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger("DiscPollingService");
@@ -34,6 +35,17 @@ public sealed class DiscPollingService(
 
     /// <summary>Known device states: dev name ("sr0") → sector count (≤0 = no media).</summary>
     private readonly ConcurrentDictionary<string, long> _deviceStates = new(StringComparer.Ordinal);
+
+    /// <summary>When the last uevent fired for a device.  Used to let the drive
+    /// settle before re-reading sysfs.</summary>
+    private readonly ConcurrentDictionary<string, DateTime> _lastEventAt = new(StringComparer.Ordinal);
+
+    /// <summary>True after the initial scan completes.  Prevents sysfs-stale
+    /// data from triggering a rip on startup.</summary>
+    private volatile bool _initialScanDone;
+
+    /// <summary>Seconds to wait after a uevent before trusting sysfs readings.</summary>
+    private static readonly TimeSpan SettleTime = TimeSpan.FromSeconds(3);
 
     /// <summary>Optional netlink uevent monitor (Linux only).</summary>
     private UeventMonitor? _monitor;
@@ -56,6 +68,7 @@ public sealed class DiscPollingService(
 
         // ── Initial scan ─────────────────────────────────────
         await SyncAllDevicesAsync(stoppingToken);
+        _initialScanDone = true;
         _logger.LogInformation("Initial device scan complete — {Count} device(s) found",
             _deviceStates.Count);
 
@@ -132,7 +145,6 @@ public sealed class DiscPollingService(
                 if (msg.Subsystem != "block" || !msg.IsMediaChange)
                     continue;
 
-                // Only care about sr* devices
                 if (msg.DevName is null || !msg.DevName.StartsWith("sr"))
                     continue;
 
@@ -140,41 +152,10 @@ public sealed class DiscPollingService(
                 var devName = msg.DevName;
                 _logger.LogDebug("Uevent: {Action} on {Dev} (media change)", msg.Action, devPath);
 
-                // Query the actual media state.
-                // The uevent fires for BOTH tray open (eject) and tray close (insert).
-                // We only want to trigger actions on disc CLOSING (media present),
-                // never on disc OPENING (eject / media absent).
-                var currentSize = await GetDeviceSectorCountAsync(devPath, ct);
-                if (currentSize < 0)
-                {
-                    _deviceStates.TryRemove(devName, out _);
-                    continue;
-                }
-
-                var prevSize = _deviceStates.GetValueOrDefault(devName, -1L);
-                if (prevSize == currentSize)
-                    continue;
-
-                _deviceStates[devName] = currentSize;
-
-                if (currentSize > 0 && prevSize <= 0)
-                {
-                    // Media appeared → disc was inserted (tray closed with media)
-                    _logger.LogInformation("Disc detected in /dev/{Dev} ({Size} sectors)", devName, currentSize);
-                    _ = HandleDiscInsertedAsync(devPath);
-                }
-                else if (currentSize <= 0)
-                {
-                    // Media removed → disc was ejected (tray opened).
-                    // The monitor does NOT activate on disc-open events — just
-                    // update the tracking state and move on.
-                    _logger.LogDebug("Disc removed from /dev/{Dev} — no action on open event", devName);
-                }
-                else
-                {
-                    _logger.LogDebug("Size changed for /dev/{Dev}: {Prev} → {Size} sectors (no action)",
-                        devName, prevSize, currentSize);
-                }
+                // Record the event time and clear the cached state so the
+                // next poll cycle re-reads sysfs (after a settle delay).
+                _lastEventAt[devName] = DateTime.UtcNow;
+                _deviceStates.TryRemove(devName, out _);
             }
         }
         catch (OperationCanceledException)
@@ -216,33 +197,61 @@ public sealed class DiscPollingService(
             if (!currentSet.Contains(key))
             {
                 _deviceStates.TryRemove(key, out _);
+                _lastEventAt.TryRemove(key, out _);
                 _logger.LogInformation("Device /dev/{Dev} removed", key);
             }
         }
     }
 
     /// <summary>
-    /// Query the actual media state of a device via <c>blockdev --getsz</c>
-    /// and fire insert/remove handlers if the state changed.
+    /// Compare sysfs sector count with the last known value and fire
+    /// insertion / removal handlers on transitions.
+    ///
+    /// After a uevent we wait <see cref="SettleTime"/> (3 s) before reading
+    /// sysfs, giving the drive mechanism time to finish cycling so the
+    /// kernel cache is fresh.
     /// </summary>
     private async Task CheckDeviceAsync(string devPath, CancellationToken ct)
     {
         var devName = Path.GetFileName(devPath);
-        var currentSize = await GetDeviceSectorCountAsync(devPath, ct);
-        if (currentSize < 0)
+
+        // ── Settle delay ────────────────────────────────────
+        if (_lastEventAt.TryGetValue(devName, out var lastEvent))
         {
-            // Device disappeared — remove from state
-            _deviceStates.TryRemove(devName, out _);
-            return;
+            var age = DateTime.UtcNow - lastEvent;
+            if (age < SettleTime)
+            {
+                _logger.LogDebug("Device /dev/{Dev} still settling ({Age:F1}s since uevent) — skipping",
+                    devName, age.TotalSeconds);
+                return;
+            }
+            _lastEventAt.TryRemove(devName, out _);
         }
 
-        // Atomically get previous and try to update
+        // Read sector count from sysfs — safe, no SCSI commands issued.
+        var currentSize = await ReadSysfsSizeAsync(devName, ct);
         var prevSize = _deviceStates.GetValueOrDefault(devName, -1L);
 
-        // First time seeing this device — just record the state
+        // First time seeing this device (initial scan or post-uevent reset).
         if (prevSize < 0)
         {
             _deviceStates[devName] = currentSize;
+
+            if (currentSize <= 0)
+            {
+                _logger.LogDebug("/dev/{Dev}: {Size} sectors (no media)", devName, currentSize);
+            }
+            else if (_initialScanDone)
+            {
+                // Post-uevent re-check: media present → insertion
+                _logger.LogInformation("Disc detected in /dev/{Dev} ({Size} sectors)", devName, currentSize);
+                _ = HandleDiscInsertedAsync(devPath);
+            }
+            else
+            {
+                // Initial scan: just record — sysfs may be stale
+                _logger.LogDebug("/dev/{Dev}: {Size} sectors (initial scan)", devName, currentSize);
+            }
             return;
         }
 
@@ -254,17 +263,20 @@ public sealed class DiscPollingService(
 
         if (currentSize > 0 && prevSize <= 0)
         {
+            // Media appeared → disc was inserted
             _logger.LogInformation("Disc detected in /dev/{Dev} ({Size} sectors)", devName, currentSize);
             _ = HandleDiscInsertedAsync(devPath);
         }
         else if (currentSize <= 0 && prevSize > 0)
         {
-            _logger.LogInformation("Disc removed from /dev/{Dev}", devName);
+            // Media removed → set cooldown
+            backgroundRipService.RecordManualEject(devPath);
+            _logger.LogInformation("Disc removed from /dev/{Dev} — cooldown started", devName);
             _ = HandleDiscRemovedAsync(devPath);
         }
         else
         {
-            _logger.LogDebug("Size changed for /dev/{Dev}: {Prev} → {Size} sectors",
+            _logger.LogDebug("Size changed for /dev/{Dev}: {Prev} → {Size} sectors (no action)",
                 devName, prevSize, currentSize);
         }
     }
@@ -275,6 +287,19 @@ public sealed class DiscPollingService(
 
     private async Task HandleDiscInsertedAsync(string devPath)
     {
+        // ── Verify media is actually present via sysfs ────────────
+        // Uses /sys/block/*/size which reads kernel-cached data without
+        // issuing SCSI commands — does NOT close the tray.
+        var devName = Path.GetFileName(devPath);
+        var verifySectors = await ReadSysfsSizeAsync(devName, CancellationToken.None);
+        if (verifySectors <= 0)
+        {
+            _logger.LogDebug(
+                "Ignoring insertion event for {DevPath} — no media present ({Sectors} sectors)",
+                devPath, verifySectors);
+            return;
+        }
+
         try
         {
             using var scope = scopeFactory.CreateScope();
@@ -285,7 +310,6 @@ public sealed class DiscPollingService(
 
             if (drive is null)
             {
-                var devName = Path.GetFileName(devPath);
                 drive = new SystemDrive
                 {
                     Mount = devPath,
@@ -381,42 +405,29 @@ public sealed class DiscPollingService(
     // ─────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Query actual media sector count using <c>blockdev --getsz</c>.
-    /// Returns the sector count on success, or ≤0 if no media is present or the
-    /// device cannot be accessed.
+    /// Read the block-device sector count from <c>/sys/block/{devName}/size</c>.
+    /// This reads a kernel-cached value from sysfs — it does NOT open the device
+    /// node and therefore does NOT issue SCSI commands that could close the tray.
+    /// Returns the sector count, or ≤ 0 if no media or the path is unreadable.
     /// </summary>
-    private static async Task<long> GetDeviceSectorCountAsync(string devPath, CancellationToken ct)
+    private static Task<long> ReadSysfsSizeAsync(string devName, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+        var path = $"/sys/block/{devName}/size";
         try
         {
-            using var process = new System.Diagnostics.Process
-            {
-                StartInfo = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = "blockdev",
-                    Arguments = $"--getsz {devPath}",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                }
-            };
+            if (!File.Exists(path))
+                return Task.FromResult(0L);
 
-            process.Start();
-            await process.WaitForExitAsync(ct);
+            var text = File.ReadAllText(path).Trim();
+            if (long.TryParse(text, out var size))
+                return Task.FromResult(size);
 
-            if (process.ExitCode != 0)
-                return 0; // no media or inaccessible
-
-            var output = (await process.StandardOutput.ReadToEndAsync(ct)).Trim();
-            if (long.TryParse(output, out var size))
-                return size;
-
-            return 0;
+            return Task.FromResult(0L);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception) when (!(ct.IsCancellationRequested))
         {
-            return 0;
+            return Task.FromResult(0L);
         }
     }
 }

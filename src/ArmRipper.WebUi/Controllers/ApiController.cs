@@ -160,7 +160,19 @@ public partial class ApiController(
             try
             {
                 await runner.RunAsync("umount", job.DevPath, timeoutMs: 10_000, ct: ct);
-                await runner.RunAsync("eject", job.DevPath, timeoutMs: 10_000, ct: ct);
+            }
+            catch { }
+
+            // Only eject if media is present — on some drives the CDROMEJECT
+            // ioctl toggles the tray (closes it when already open).
+            try
+            {
+                var mediaCheck = await runner.RunAsync("blockdev",
+                    $"--getsz {job.DevPath}", timeoutMs: 5_000, ct: ct);
+                if (mediaCheck.ExitCode == 0 && long.TryParse(mediaCheck.StdOut?.Trim(), out var sectors) && sectors > 0)
+                {
+                    await runner.RunAsync("eject", job.DevPath, timeoutMs: 10_000, ct: ct);
+                }
             }
             catch { }
         }

@@ -104,6 +104,7 @@ public class SettingsController(
         // would incorrectly return false. Instead check if "true" is present.
         bool MainFeature = Request.Form["MainFeature"].Contains("true");
         bool AutoEject = Request.Form["AutoEject"].Contains("true");
+        bool DiscPollingEnabled = Request.Form["DiscPollingEnabled"].Contains("true");
         bool FileBotNonStrict = Request.Form["FileBotNonStrict"].Contains("true");
 
         var fields = new Dictionary<string, string?>
@@ -116,6 +117,7 @@ public class SettingsController(
             ["EjectCooldownSeconds"] = JsonSerialize(EjectCooldownSeconds ?? 15),
             ["MainFeature"] = JsonSerialize(MainFeature),
             ["AutoEject"] = JsonSerialize(AutoEject),
+            ["DiscPollingEnabled"] = JsonSerialize(DiscPollingEnabled),
             ["FileBotNonStrict"] = JsonSerialize(FileBotNonStrict),
         };
 
@@ -439,6 +441,10 @@ public class SettingsController(
             await runner.RunAsync("umount", devPath, timeoutMs: 10_000);
             await runner.RunAsync("eject", devPath, timeoutMs: 10_000);
             TempData["Message"] = $"Ejected {devPath}";
+
+            // Record the eject so the cooldown prevents auto-rip when the
+            // drive mechanism cycles and the tray auto-closes.
+            backgroundRip.RecordManualEject(devPath);
         }
         catch (Exception ex)
         {
