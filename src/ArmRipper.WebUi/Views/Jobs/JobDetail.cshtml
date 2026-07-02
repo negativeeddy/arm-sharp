@@ -257,7 +257,17 @@
                     <dt class="col-sm-4">Label</dt><dd class="col-sm-8">@(Model.Label ?? "—")</dd>
                     <dt class="col-sm-4">Output Path</dt><dd class="col-sm-8"><code>@(Model.Path ?? "—")</code></dd>
                     <dt class="col-sm-4">CRC64</dt><dd class="col-sm-8"><code>@(Model.CrcId ?? "—")</code></dd>
-                    <dt class="col-sm-4">Log File</dt><dd class="col-sm-8">@(Model.LogFile ?? "—")</dd>
+                    <dt class="col-sm-4">Log File</dt>
+                        <dd class="col-sm-8">
+                            @if (!string.IsNullOrEmpty(Model.LogFile))
+                            {
+                                <a href="/logs/view?file=@Model.LogFile&mode=full" target="_blank">@Model.LogFile</a>
+                            }
+                            else
+                            {
+                                <span>—</span>
+                            }
+                        </dd>
                     <dt class="col-sm-4">Has Nice Title</dt><dd class="col-sm-8">@Model.HasNiceTitle</dd>
                     <dt class="col-sm-4">Is ISO</dt><dd class="col-sm-8">@Model.IsIso</dd>
                     <dt class="col-sm-4">Ejected</dt><dd class="col-sm-8">@Model.Ejected</dd>

@@ -14,46 +14,29 @@ Track usability, DX, and architecture improvements. Focus: user-friendliness, ea
 - Seed data scripts exist in `scripts/` but require manual run. Consider auto-seeding on first launch for demo/testing.
 
 ## UI / User Experience
-- **Pipeline visualization** — show the full rip pipeline in the WebUI (mount → identify → MakeMKV rip → HandBrake transcode → file move → cleanup) with per-stage status indicators (pending, active, success, failure). Each job's detail page should render a pipeline view so users can see at a glance which stage succeeded or failed.
 - **Restart from last successful stage** — add a "retry from failure" action that resumes the pipeline at the last failed stage instead of restarting from scratch. Requires each stage to checkpoint its completion state in the DB (e.g. a `Stages` table or bitfield on `Job`).
-- Log viewer: use SignalR for live log streaming instead of polling. Tail logs view should auto-scroll to end on load.
-- Dark mode visual polish incomplete — some elements (tables, cards, nav) don't fully invert or remain unreadable.
-- Nav has no active-tab highlighting.
-- No favicon or branding assets. Current footer links to the old ARM repo not to the new ARM# repo.
-- Error pages are plain ASP.NET Core default — should add custom error views.
+- Dark mode visual polish incomplete — some elements (dropdowns, pagination, alerts, badges) don't fully invert or remain unreadable.
 - **Link log files** — everywhere a log file path is displayed, make it a clickable link to view/download the log.
 - **Job status timestamps** — show both "job start time" and "current stage start time" on job detail page.
-- **Notifications "mark all read"** — add a button to mark all notifications as read.
 - **Settings tooltips** — all settings on the settings page should have an (i) indicator for tooltip/popup descriptions of the field.
-- **Progress bar in WebUI** — MakeMKV outputs `PRGV:title,current,total` progress lines during rip. Pipe them via SignalR so users see a % progress bar in the UI.
 - Memory and Storage indicators for full/free should show a bar graph showing the % full.
-### Polish Items (not yet started)
 
 ## SignalR
 - `SignalRNotificationBroadcaster` is wired via `INotificationBroadcaster` interface. Works but the broadcaster is a singleton while the hub context is scoped per connection. Should verify no lifetime issues.
-- `NotificationHub` is empty — consider adding client-callable methods (mark-as-read, subscribe to job events).
+- `NotificationHub` has `StreamLog` but could add more client-callable methods (mark-as-read, subscribe to job events).
 - No connection status indicator in the UI. If SignalR disconnects, users get no feedback.
-- Toast notifications not yet implemented — badge count updates but no popup.
 
 ## Pages / Views
-- **Title search** — add title search similar to the Python ARM's search functionality.
 - **Redesign Identification section** — improve the layout of the Identification section on the Job detail page.
 - **DVD/Blu-ray detection workflow** — the Settings page has a "Detect Disc" / "Scan Drives" button but the actual udev-based monitoring workflow from the original ARM isn't replicated. Should add a "Start Monitoring" action that runs the Conductor/IdentifyService loop.
-- **Logs viewer page** (`/logs`) — currently lists log files with download/view links. Consider adding inline log viewer with search, follow-tail, and SignalR live streaming.
-- **Active Rips page** (`/jobs/activerips`) — separate page from the Home dashboard active-rips table. Could add batch actions (abandon all, retry all).
-- **Database view** — search/filter/pagination works but could use column sorting by year/status/title.
 - **Home dashboard** — core metrics displayed. Could add charts (job success rate over time, rips per day) or sparkline trends.
-- External links — anywhere we reference an external id like an IMDB id, make that a link to the title page on the external site.
+- Batch actions on Active Rips page (abandon all, retry all).
 
 ## MusicBrainz
 - **Investigate moving off XML where possible** — MusicBrainz XML parsing is fragile (manual XElement traversal, namespace handling). If MusicBrainz offers a JSON endpoint, prefer it.
 
-## HandBrakeService / FfmpegService
-- **Inconsistent error handling:** HandBrakeService.TranscodeMkvAsync logs transcode failures and continues to the next file (never throws); FfmpegService.TranscodeMkvAsync throws on failure, aborting the entire job. One convention should win — either both continue on failure (best-effort for batch MKV transcodes) or both fail fast.
-
 ## Dependency Injection
 - WebUi now has full DI wiring. However many services are registered as `Scoped` when they're effectively stateless. `CliProcessRunner` is singleton. Review lifetime choices — some could be singletons or transient.
-- `OmdbService` and `TmdbService` use `AddHttpClient<T>()` — requires `Microsoft.Extensions.Http` which is implicitly available in ASP.NET Core but not declared in the project file. Should add explicit package reference.
 
 ## Startup & Recovery
 - **Resume in-progress rips on restart** — currently, if the app is restarted while a job is ripping (VideoRipping, TranscodeActive, etc.), the background task is lost and the job stays stuck. On startup, scan for jobs in non-terminal states and resume them: re-attach the MakeMKV/HandBrake process if still running, or restart the rip/transcode stage from where it left off. Requires stage-level checkpointing (which stage completed, which files were produced) so the system can pick up without re-doing completed work.
@@ -66,14 +49,13 @@ Track usability, DX, and architecture improvements. Focus: user-friendliness, ea
 - No SignalR hub tests.
 
 ## Security
-- `LogsController.Reader` reads arbitrary files within the log directory — no path traversal protection besides `..` and `/` checks. Could use `Path.GetFullPath` + prefix validation as defense-in-depth.
+- `LogsController.Reader` uses `Path.GetFileName` for sanitization but could use `Path.GetFullPath` + prefix validation as defense-in-depth.
 
 ## MCP (Model Context Protocol)
 - Add MCP integration so the project can be queried/supervised by AI agents during development and debugging. MCP tools could expose log streaming, config editing, job management, and disc identification — making the system observable and controllable through AI assistants.
 - MCP server could expose: `get_jobs`, `get_logs`, `update_config`, `eject_drive`, `trigger_identify` as tools.
 
 ## Container / Deployment
-- `WebServer:Port` appsetting controls port but defaults to 8080 in `Program.cs`. Dockerfile should expose this and document env var override.
 - Docker image is ~2GB with full .NET SDK. Switch to self-contained publish with runtime-only image to reduce size.
 - GitHub Actions CI has QEMU set up but only builds `linux/amd64`. Add `linux/arm64` multi-arch build once ARM64 runners or cross-compilation are available.
 - **HandBrake nvdec support** — current `arm-dependencies:1.7.3` base image compiles HandBrake without `--enable-nvdec`. The devcontainer has a custom rebuild with nvdec working, but the production Dockerfile still uses the base image's build (no hw-decoding). Need to either fork and rebuild `arm-dependencies`, or add a multi-stage HandBrake build step to the production Dockerfile.
