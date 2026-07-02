@@ -1,0 +1,98 @@
+# arm-sharp — Production Docker Compose
+#
+# Drop-in replacement for the original automatic-ripping-machine container.
+# Adjust volume paths, device mappings, and environment variables to match
+# your setup before running.
+#
+# Usage:
+#   docker compose up -d                    # Start (builds image if needed)
+#   docker compose up -d --build            # Force rebuild then start
+#   docker compose run --rm arm-sharp cli --device /dev/sr0   # One-shot CLI rip
+#   docker compose down                     # Stop
+#
+# Quick start (default paths):
+#   1. mkdir -p /opt/arm/media /opt/arm/logs /etc/arm/config
+#   2. cp arm.yaml /etc/arm/config/         # if you have an existing ARM config
+#   3. docker compose up -d
+#   4. Open http://localhost:8080
+#
+# See docs/docker.md for full details.
+
+services:
+  arm-sharp:
+    build:
+      context: .
+      args:
+        CONFIG: Release
+        DEBUG_TOOLS: false
+    # ── To use a pre-built image instead of building locally ──
+    # image: ghcr.io/negativeeddy/arm-sharp:latest
+
+    container_name: arm-sharp
+    restart: unless-stopped
+
+    # ── Mode selection ──
+    # "supervise" — watch-discs + web UI (default, drop-in replacement for ARM)
+    # "webui"     — web UI only (no disc watching)
+    # "cli"       — one-shot CLI rip (use `docker compose run` for this)
+    command: supervise
+
+    # ── Environment ──
+    environment:
+      TZ: America/Chicago
+
+      # Match these to your host's arm user UID/GID so file permissions work.
+      # Find yours with:  id -u arm  &&  id -g arm
+      ARM_UID: "1001"
+      ARM_GID: "1001"
+
+      # Database connection (defaults to /etc/arm/config/arm-sharp.db)
+      # ConnectionStrings__ArmDb: "Data Source=/etc/arm/config/arm-sharp.db"
+
+      # Set to "true" to re-seed the DB settings from arm.yaml on next restart.
+      # Changes in arm.yaml are otherwise ignored once the DB has been seeded.
+      # ARM_RESET_SETTINGS: "false"
+
+    # ── Volume mounts ──
+    volumes:
+      # Optical disc drives (add as many /dev/sr* as you have drives).
+      # Not strictly needed when privileged=true, but explicit is clearer.
+      - /dev/sr0:/dev/sr0
+      # - /dev/sr1:/dev/sr1
+      # - /dev/sr2:/dev/sr2
+
+      # Media directories — match ARM's convention
+      - /opt/arm/media:/home/arm/media       # Raw rips, transcodes, completed files
+      - /opt/arm/logs:/home/arm/logs          # Log files
+      - /etc/arm/config:/etc/arm/config       # arm.yaml, arm.db, abcde.conf, apprise.yaml
+
+      # Optional: published output directory for media server libraries
+      # - /mnt/data/media:/home/arm/publish
+
+    # ── Hardware access ──
+    # privileged is needed for mount/eject operations on optical drives
+    privileged: true
+
+    # ── GPU passthrough (NVIDIA NVENC/NVDEC) ──
+    # Requires nvidia-container-toolkit on the host:
+    #   sudo apt install nvidia-container-toolkit && sudo systemctl restart docker
+    # Uncomment the deploy block below:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+    # ── Ports ──
+    ports:
+      - "8080:8080"
+
+    # ── Health check ──
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

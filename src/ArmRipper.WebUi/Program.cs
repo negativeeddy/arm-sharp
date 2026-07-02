@@ -131,13 +131,36 @@ if (!string.IsNullOrEmpty(dbDir) && !Directory.Exists(dbDir))
 
 using (var scope = app.Services.CreateScope())
 {
+    var initLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+
+    var yamlPath = "/etc/arm/config/arm.yaml";
+    initLogger.LogInformation("Database path: {DbPath}", dbFile);
+    initLogger.LogInformation("Config file: {YamlPath} ({Status})",
+        yamlPath, File.Exists(yamlPath) ? "found" : "not found");
+
     DatabaseHelper.EnsureMigrated(db);
+    initLogger.LogInformation("Database migrated successfully");
 
     // Seed (or reset) DB RipperSettings from file config
     // Set ARM_RESET_SETTINGS=true to overwrite DB with file values on startup
     var seedSettings = scope.ServiceProvider.GetRequiredService<IOptions<ArmSettings>>().Value;
     var reset = Environment.GetEnvironmentVariable("ARM_RESET_SETTINGS") == "true";
+
+    var existingRow = db.RipperSettings.OrderBy(x => x.Id).FirstOrDefault();
+    if (existingRow is null)
+    {
+        initLogger.LogInformation("No existing DB settings — seeding from file config on first boot");
+    }
+    else if (reset)
+    {
+        initLogger.LogInformation("ARM_RESET_SETTINGS=true — overwriting DB settings with file config values");
+    }
+    else
+    {
+        initLogger.LogInformation("DB settings exist and are authoritative (set ARM_RESET_SETTINGS=true to re-seed from file)");
+    }
+
     SettingsHelper.SeedFromFileAsync(db, seedSettings, reset).GetAwaiter().GetResult();
 }
 
