@@ -313,6 +313,32 @@ body.dark-mode .modal-header .close {
     color: #e0e0e0;
 }
 
+/* ========== SIGNALR CONNECTION INDICATOR ========== */
+.signalr-dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    transition: background-color 0.3s;
+}
+.signalr-connected {
+    background-color: #5cb85c;
+    box-shadow: 0 0 6px #5cb85c;
+}
+.signalr-reconnecting {
+    background-color: #f0ad4e;
+    box-shadow: 0 0 6px #f0ad4e;
+    animation: signalr-pulse 1s ease-in-out infinite;
+}
+.signalr-disconnected {
+    background-color: #d9534f;
+    box-shadow: 0 0 6px #d9534f;
+}
+@keyframes signalr-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
 /* ========== GLOBAL UTILITIES ========== */
 .badge-notif {
     position: relative;

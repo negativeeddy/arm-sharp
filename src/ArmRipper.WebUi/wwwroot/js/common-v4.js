@@ -52,12 +52,33 @@ arm.refreshNotifBadge = function () {
         .catch(function () {});
 };
 
+arm._setSignalrStatus = function (state) {
+    var dot = document.getElementById('signalrStatus');
+    if (!dot) return;
+    dot.className = 'signalr-dot signalr-' + state;
+    var labels = { connected: 'Connected', reconnecting: 'Reconnecting...', disconnected: 'Disconnected' };
+    dot.title = 'SignalR: ' + (labels[state] || state);
+};
+
 arm.startSignalR = function () {
     if (!window.signalR) return;
     arm.signalrConnection = new signalR.HubConnectionBuilder()
         .withUrl('/hubs/notifications')
         .withAutomaticReconnect()
         .build();
+
+    arm.signalrConnection.onreconnecting(function () {
+        arm._setSignalrStatus('reconnecting');
+    });
+
+    arm.signalrConnection.onreconnected(function () {
+        arm._setSignalrStatus('connected');
+        arm.refreshNotifBadge();
+    });
+
+    arm.signalrConnection.onclose(function () {
+        arm._setSignalrStatus('disconnected');
+    });
 
     arm.signalrConnection.on('Notification', function (notif) {
         arm.refreshNotifBadge();
@@ -75,13 +96,14 @@ arm.startSignalR = function () {
         }
     });
 
-    arm.signalrConnection.onreconnected(function () {
-        arm.refreshNotifBadge();
-    });
-
     arm.signalrConnection.start()
-        .then(function () { arm.refreshNotifBadge(); })
-        .catch(function () {});
+        .then(function () {
+            arm._setSignalrStatus('connected');
+            arm.refreshNotifBadge();
+        })
+        .catch(function () {
+            arm._setSignalrStatus('disconnected');
+        });
 };
 
 arm.notificationPollInterval = null;
