@@ -17,7 +17,6 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
     private readonly IOptions<ArmSettings> _settings = settings;
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeRips = new();
     private readonly ConcurrentDictionary<string, DateTime> _ejectCooldowns = new();
-    private static readonly TimeSpan EjectCooldown = TimeSpan.FromSeconds(15);
     private readonly SemaphoreSlim _operationLock = new(1, 1);
     private int _activeOperationCount = 0;
 
@@ -26,8 +25,8 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
         // ── Eject cooldown: don't start a new rip on a device that just finished ──
         // The eject command runs after the rip completes and can take 15–30 s.
         // During that window the event-driven monitor may detect the disc as
-        // "inserted" and fire another rip on the same device.  A 30 s cooldown
-        // after the previous rip exits prevents this false re-trigger.
+        // "inserted" and fire another rip on the same device.  A configurable
+        // cooldown after the previous rip exits prevents this false re-trigger.
         if (_ejectCooldowns.TryGetValue(devPath, out var cooledUntil))
         {
             if (DateTime.UtcNow < cooledUntil)
@@ -65,11 +64,25 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
         _ = Task.Run(async () =>
         {
             using var scope = scopeFactory.CreateScope();
+
+            // Fetch effective settings early so the cooldown duration is available
+            // in the finally block even if the rip itself throws.
+            ArmSettings? effectiveSettings = null;
             try
             {
                 var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-                var effectiveSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, _settings.Value, cts.Token);
+                effectiveSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, _settings.Value, cts.Token);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to load effective settings for {DevPath}; using file defaults", devPath);
+            }
 
+            effectiveSettings ??= _settings.Value;
+
+            try
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
                 await WaitForOperationSlotAsync(effectiveSettings.MaxConcurrentRips, cts.Token);
                 try
                 {
@@ -93,11 +106,14 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
             finally
             {
                 _activeRips.TryRemove(devPath, out _);
+
                 // Enter eject cooldown so the monitor doesn't re-trigger a rip
                 // while the physical disc is still ejecting.
-                _ejectCooldowns[devPath] = DateTime.UtcNow.Add(EjectCooldown);
-                logger.LogDebug("Eject cooldown started for {DevPath} ({Cooldown:F0}s)",
-                    devPath, EjectCooldown.TotalSeconds);
+                var cooldownSec = effectiveSettings.EjectCooldownSeconds;
+                _ejectCooldowns[devPath] = DateTime.UtcNow.AddSeconds(cooldownSec);
+                logger.LogDebug("Eject cooldown started for {DevPath} ({Cooldown}s)",
+                    devPath, cooldownSec);
+
                 cts.Dispose();
             }
         }, cts.Token);

@@ -96,7 +96,7 @@ public class SettingsController(
     [HttpPost("save-ripper")]
     public async Task<IActionResult> SaveRipper(
         string? RipMethod, string? MkvArgs, int? MinLength, int? MaxLength,
-        int? MaxConcurrentRips,
+        int? MaxConcurrentRips, int? EjectCooldownSeconds,
         CancellationToken ct = default)
     {
         // Read checkboxes from raw form values — the hidden-false trick sends
@@ -113,6 +113,7 @@ public class SettingsController(
             ["MinLength"] = JsonSerialize(MinLength ?? 300),
             ["MaxLength"] = JsonSerialize(MaxLength ?? 99999),
             ["MaxConcurrentRips"] = JsonSerialize(MaxConcurrentRips ?? 1),
+            ["EjectCooldownSeconds"] = JsonSerialize(EjectCooldownSeconds ?? 15),
             ["MainFeature"] = JsonSerialize(MainFeature),
             ["AutoEject"] = JsonSerialize(AutoEject),
             ["FileBotNonStrict"] = JsonSerialize(FileBotNonStrict),

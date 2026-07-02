@@ -83,6 +83,12 @@ public class ArmSettings
     public bool DiscPollingEnabled { get; set; } = true;
     /// <summary>Poll interval in seconds. Default: 5.</summary>
     public int DiscPollIntervalSeconds { get; set; } = 5;
+    /// <summary>
+    /// Cooldown in seconds after a rip completes before the same device is eligible
+    /// for a new auto-rip. Prevents the event-driven monitor from re-triggering a rip
+    /// while the disc is still physically ejecting. Default: 15.
+    /// </summary>
+    public int EjectCooldownSeconds { get; set; } = 15;
 
     // ── TheDiscDb Integration ──
     public bool DiscDbEnabled { get; set; } = true;
