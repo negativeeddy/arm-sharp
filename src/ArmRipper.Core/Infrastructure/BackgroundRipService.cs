@@ -17,7 +17,7 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
     private readonly IOptions<ArmSettings> _settings = settings;
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeRips = new();
     private readonly ConcurrentDictionary<string, DateTime> _ejectCooldowns = new();
-    private static readonly TimeSpan EjectCooldown = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan EjectCooldown = TimeSpan.FromSeconds(15);
     private readonly SemaphoreSlim _operationLock = new(1, 1);
     private int _activeOperationCount = 0;
 
