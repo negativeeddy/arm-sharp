@@ -15,16 +15,9 @@ Track usability, DX, and architecture improvements. Focus: user-friendliness, ea
 
 ## UI / User Experience
 - **Restart from last successful stage** — add a "retry from failure" action that resumes the pipeline at the last failed stage instead of restarting from scratch. Requires each stage to checkpoint its completion state in the DB (e.g. a `Stages` table or bitfield on `Job`).
-- Dark mode visual polish incomplete — some elements (dropdowns, pagination, alerts, badges) don't fully invert or remain unreadable.
-- **Link log files** — everywhere a log file path is displayed, make it a clickable link to view/download the log.
-- **Job status timestamps** — show both "job start time" and "current stage start time" on job detail page.
-- **Settings tooltips** — all settings on the settings page should have an (i) indicator for tooltip/popup descriptions of the field.
-- Memory and Storage indicators for full/free should show a bar graph showing the % full.
 
 ## SignalR
 - `SignalRNotificationBroadcaster` is wired via `INotificationBroadcaster` interface. Works but the broadcaster is a singleton while the hub context is scoped per connection. Should verify no lifetime issues.
-- `NotificationHub` has `StreamLog` but could add more client-callable methods (mark-as-read, subscribe to job events).
-- No connection status indicator in the UI. If SignalR disconnects, users get no feedback.
 
 ## Pages / Views
 - **Redesign Identification section** — improve the layout of the Identification section on the Job detail page.
