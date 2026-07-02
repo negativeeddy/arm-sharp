@@ -149,6 +149,16 @@ arm.initDarkMode = function () {
         var btn = document.getElementById('darkModeToggle');
         if (btn) btn.textContent = '☀️';
     }
+
+    // Initialize tooltips: Bootstrap data-toggle="tooltip" and custom data-tooltip
+    if (typeof $ !== 'undefined' && $.fn.tooltip) {
+        $('[data-toggle="tooltip"]').tooltip({ placement: 'top', trigger: 'hover focus' });
+        $('[data-tooltip]').tooltip({
+            title: function () { return this.getAttribute('data-tooltip'); },
+            placement: 'top',
+            trigger: 'hover focus'
+        });
+    }
 };
 
 arm.formatBytes = function (bytes, decimals) {

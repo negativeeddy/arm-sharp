@@ -358,3 +358,27 @@ body.dark-mode .modal-header .close {
     cursor: pointer;
     user-select: none;
 }
+
+/* ========== SETTINGS FIELD HELP ICONS ========== */
+.field-help {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: bold;
+    color: #007bff;
+    background: rgba(0,123,255,0.1);
+    border: 1px solid #007bff;
+    border-radius: 50%;
+    cursor: help;
+    margin-left: 4px;
+    vertical-align: middle;
+    user-select: none;
+}
+body.dark-mode .field-help {
+    color: #7ec8e3;
+    background: rgba(126,200,227,0.15);
+    border-color: #7ec8e3;
+}

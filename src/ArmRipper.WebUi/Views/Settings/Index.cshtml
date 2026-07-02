@@ -273,12 +273,22 @@
 
     <!-- UI Settings -->
     <div class="tab-pane fade @(ViewBag.ActiveTab == "tab4" ? "show active" : "")" id="tab4" role="tabpanel">
+        @{
+            var uiTips = new Dictionary<string, string>
+            {
+                ["Theme"] = "UI color theme: Light or Dark mode",
+                ["RefreshRate"] = "How often (in seconds) the UI refreshes job status via SignalR. Lower values = more responsive but higher network usage.",
+                ["IconStyle"] = "Visual style for drive type icons: Default, Simple, or Detailed",
+            };
+            static string uiTip(string key, Dictionary<string, string> tips) =>
+                tips.TryGetValue(key, out var t) ? $"<span class=\"text-info ml-1\" data-toggle=\"tooltip\" title=\"{t}\" style=\"cursor:help\">&#9432;</span>" : "";
+        }
         <h2>UI Settings</h2>
         <form method="post" action="/settings/save-ui">
             @Html.AntiForgeryToken()
             <table class="table table-sm">
                 <tr>
-                    <td><label>Theme:</label></td>
+                    <td><label>Theme:</label>@Html.Raw(uiTip("Theme", uiTips))</td>
                     <td>
                         <select name="theme" class="form-control">
                             <option value="light" selected="@(uiSettings?.Theme == "light" || uiSettings?.Theme is null)">Light</option>
@@ -287,11 +297,11 @@
                     </td>
                 </tr>
                 <tr>
-                    <td><label>Refresh Rate (seconds):</label></td>
+                    <td><label>Refresh Rate (seconds):</label>@Html.Raw(uiTip("RefreshRate", uiTips))</td>
                     <td><input type="number" name="refreshRate" value="@(uiSettings?.RefreshRate ?? 10)" class="form-control" min="2" max="300" /></td>
                 </tr>
                 <tr>
-                    <td><label>Icon Style:</label></td>
+                    <td><label>Icon Style:</label>@Html.Raw(uiTip("IconStyle", uiTips))</td>
                     <td>
                         <select name="iconStyle" class="form-control">
                             <option value="default" selected="@(uiSettings?.IconStyle == "default" || uiSettings?.IconStyle is null)">Default</option>
@@ -307,13 +317,22 @@
 
     <!-- abcde Config -->
     <div class="tab-pane fade @(ViewBag.ActiveTab == "tab5" ? "show active" : "")" id="tab5" role="tabpanel">
+        @{
+            var abcdeTips = new Dictionary<string, string>
+            {
+                ["OutputFormat"] = "Audio codec for ripped CD tracks (ogg, mp3, flac, aac, wav)",
+                ["OutputDir"] = "Directory where ripped audio files are saved",
+            };
+            static string abcdeTip(string key, Dictionary<string, string> tips) =>
+                tips.TryGetValue(key, out var t) ? $"<span class=\"text-info ml-1\" data-toggle=\"tooltip\" title=\"{t}\" style=\"cursor:help\">&#9432;</span>" : "";
+        }
         <h2>abcde Config</h2>
         <p>Configuration for audio CD ripping via abcde. Saved to <code>/etc/arm/config/abcde.conf</code>.</p>
         <form method="post" action="/settings/save-abcde">
             @Html.AntiForgeryToken()
             <table class="table table-sm">
                 <tr>
-                    <td><label>Output Format:</label></td>
+                    <td><label>Output Format:</label>@Html.Raw(abcdeTip("OutputFormat", abcdeTips))</td>
                     <td>
                         <select name="outputFormat" class="form-control">
                             <option value="ogg" selected="@(abcdeConfig.GetValueOrDefault("OUTPUTTYPE") == "ogg")">OGG</option>
@@ -325,7 +344,7 @@
                     </td>
                 </tr>
                 <tr>
-                    <td><label>Output Directory:</label></td>
+                    <td><label>Output Directory:</label>@Html.Raw(abcdeTip("OutputDir", abcdeTips))</td>
                     <td><input type="text" name="outputDir" value="@(abcdeConfig.GetValueOrDefault("OUTPUTDIR", "/home/arm/media/raw"))" class="form-control" /></td>
                 </tr>
             </table>
