@@ -109,7 +109,14 @@
                     <dd class="col-7 mb-1">
                         @if (ViewBag.MemTotal is long mt && ViewBag.MemUsed is long mu && mt > 0)
                         {
-                            <span>@($"{mu / (double)mt * 100:F1}%")</span>
+                            var memPct = (int)Math.Round(mu / (double)mt * 100);
+                            <div class="d-flex align-items-center gap-1">
+                                <div class="progress flex-grow-1" style="height:10px;">
+                                    <div class="progress-bar @(memPct > 90 ? "bg-danger" : memPct > 70 ? "bg-warning" : "bg-success")" role="progressbar"
+                                         style="width:@memPct%" aria-valuenow="@memPct" aria-valuemin="0" aria-valuemax="100"></div>
+                                </div>
+                                <small class="text-nowrap">@memPct%</small>
+                            </div>
                         }
                         else
                         {
@@ -130,26 +137,44 @@
                 }
                 @if (tc is not null)
                 {
+                    var tcpct = tc["used_pct"] is int tp ? tp : (tc["used_pct"] as double?) ?? 0;
                     <div class="small mb-2">
                         <div class="fw-bold text-muted mb-1">Transcode</div>
                         <dl class="row mb-0 small">
                             <dt class="col-5">Free</dt>
                             <dd class="col-7 mb-1">@FormatBytes(tc["free"] as long?)</dd>
-                            <dt class="col-5">Used</dt>
-                            <dd class="col-7 mb-1">@(tc["used_pct"])%</dd>
+                            <dt class="col-5">Usage</dt>
+                            <dd class="col-7 mb-1">
+                                <div class="d-flex align-items-center gap-1">
+                                    <div class="progress flex-grow-1" style="height:10px;">
+                                        <div class="progress-bar @(tcpct > 90 ? "bg-danger" : tcpct > 70 ? "bg-warning" : "bg-success")" role="progressbar"
+                                             style="width:@((int)tcpct)%" aria-valuenow="@((int)tcpct)" aria-valuemin="0" aria-valuemax="100"></div>
+                                    </div>
+                                    <small class="text-nowrap">@((int)tcpct)%</small>
+                                </div>
+                            </dd>
                         </dl>
                         <div class="text-muted small text-truncate" title="@tc["path"]">@tc["path"]</div>
                     </div>
                 }
                 @if (co is not null)
                 {
+                    var copct = co["used_pct"] is int cp ? cp : (co["used_pct"] as double?) ?? 0;
                     <div class="small">
                         <div class="fw-bold text-muted mb-1">Completed</div>
                         <dl class="row mb-0 small">
                             <dt class="col-5">Free</dt>
                             <dd class="col-7 mb-1">@FormatBytes(co["free"] as long?)</dd>
-                            <dt class="col-5">Used</dt>
-                            <dd class="col-7 mb-1">@(co["used_pct"])%</dd>
+                            <dt class="col-5">Usage</dt>
+                            <dd class="col-7 mb-1">
+                                <div class="d-flex align-items-center gap-1">
+                                    <div class="progress flex-grow-1" style="height:10px;">
+                                        <div class="progress-bar @(copct > 90 ? "bg-danger" : copct > 70 ? "bg-warning" : "bg-success")" role="progressbar"
+                                             style="width:@((int)copct)%" aria-valuenow="@((int)copct)" aria-valuemin="0" aria-valuemax="100"></div>
+                                    </div>
+                                    <small class="text-nowrap">@((int)copct)%</small>
+                                </div>
+                            </dd>
                         </dl>
                         <div class="text-muted small text-truncate" title="@co["path"]">@co["path"]</div>
                     </div>
