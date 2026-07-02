@@ -40,7 +40,7 @@ public sealed class ArmRipperService(
         var finalDirectory = Path.Combine(job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value), typeSubFolder, jobTitle);
 
         job.Stage ??= RipStage.Setup;
-        job.Stage = RipStage.Identify;  // transition stage
+        job.TransitionToStage(RipStage.Identify);
         job.ProgressMessage ??= "Preparing to rip...";
         await db.SaveChangesAsync(ct);
         await BroadcastJobUpdateAsync(job);
@@ -113,7 +113,7 @@ public sealed class ArmRipperService(
         }
 
         // ── 6. Finalize: manual title, file moves, Emby, cleanup ──
-        job.Stage = RipStage.Finalize;
+        job.TransitionToStage(RipStage.Finalize);
         job.ProgressMessage = "Finalizing...";
         await db.SaveChangesAsync(ct);
         await BroadcastJobUpdateAsync(job);
@@ -159,7 +159,7 @@ public sealed class ArmRipperService(
 
         await NotifyExitAsync(job, ct);
 
-        job.Stage = RipStage.Done;
+        job.TransitionToStage(RipStage.Done);
         job.MarkStageComplete(RipStage.Finalize);
         job.ProgressMessage = null;
         await db.SaveChangesAsync(ct);
@@ -206,9 +206,9 @@ public sealed class ArmRipperService(
         // Encrypted BDs often return 0 tracks from info; rip all titles directly
         if (tracks.Count == 0 && job.DiscType is DiscType.Bluray or DiscType.Dvd)
         {
-            job.Stage = RipStage.Identify;
+            job.TransitionToStage(RipStage.Identify);
             GuardStage(job, "identify", "Active/VideoInfo", () => job.Status is JobState.Active or JobState.VideoInfo);
-            job.Stage = RipStage.Rip;
+            job.TransitionToStage(RipStage.Rip);
             job.Status = JobState.VideoRipping;
             job.ProgressMessage = "Starting rip...";
             await db.SaveChangesAsync(ct);
@@ -326,9 +326,9 @@ public sealed class ArmRipperService(
         }
 
         logger.LogInformation("************* Ripping disc with MakeMKV *************");
-        job.Stage = RipStage.Identify;
+        job.TransitionToStage(RipStage.Identify);
         GuardStage(job, "identify", "Active/VideoInfo", () => job.Status is JobState.Active or JobState.VideoInfo);
-        job.Stage = RipStage.Rip;
+        job.TransitionToStage(RipStage.Rip);
         job.Status = JobState.VideoRipping;
         job.ProgressMessage = "Starting rip...";
         await db.SaveChangesAsync(ct);
@@ -465,7 +465,7 @@ public sealed class ArmRipperService(
         }
 
         GuardStage(job, "rip", "VideoRipping", () => job.Status is JobState.VideoRipping);
-        job.Stage = RipStage.Transcode;
+        job.TransitionToStage(RipStage.Transcode);
         job.Status = JobState.TranscodeActive;
         job.ProgressMessage = "Starting transcode...";
         await db.SaveChangesAsync(ct);

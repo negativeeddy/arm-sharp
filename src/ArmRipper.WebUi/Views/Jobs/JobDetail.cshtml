@@ -88,6 +88,8 @@
                             </dd>
                             <dt class="col-sm-2">Stage</dt>
                             <dd class="col-sm-4">@(Model.Stage?.ToString() ?? "—")</dd>
+                            <dt class="col-sm-2">Stage Started</dt>
+                            <dd class="col-sm-4" id="stageStartTime">@(Model.StageStartTime?.ToLocalTime().ToString("g") ?? "—")</dd>
                             <dt class="col-sm-2">Started</dt>
                             <dd class="col-sm-4">@Model.StartTime.ToLocalTime().ToString("g")</dd>
                             <dt class="col-sm-2">Stopped</dt>
@@ -625,6 +627,13 @@ else
 
             if (update.stage != null && update.stage !== lastStage) {
                 setText(findDd('Stage'), update.stage);
+            }
+
+            if (update.stageStartTime != null) {
+                var stdd = document.getElementById('stageStartTime');
+                if (stdd) {
+                    try { var d = new Date(update.stageStartTime); stdd.textContent = d.toLocaleString(); } catch (e) { stdd.textContent = update.stageStartTime; }
+                }
             }
 
             if (update.stopTime != null) {

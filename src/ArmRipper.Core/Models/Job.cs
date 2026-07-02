@@ -73,6 +73,9 @@ public class Job
     [NotMapped]
     public string? ProgressMessage { get; set; }
 
+    /// <summary>When the current stage started (set when Stage transitions).</summary>
+    public DateTime? StageStartTime { get; set; }
+
     public string? StageErrors { get; set; }
 
     [NotMapped]
@@ -122,5 +125,12 @@ public class Job
         CompletedStages = string.IsNullOrEmpty(CompletedStages)
             ? name
             : $"{CompletedStages}|{name}";
+    }
+
+    /// <summary>Transition to a new pipeline stage, recording the start time.</summary>
+    public void TransitionToStage(RipStage stage)
+    {
+        Stage = stage;
+        StageStartTime = DateTime.UtcNow;
     }
 }

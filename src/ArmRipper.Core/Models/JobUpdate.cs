@@ -16,6 +16,9 @@ public class JobUpdate
     /// <summary>Current pipeline stage (e.g. "identify", "rip", "transcode").</summary>
     public string? Stage { get; set; }
 
+    /// <summary>When the current stage started, in ISO 8601 format.</summary>
+    public string? StageStartTime { get; set; }
+
     /// <summary>MakeMKV rip progress 0–100, or null if not ripping.</summary>
     public int? MakeMkvProgress { get; set; }
 
@@ -71,6 +74,7 @@ public class JobUpdate
         JobId = job.Id,
         Status = job.Status.ToDbString(),
         Stage = job.Stage.HasValue ? job.Stage.Value.ToClientString() : null,
+        StageStartTime = job.StageStartTime?.ToString("o"),
         MakeMkvProgress = job.MakeMkvProgress,
         TranscodeProgress = job.TranscodeProgress,
         ProgressMessage = job.ProgressMessage,
