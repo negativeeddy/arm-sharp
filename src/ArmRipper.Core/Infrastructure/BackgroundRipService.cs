@@ -16,11 +16,30 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
     private readonly ILogger logger = loggerFactory.CreateLogger("BackgroundRipService");
     private readonly IOptions<ArmSettings> _settings = settings;
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeRips = new();
+    private readonly ConcurrentDictionary<string, DateTime> _ejectCooldowns = new();
+    private static readonly TimeSpan EjectCooldown = TimeSpan.FromSeconds(30);
     private readonly SemaphoreSlim _operationLock = new(1, 1);
     private int _activeOperationCount = 0;
 
     public void StartRip(string devPath, CancellationToken ct = default)
     {
+        // ── Eject cooldown: don't start a new rip on a device that just finished ──
+        // The eject command runs after the rip completes and can take 15–30 s.
+        // During that window the event-driven monitor may detect the disc as
+        // "inserted" and fire another rip on the same device.  A 30 s cooldown
+        // after the previous rip exits prevents this false re-trigger.
+        if (_ejectCooldowns.TryGetValue(devPath, out var cooledUntil))
+        {
+            if (DateTime.UtcNow < cooledUntil)
+            {
+                logger.LogInformation(
+                    "Skipping rip for {DevPath} — still in eject cooldown ({Remaining:F0}s remaining)",
+                    devPath, (cooledUntil - DateTime.UtcNow).TotalSeconds);
+                return;
+            }
+            _ejectCooldowns.TryRemove(devPath, out _);
+        }
+
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         if (!_activeRips.TryAdd(devPath, cts))
         {
@@ -74,6 +93,11 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
             finally
             {
                 _activeRips.TryRemove(devPath, out _);
+                // Enter eject cooldown so the monitor doesn't re-trigger a rip
+                // while the physical disc is still ejecting.
+                _ejectCooldowns[devPath] = DateTime.UtcNow.Add(EjectCooldown);
+                logger.LogDebug("Eject cooldown started for {DevPath} ({Cooldown:F0}s)",
+                    devPath, EjectCooldown.TotalSeconds);
                 cts.Dispose();
             }
         }, cts.Token);
