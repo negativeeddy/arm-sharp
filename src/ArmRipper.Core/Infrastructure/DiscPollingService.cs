@@ -137,10 +137,44 @@ public sealed class DiscPollingService(
                     continue;
 
                 var devPath = $"/dev/{msg.DevName}";
+                var devName = msg.DevName;
                 _logger.LogDebug("Uevent: {Action} on {Dev} (media change)", msg.Action, devPath);
 
-                // Immediately re-check actual media state
-                await CheckDeviceAsync(devPath, ct);
+                // Query the actual media state.
+                // The uevent fires for BOTH tray open (eject) and tray close (insert).
+                // We only want to trigger actions on disc CLOSING (media present),
+                // never on disc OPENING (eject / media absent).
+                var currentSize = await GetDeviceSectorCountAsync(devPath, ct);
+                if (currentSize < 0)
+                {
+                    _deviceStates.TryRemove(devName, out _);
+                    continue;
+                }
+
+                var prevSize = _deviceStates.GetValueOrDefault(devName, -1L);
+                if (prevSize == currentSize)
+                    continue;
+
+                _deviceStates[devName] = currentSize;
+
+                if (currentSize > 0 && prevSize <= 0)
+                {
+                    // Media appeared → disc was inserted (tray closed with media)
+                    _logger.LogInformation("Disc detected in /dev/{Dev} ({Size} sectors)", devName, currentSize);
+                    _ = HandleDiscInsertedAsync(devPath);
+                }
+                else if (currentSize <= 0)
+                {
+                    // Media removed → disc was ejected (tray opened).
+                    // The monitor does NOT activate on disc-open events — just
+                    // update the tracking state and move on.
+                    _logger.LogDebug("Disc removed from /dev/{Dev} — no action on open event", devName);
+                }
+                else
+                {
+                    _logger.LogDebug("Size changed for /dev/{Dev}: {Prev} → {Size} sectors (no action)",
+                        devName, prevSize, currentSize);
+                }
             }
         }
         catch (OperationCanceledException)
