@@ -14,5 +14,7 @@ public sealed class SignalRNotificationBroadcaster(IHubContext<NotificationHub> 
     public async Task BroadcastJobUpdateAsync(JobUpdate update, CancellationToken ct = default)
     {
         await hubContext.Clients.All.SendAsync("JobUpdate", update, ct);
+        // Also broadcast to the job-specific group for clients who subscribed
+        await hubContext.Clients.Group($"job-{update.JobId}").SendAsync("JobUpdate", update, ct);
     }
 }

@@ -43,4 +43,29 @@ public class NotificationHub(IOptions<ArmSettings> settings) : Hub
             await Task.Delay(1000, cancellationToken);
         }
     }
+
+    /// <summary>Ping the hub to verify connectivity.</summary>
+    public Task<string> Ping()
+    {
+        return Task.FromResult($"pong ({Context.ConnectionId})");
+    }
+
+    /// <summary>Subscribe to real-time updates for a specific job.</summary>
+    public async Task SubscribeJob(int jobId)
+    {
+        var groupName = $"job-{jobId}";
+        await Groups.AddToGroupAsync(Context.ConnectionId, groupName);
+    }
+
+    /// <summary>Unsubscribe from job-specific updates.</summary>
+    public async Task UnsubscribeJob(int jobId)
+    {
+        var groupName = $"job-{jobId}";
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, groupName);
+    }
+
+    public override async Task OnDisconnectedAsync(Exception? exception)
+    {
+        await base.OnDisconnectedAsync(exception);
+    }
 }
