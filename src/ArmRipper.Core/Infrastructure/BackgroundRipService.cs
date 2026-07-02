@@ -136,6 +136,28 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
         }
     }
 
+    public IReadOnlyList<string> CancelAll()
+    {
+        var paths = new List<string>();
+        foreach (var kvp in _activeRips)
+        {
+            paths.Add(kvp.Key);
+            try
+            {
+                logger.LogInformation("Shutdown: cancelling rip for {Key}", kvp.Key);
+                kvp.Value.Cancel();
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to cancel rip for {Key}", kvp.Key);
+            }
+        }
+        _activeRips.Clear();
+        return paths;
+    }
+
+    public int ActiveCount => _activeRips.Count;
+
     /// <summary>Queries the DB to see if any non-terminal job on the given
     /// devPath is in a ripping state (i.e. still using the optical drive).</summary>
     private bool IsAnyJobRippingOnDevPath(string devPath)
@@ -148,7 +170,8 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
                 .Where(j => j.DevPath == devPath
                     && j.Status != JobState.Success
                     && j.Status != JobState.Failure
-                    && j.Status != JobState.Cancelled)
+                    && j.Status != JobState.Cancelled
+                    && j.Status != JobState.Stopping)
                 .OrderByDescending(j => j.StartTime)
                 .FirstOrDefault();
 

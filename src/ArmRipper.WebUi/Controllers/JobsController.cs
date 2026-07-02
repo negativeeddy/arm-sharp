@@ -41,13 +41,26 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
     [HttpGet("activerips")]
     public async Task<IActionResult> ActiveRips(CancellationToken ct = default)
     {
-        var jobs = await db.Jobs
+        var activeJobs = await db.Jobs
             .Include(j => j.Config)
-            .Where(j => j.Status != JobState.Success && j.Status != JobState.Failure && j.Status != JobState.Cancelled)
+            .Where(j => j.Status != JobState.Success
+                     && j.Status != JobState.Failure
+                     && j.Status != JobState.Cancelled
+                     && j.Status != JobState.Stopping)
             .OrderByDescending(j => j.StartTime)
             .ToListAsync(ct);
 
-        return View(jobs);
+        // Also fetch stopped/resumable jobs to show in a separate section
+        var resumableJobs = await db.Jobs
+            .Include(j => j.Config)
+            .Where(j => j.Status == JobState.Stopping
+                     && !string.IsNullOrEmpty(j.CompletedStages))
+            .OrderByDescending(j => j.StartTime)
+            .ToListAsync(ct);
+
+        ViewBag.ResumableJobs = resumableJobs;
+
+        return View(activeJobs);
     }
 
     [HttpPost("update-identification")]
@@ -138,6 +151,43 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
         if (!string.IsNullOrEmpty(job.DevPath))
             backgroundRip.CancelRip(job.DevPath);
 
+        return RedirectToAction("JobDetail", new { jobId });
+    }
+
+    [HttpPost("resume")]
+    public IActionResult Resume(int jobId)
+    {
+        var job = db.Jobs
+            .Include(j => j.Config)
+            .FirstOrDefault(j => j.Id == jobId);
+
+        if (job is null)
+            return NotFound();
+
+        if (!job.Status.IsResumable())
+        {
+            TempData["Message"] = $"Job {jobId} is not in a resumable state (current: {job.Status})";
+            return RedirectToAction("JobDetail", new { jobId });
+        }
+
+        if (string.IsNullOrEmpty(job.CompletedStages))
+        {
+            TempData["Message"] = $"Job {jobId} has no completed stages — cannot determine where to resume";
+            return RedirectToAction("JobDetail", new { jobId });
+        }
+
+        // Reset to Active so the pipeline can proceed
+        job.Status = JobState.Active;
+        job.StopTime = null;
+        job.Errors = null;
+        job.ProgressMessage = "Resuming from checkpoint...";
+        db.SaveChanges();
+
+        // Kick off a new background rip — the Conductor will skip completed stages
+        var devPath = job.DevPath ?? $"resume-{jobId}";
+        backgroundRip.StartRip(devPath);
+
+        TempData["Message"] = $"Job {jobId} resumed — picking up from completed stages: {job.CompletedStages}";
         return RedirectToAction("JobDetail", new { jobId });
     }
 

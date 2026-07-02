@@ -48,15 +48,36 @@ public sealed class Conductor(
             job = await SetupJobAsync(devicePath, ct);
             return await ProcessJobAsync(job, ct);
         }
+        catch (OperationCanceledException)
+        {
+            logger.LogWarning("Job {JobId} cancelled (token)", job?.Id);
+            if (job is not null)
+            {
+                try
+                {
+                    // Only override with Stopping if not already terminal
+                    if (!job.Status.IsTerminal() && job.Status != JobState.Stopping)
+                    {
+                        job.Status = JobState.Stopping;
+                        job.StopTime ??= DateTime.UtcNow;
+                        job.ProgressMessage = "Cancelled — can be resumed";
+                        await db.SaveChangesAsync(CancellationToken.None);
+                        await BroadcastJobUpdateAsync(job);
+                    }
+                }
+                catch { /* best effort */ }
+            }
+            return 1;
+        }
         catch (Exception ex)
         {
             logger.LogCritical(ex, "A fatal error has occurred and ARM is exiting");
-            if (job is not null)
+            if (job is not null && job.Status != JobState.Stopping)
             {
                 job.Status = JobState.Failure;
                 job.Errors = ex.Message;
                 job.ProgressMessage = null;
-                try { await db.SaveChangesAsync(ct); } catch { /* best effort */ }
+                try { await db.SaveChangesAsync(CancellationToken.None); } catch { /* best effort */ }
                 await BroadcastJobUpdateAsync(job);
             }
             return 1;
@@ -629,9 +650,9 @@ public sealed class Conductor(
     private async Task<bool> IsCancelledAsync(Job job, CancellationToken ct)
     {
         await db.Entry(job).ReloadAsync(ct);
-        if (job.Status == JobState.Cancelled)
+        if (job.Status is JobState.Cancelled or JobState.Stopping)
         {
-            logger.LogInformation("Job was cancelled, aborting");
+            logger.LogInformation("Job was cancelled/stopping, aborting");
             return true;
         }
         return false;

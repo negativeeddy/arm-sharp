@@ -120,6 +120,17 @@
                                     </form>
                                 </dd>
                             }
+                            else if (Model.Status.IsResumable() && !string.IsNullOrEmpty(Model.CompletedStages))
+                            {
+                                <dt class="col-sm-2"></dt>
+                                <dd class="col-sm-10 mt-2">
+                                    <form method="post" action="/jobs/resume" style="display:inline">
+                                        <input type="hidden" name="jobId" value="@Model.Id" />
+                                        <button type="submit" class="btn btn-success btn-sm me-2">↻ Resume Job</button>
+                                    </form>
+                                    <span class="badge bg-secondary">Stopped — pick up from @Model.CompletedStages</span>
+                                </dd>
+                            }
                         </dl>
                     </div>
                 </div>

@@ -1,6 +1,7 @@
 @model IEnumerable<ArmRipper.Core.Models.Job>
 @{
     ViewData["Title"] = "Active Rips - ARM";
+    var resumable = ViewBag.ResumableJobs as IEnumerable<ArmRipper.Core.Models.Job>;
 }
 
 <h1>Active Rips</h1>
@@ -32,6 +33,41 @@ else
                     <td>@job.Status</td>
                     <td>@job.StartTime.ToLocalTime().ToString("g")</td>
                     <td><a href="/jobs/jobdetail?jobId=@job.Id" class="btn btn-sm btn-outline-primary">View</a></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (resumable is not null && resumable.Any())
+{
+    <h2>Stopped / Resumable</h2>
+    <p class="text-muted small">These jobs were interrupted (by app shutdown or cancellation) and can be resumed from their last completed stage.</p>
+    <table class="table table-striped table-hover table-sm">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Title</th>
+                <th>Completed Stages</th>
+                <th>Stopped At</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var job in resumable)
+            {
+                <tr>
+                    <td>@job.Id</td>
+                    <td>@job.Title</td>
+                    <td><span class="badge bg-info">@job.CompletedStages</span></td>
+                    <td>@(job.StopTime?.ToLocalTime().ToString("g") ?? "—")</td>
+                    <td>
+                        <a href="/jobs/jobdetail?jobId=@job.Id" class="btn btn-sm btn-outline-primary">View</a>
+                        <form method="post" action="/jobs/resume" style="display:inline">
+                            <input type="hidden" name="jobId" value="@job.Id" />
+                            <button type="submit" class="btn btn-sm btn-success">↻ Resume</button>
+                        </form>
+                    </td>
                 </tr>
             }
         </tbody>

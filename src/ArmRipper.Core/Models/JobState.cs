@@ -12,6 +12,8 @@ public enum JobState
     TranscodeActive,
     TranscodeWaiting,
     ManualWaitStarted,
+    /// <summary>Job was cancelled during app shutdown — safe to resume from completed stages.</summary>
+    Stopping,
     Cancelled
 }
 
@@ -26,6 +28,7 @@ public static class JobStateDbValues
     public const string Transcoding = "transcoding";
     public const string WaitingTranscode = "waiting_transcode";
     public const string Cancelled = "cancelled";
+    public const string Stopping = "stopping";
 }
 
 public static class JobStateExtensions
@@ -43,11 +46,17 @@ public static class JobStateExtensions
         JobState.TranscodeWaiting => JobStateDbValues.WaitingTranscode,
         JobState.ManualWaitStarted => JobStateDbValues.Waiting,
         JobState.Cancelled => JobStateDbValues.Cancelled,
+        JobState.Stopping => JobStateDbValues.Stopping,
         _ => JobStateDbValues.Active
     };
 
     public static bool IsTerminal(this JobState state) =>
         state is JobState.Success or JobState.Failure or JobState.Cancelled;
+
+    /// <summary>Returns true when the job is in a state where it can be resumed
+    /// (was interrupted by shutdown or cancellation, has completed stages to pick up from).</summary>
+    public static bool IsResumable(this JobState state) =>
+        state is JobState.Stopping or JobState.Cancelled;
 
     /// <summary>Returns true when the job is in a state where the optical drive is
     /// actively being used for ripping (i.e. the drive is busy).</summary>
@@ -70,6 +79,7 @@ public static class JobStateExtensions
         JobStateDbValues.Transcoding => JobState.TranscodeActive,
         JobStateDbValues.WaitingTranscode => JobState.TranscodeWaiting,
         JobStateDbValues.Cancelled => JobState.Cancelled,
+        JobStateDbValues.Stopping => JobState.Stopping,
         _ => JobState.Active
     };
 }
