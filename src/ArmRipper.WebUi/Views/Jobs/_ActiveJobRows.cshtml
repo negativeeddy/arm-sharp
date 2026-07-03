@@ -1,13 +1,19 @@
 @model IEnumerable<ArmRipper.Core.Models.Job>
 @if (!Model.Any())
 {
-    <tr><td colspan="6" class="text-center text-muted">No active rips.</td></tr>
+    <tr><td colspan="7" class="text-center text-muted">No active rips.</td></tr>
 }
 else
 {
     @foreach (var job in Model)
     {
         <tr>
+            <td rowspan="2" class="align-middle text-center" style="width:110px;">
+                @if (!string.IsNullOrEmpty(job.PosterUrl))
+                {
+                    <img src="@job.PosterUrl" alt="Poster" class="img-fluid rounded shadow-sm" style="max-height:140px;object-fit:contain;" />
+                }
+            </td>
             <td>@job.Id</td>
             <td>@job.Title</td>
             <td>@job.DiscType</td>

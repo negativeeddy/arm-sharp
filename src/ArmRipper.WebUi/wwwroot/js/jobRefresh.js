@@ -37,17 +37,34 @@ arm._applyJobUpdateToDom = function (update) {
     var tbody = container.querySelector('tbody');
     if (!tbody) return;
 
-    // Walk rows looking for the job ID in the first cell
+    // Walk rows looking for the job ID in the second cell (index 1, after poster)
     for (var i = 0; i < tbody.rows.length; i++) {
         var row = tbody.rows[i];
-        if (row.cells.length > 0 && row.cells[0].textContent.trim() === String(update.jobId)) {
-            // Update title cell (2nd column)
-            if (update.title && row.cells[1]) {
-                row.cells[1].textContent = update.title;
+        if (row.cells.length > 1 && row.cells[1].textContent.trim() === String(update.jobId)) {
+            // Update title cell (3rd column, index 2)
+            if (update.title && row.cells[2]) {
+                row.cells[2].textContent = update.title;
             }
-            // Update disc type cell (3rd column)
-            if (update.discType && row.cells[2]) {
-                row.cells[2].textContent = update.discType;
+            // Update disc type cell (4th column, index 3)
+            if (update.discType && row.cells[3]) {
+                row.cells[3].textContent = update.discType;
+            }
+            // Update poster image in the first cell
+            if (update.posterUrl) {
+                var posterCell = row.cells[0];
+                var img = posterCell ? posterCell.querySelector('img') : null;
+                if (img) {
+                    img.src = update.posterUrl;
+                } else if (posterCell) {
+                    // No img yet — create one
+                    img = document.createElement('img');
+                    img.src = update.posterUrl;
+                    img.alt = 'Poster';
+                    img.className = 'img-fluid rounded shadow-sm';
+                    img.style.cssText = 'max-height:140px;object-fit:contain;';
+                    posterCell.textContent = '';
+                    posterCell.appendChild(img);
+                }
             }
             break;
         }
