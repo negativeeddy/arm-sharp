@@ -19,9 +19,16 @@ public sealed partial class IdentifyService(
     IHttpClientFactory httpClientFactory,
     IDiscDbHashService discDbHashService,
     IDiscDbQueryService discDbQueryService,
-    IDiscDbMappingService discDbMappingService) : IIdentifyService
+    IDiscDbMappingService discDbMappingService,
+    IBackgroundRipService backgroundRipService) : IIdentifyService
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("IdentifyService");
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     public async Task IdentifyAsync(Job job, CancellationToken ct = default)
     {
         job.ProgressMessage = "Mounting disc...";
@@ -370,7 +377,7 @@ public sealed partial class IdentifyService(
                 var url = $"https://1337server.pythonanywhere.com/api/v1/?mode=s&crc64={crc64}";
                 var httpClient = httpClientFactory.CreateClient("IdentifyService");
                 var response = await httpClient.GetStringAsync(url, ct);
-                var armApiResult = JsonSerializer.Deserialize<ArmApiResponse>(response);
+                var armApiResult = JsonSerializer.Deserialize<ArmApiResponse>(response, JsonOptions);
 
                 if (armApiResult?.Success == true && armApiResult.Results?.Count > 0)
                 {
@@ -913,6 +920,16 @@ public sealed partial class IdentifyService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Failed to eject disc from {DevPath}", job.DevPath);
+        }
+        finally
+        {
+            // Record eject cooldown immediately so the event-driven monitor
+            // doesn't re-trigger a rip when the drive's firmware auto-closes
+            // the tray (common on many optical drives).  Without this, the
+            // cooldown would only be set in BackgroundRipService.StartRip's
+            // finally block, which runs after the entire pipeline finishes
+            // (including transcode, which can take hours).
+            backgroundRipService.RecordManualEject(job.DevPath!);
         }
     }
 
