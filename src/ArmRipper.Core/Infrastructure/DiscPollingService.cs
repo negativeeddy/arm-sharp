@@ -37,16 +37,30 @@ public sealed class DiscPollingService(
     /// <summary>Optional netlink uevent monitor (Linux only).</summary>
     private UeventMonitor? _monitor;
 
+    /// <summary>Cancellation token source for the current pump task.</summary>
+    private CancellationTokenSource? _pumpCts;
+
+    /// <summary>Task running the uevent pump loop (non-null when monitoring is active).</summary>
+    private Task? _pumpTask;
+
     /// <summary>Tracks devices currently undergoing a settle+check cycle to
     /// avoid duplicate rips when the kernel fires multiple change uevents
     /// for a single insertion.</summary>
     private readonly ConcurrentDictionary<string, bool> _inflightChecks = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Signalled by <see cref="SignalSettingChanged"/> whenever a setting that
+    /// affects this service (namely <c>DiscPollingEnabled</c>) is saved via
+    /// the settings UI.  The main loop waits on this to re-evaluate whether
+    /// the UeventMonitor should be started or stopped.
+    /// </summary>
+    private readonly SemaphoreSlim _settingChanged = new(0, 1);
+
     // ── Startup / main loop ─────────────────────────────────
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("DiscPollingService started (event-driven mode, live setting monitoring)");
+        _logger.LogInformation("DiscPollingService started (signal-driven mode)");
 
         if (!OperatingSystem.IsLinux())
         {
@@ -54,67 +68,92 @@ public sealed class DiscPollingService(
             return;
         }
 
-        // Run a loop that checks the effective DiscPollingEnabled setting from
-        // the DB on every iteration — changes via the UI take effect immediately
-        // without requiring an application restart.
-        CancellationTokenSource? pumpCts = null;
-        Task? pumpTask = null;
-
+        // Apply the initial setting, then wait for signals on every subsequent change.
         try
         {
+            await ApplyCurrentSettingAsync(stoppingToken);
+
             while (!stoppingToken.IsCancellationRequested)
             {
-                var enabled = await CheckDiscPollingEnabledAsync(stoppingToken);
-
-                if (enabled && pumpTask is null)
+                // Wait until the settings controller signals a change, or a
+                // 30-second safety timeout fires (catches edge cases where
+                // a signal might be missed).
+                try
                 {
-                    // ── Start the monitor ──
-                    var monitor = await TryStartUeventMonitorAsync(stoppingToken);
-                    if (monitor is not null)
-                    {
-                        _monitor = monitor;
-                        pumpCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-                        pumpTask = PumpUeventsAsync(monitor, pumpCts.Token);
-                        _logger.LogInformation("UeventMonitor active — disc detection is purely event-driven");
-                    }
+                    await _settingChanged.WaitAsync(TimeSpan.FromSeconds(30), stoppingToken);
                 }
-                else if (!enabled && pumpTask is not null)
+                catch (OperationCanceledException)
                 {
-                    // ── Stop the monitor ──
-                    _logger.LogInformation("Disc detection disabled via configuration — stopping UeventMonitor");
-                    await StopPumpAsync(pumpCts, pumpTask);
-                    _monitor?.Dispose();
-                    _monitor = null;
-                    pumpCts?.Dispose();
-                    pumpCts = null;
-                    pumpTask = null;
+                    break; // shutting down
                 }
 
-                // Re-check the setting every 5 s.  The pump is configured with
-                // a 1 s poll() timeout, so when the CTS is cancelled the pump
-                // exits within ~1 s regardless of this delay.
-                await Task.Delay(5000, stoppingToken);
+                await ApplyCurrentSettingAsync(stoppingToken);
             }
         }
         finally
         {
-            // Ensure cleanup on shutdown
-            if (pumpTask is not null)
-                await StopPumpAsync(pumpCts, pumpTask);
-            _monitor?.Dispose();
-            pumpCts?.Dispose();
+            if (_pumpTask is not null)
+                await StopPumpAsync(_pumpCts, _pumpTask);
+            if (OperatingSystem.IsLinux())
+                _monitor?.Dispose();
+            _pumpCts?.Dispose();
         }
     }
+
+    /// <summary>
+    /// Called by <see cref="WebUi.Controllers.SettingsController"/> after the
+    /// user saves ripper settings — signals the main loop to re-evaluate
+    /// whether disc detection should be active.
+    /// </summary>
+    public void SignalSettingChanged()
+    {
+        try { _settingChanged.Release(); } catch (SemaphoreFullException) { }
+    }
+
+    /// <summary>
+    /// Read the effective <c>DiscPollingEnabled</c> from the DB and start or
+    /// stop the UeventMonitor pump accordingly.
+    /// </summary>
+#pragma warning disable CA1416 // Platform guard verified at runtime in ExecuteAsync
+    private async Task ApplyCurrentSettingAsync(CancellationToken ct)
+    {
+        var enabled = await CheckDiscPollingEnabledAsync(ct);
+
+        if (enabled && _pumpTask is null)
+        {
+            var monitor = await TryStartUeventMonitorAsync(ct);
+            if (monitor is not null)
+            {
+                _monitor = monitor;
+                _pumpCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                _pumpTask = PumpUeventsAsync(monitor, _pumpCts.Token);
+                _logger.LogInformation("UeventMonitor active — disc detection is purely event-driven");
+            }
+        }
+        else if (!enabled && _pumpTask is not null)
+        {
+            _logger.LogInformation("Disc detection disabled via configuration — stopping UeventMonitor");
+            await StopPumpAsync(_pumpCts, _pumpTask);
+            _monitor?.Dispose();
+            _monitor = null;
+            _pumpCts?.Dispose();
+            _pumpCts = null;
+            _pumpTask = null;
+        }
+    }
+#pragma warning restore CA1416
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("DiscPollingService stopping");
+        // Unblock the main loop so it can exit promptly
+        SignalSettingChanged();
         await base.StopAsync(cancellationToken);
     }
 
     public override void Dispose()
     {
-        // Safety net — the monitor should already be cleaned up in ExecuteAsync
+        _settingChanged.Dispose();
         if (OperatingSystem.IsLinux())
         {
             _monitor?.Dispose();

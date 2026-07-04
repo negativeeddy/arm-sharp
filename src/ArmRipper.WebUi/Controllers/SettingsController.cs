@@ -18,7 +18,8 @@ public class SettingsController(
     ICliProcessRunner runner,
     IHardwareEncoderInfoService hardwareEncoderInfoService,
     IOptions<ArmSettings> settings,
-    IBackgroundRipService backgroundRip) : Controller
+    IBackgroundRipService backgroundRip,
+    DiscPollingService discPolling) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken ct = default)
@@ -122,6 +123,11 @@ public class SettingsController(
         };
 
         await SettingsHelper.MergeIntoDbAsync(db, fields, ct);
+
+        // Notify the disc detection service so it can start/stop the
+        // UeventMonitor based on the new DiscPollingEnabled value.
+        discPolling.SignalSettingChanged();
+
         TempData["Message"] = "Ripper settings saved.";
         TempData["ActiveTab"] = "tab3";
         return RedirectToAction("Index");
