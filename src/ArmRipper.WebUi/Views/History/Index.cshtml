@@ -1,12 +1,50 @@
 @model IEnumerable<ArmRipper.Core.Models.Job>
+@using ArmRipper.Core.Models
 @{
     ViewData["Title"] = "History - ARM";
     var curPage = ViewBag.CurrentPage as int? ?? 1;
     var totalPages = ViewBag.TotalPages as int? ?? 1;
     var totalJobs = ViewBag.TotalJobs as int? ?? 0;
+    var statusFilter = ViewBag.StatusFilter as string;
+    var discTypeFilter = ViewBag.DiscTypeFilter as string;
+    var searchFilter = ViewBag.SearchFilter as string;
 }
 
 <h1>Job History</h1>
+
+<!-- Filter Form -->
+<form method="get" action="/history" class="row g-3 mb-4 p-3 border rounded bg-light">
+    <div class="col-md-3">
+        <label for="search" class="form-label">Search Title</label>
+        <input type="text" id="search" name="search" class="form-control" placeholder="Search by title..." value="@searchFilter" />
+    </div>
+    <div class="col-md-3">
+        <label for="status" class="form-label">Status</label>
+        <select id="status" name="status" class="form-select">
+            <option value="">All</option>
+            @foreach (var s in Enum.GetValues<JobState>())
+            {
+                var selected = string.Equals(statusFilter, s.ToString(), StringComparison.OrdinalIgnoreCase) ? "selected" : null;
+                <option value="@s" selected="@selected">@s</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-3">
+        <label for="discType" class="form-label">Disc Type</label>
+        <select id="discType" name="discType" class="form-select">
+            <option value="">All</option>
+            @foreach (var dt in Enum.GetValues<DiscType>())
+            {
+                var selected = string.Equals(discTypeFilter, dt.ToString(), StringComparison.OrdinalIgnoreCase) ? "selected" : null;
+                <option value="@dt" selected="@selected">@dt</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-3 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary me-2">Filter</button>
+        <a href="/history" class="btn btn-outline-secondary">Clear</a>
+    </div>
+</form>
 
 <p>Showing page <strong>@curPage</strong> of <strong>@totalPages</strong> (@totalJobs total jobs)</p>
 
@@ -57,16 +95,16 @@ else
 <nav aria-label="Page navigation">
     <ul class="pagination pagination-sm justify-content-center">
         <li class="page-item @(curPage <= 1 ? "disabled" : "")">
-            <a class="page-link" href="/history?page=@(curPage - 1)">&laquo; Prev</a>
+            <a class="page-link" href="/history?page=@(curPage - 1)@(string.IsNullOrEmpty(statusFilter) ? "" : "&status=" + statusFilter)@(string.IsNullOrEmpty(discTypeFilter) ? "" : "&discType=" + discTypeFilter)@(string.IsNullOrEmpty(searchFilter) ? "" : "&search=" + Uri.EscapeDataString(searchFilter))">&laquo; Prev</a>
         </li>
         @for (var p = 1; p <= totalPages; p++)
         {
             <li class="page-item @(p == curPage ? "active" : "")">
-                <a class="page-link" href="/history?page=@p">@p</a>
+                <a class="page-link" href="/history?page=@p@(string.IsNullOrEmpty(statusFilter) ? "" : "&status=" + statusFilter)@(string.IsNullOrEmpty(discTypeFilter) ? "" : "&discType=" + discTypeFilter)@(string.IsNullOrEmpty(searchFilter) ? "" : "&search=" + Uri.EscapeDataString(searchFilter))">@p</a>
             </li>
         }
         <li class="page-item @(curPage >= totalPages ? "disabled" : "")">
-            <a class="page-link" href="/history?page=@(curPage + 1)">Next &raquo;</a>
+            <a class="page-link" href="/history?page=@(curPage + 1)@(string.IsNullOrEmpty(statusFilter) ? "" : "&status=" + statusFilter)@(string.IsNullOrEmpty(discTypeFilter) ? "" : "&discType=" + discTypeFilter)@(string.IsNullOrEmpty(searchFilter) ? "" : "&search=" + Uri.EscapeDataString(searchFilter))">Next &raquo;</a>
         </li>
     </ul>
 </nav>

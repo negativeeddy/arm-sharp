@@ -111,6 +111,9 @@ public sealed class ShutdownJobCancellationService : IHostedService
                 job.Id, job.Status);
             job.Status = JobState.Stopping;
             job.StopTime ??= DateTime.UtcNow;
+
+            // Write to the job's log file
+            AppendToJobLog(job, $"Job discovered during startup — marked as Stopping (was {job.Status}). It can be resumed.");
         }
 
         await db.SaveChangesAsync(ct);
@@ -154,6 +157,26 @@ public sealed class ShutdownJobCancellationService : IHostedService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to persist Stopping state during shutdown");
+        }
+    }
+
+    /// <summary>Append a timestamped line to the job's log file. Best-effort only.</summary>
+    private static void AppendToJobLog(Job job, string message)
+    {
+        try
+        {
+            var logPath = job.GetLogFilePath();
+            var dir = Path.GetDirectoryName(logPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+            var timestamp = DateTime.Now.ToString("HH:mm:ss");
+            var entry = $"[{timestamp}] INFO: ShutdownJobCancellationService: {message}";
+            System.IO.File.AppendAllText(logPath, entry + Environment.NewLine);
+        }
+        catch (Exception ex)
+        {
+            // Best-effort — non-critical failure
+            Console.Error.WriteLine($"Failed to write to job log file: {ex.Message}");
         }
     }
 }

@@ -142,10 +142,14 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
 
         if (!job.Status.IsTerminal())
         {
+            var prevStatus = job.Status;
             job.Status = JobState.Cancelled;
             job.Errors = "Cancelled by user";
             job.ProgressMessage = "Cancelled";
             await db.SaveChangesAsync(ct);
+
+            // Write to job log file
+            AppendToJobLog(job, $"Job cancelled by user (previous status: {prevStatus})");
         }
 
         if (!string.IsNullOrEmpty(job.DevPath))
@@ -176,12 +180,17 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
             return RedirectToAction("JobDetail", new { jobId });
         }
 
+        var prevStatus = job.Status;
+
         // Reset to Active so the pipeline can proceed
         job.Status = JobState.Active;
         job.StopTime = null;
         job.Errors = null;
         job.ProgressMessage = "Resuming from checkpoint...";
         db.SaveChanges();
+
+        // Write to job log file
+        AppendToJobLog(job, $"Job resumed by user (previous status: {prevStatus}, completed stages: {job.CompletedStages})");
 
         // Kick off a new background rip — the Conductor will skip completed stages
         var devPath = job.DevPath ?? $"resume-{jobId}";
@@ -281,5 +290,25 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
         }
 
         return RedirectToAction("JobDetail", new { jobId });
+    }
+
+    /// <summary>Append a timestamped line to the job's log file.</summary>
+    private static void AppendToJobLog(Job job, string message)
+    {
+        try
+        {
+            var logPath = job.GetLogFilePath();
+            var dir = Path.GetDirectoryName(logPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+            var timestamp = DateTime.Now.ToString("HH:mm:ss");
+            var entry = $"[{timestamp}] INFO: JobsController: {message}";
+            System.IO.File.AppendAllText(logPath, entry + Environment.NewLine);
+        }
+        catch (Exception ex)
+        {
+            // Best-effort — non-critical failure
+            Console.Error.WriteLine($"Failed to write to job log file: {ex.Message}");
+        }
     }
 }
