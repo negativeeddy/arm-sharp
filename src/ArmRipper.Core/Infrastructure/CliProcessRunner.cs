@@ -6,7 +6,7 @@ namespace ArmRipper.Core.Infrastructure;
 
 public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("CliProcessRunner");
+    private readonly ILogger logger = loggerFactory.CreateLogger(nameof(CliProcessRunner));
     public async Task<CliResult> RunAsync(
         string fileName,
         string arguments,

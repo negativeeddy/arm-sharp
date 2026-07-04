@@ -16,6 +16,11 @@ public sealed class DatabaseSubmitService(
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("DatabaseSubmitService");
 
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     private const string ApiBaseUrl = "https://1337server.pythonanywhere.com";
 
     public async Task<DatabaseSubmitResult> SubmitJobAsync(Job job, CancellationToken ct = default)
@@ -73,7 +78,7 @@ public sealed class DatabaseSubmitService(
             SubmitApiResponse? parsed;
             try
             {
-                parsed = JsonSerializer.Deserialize<SubmitApiResponse>(responseBody);
+                parsed = JsonSerializer.Deserialize<SubmitApiResponse>(responseBody, JsonOptions);
             }
             catch (JsonException ex)
             {
