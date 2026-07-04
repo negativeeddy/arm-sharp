@@ -19,7 +19,7 @@ public class SettingsController(
     IHardwareEncoderInfoService hardwareEncoderInfoService,
     IOptions<ArmSettings> settings,
     IBackgroundRipService backgroundRip,
-    DiscPollingService discPolling) : Controller
+    IDiscPollingNotifier discPolling) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken ct = default)
@@ -126,7 +126,7 @@ public class SettingsController(
 
         // Notify the disc detection service so it can start/stop the
         // UeventMonitor based on the new DiscPollingEnabled value.
-        discPolling.SignalSettingChanged();
+        discPolling.NotifySettingChanged();
 
         TempData["Message"] = "Ripper settings saved.";
         TempData["ActiveTab"] = "tab3";

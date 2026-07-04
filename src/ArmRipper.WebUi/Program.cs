@@ -81,7 +81,9 @@ builder.Services.AddHttpClient<OmdbService>();
 builder.Services.AddHttpClient<TmdbService>();
 builder.Services.AddSingleton<INotificationBroadcaster, SignalRNotificationBroadcaster>();
 builder.Services.AddSingleton<IBackgroundRipService, BackgroundRipService>();
-// builder.Services.AddHostedService<DiscPollingService>();
+builder.Services.AddSingleton<DiscPollingService>();
+builder.Services.AddHostedService<DiscPollingService>(sp => sp.GetRequiredService<DiscPollingService>());
+builder.Services.AddSingleton<IDiscPollingNotifier>(sp => sp.GetRequiredService<DiscPollingService>());
 builder.Services.AddHostedService<ShutdownJobCancellationService>();
 
 // ── ArmMedia TV series identification pipeline ──

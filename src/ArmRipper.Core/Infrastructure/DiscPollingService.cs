@@ -26,7 +26,7 @@ public sealed class DiscPollingService(
     ILoggerFactory loggerFactory,
     INotificationBroadcaster broadcaster,
     IBackgroundRipService backgroundRipService)
-    : BackgroundService
+    : BackgroundService, IDiscPollingNotifier
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger("DiscPollingService");
     private readonly IOptions<ArmSettings> _settings = settings;
@@ -49,7 +49,7 @@ public sealed class DiscPollingService(
     private readonly ConcurrentDictionary<string, bool> _inflightChecks = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Signalled by <see cref="SignalSettingChanged"/> whenever a setting that
+    /// Signalled by <see cref="NotifySettingChanged"/> whenever a setting that
     /// affects this service (namely <c>DiscPollingEnabled</c>) is saved via
     /// the settings UI.  The main loop waits on this to re-evaluate whether
     /// the UeventMonitor should be started or stopped.
@@ -101,11 +101,11 @@ public sealed class DiscPollingService(
     }
 
     /// <summary>
-    /// Called by <see cref="WebUi.Controllers.SettingsController"/> after the
+    /// Called by <see cref="IDiscPollingNotifier.NotifySettingChanged"/> after the
     /// user saves ripper settings — signals the main loop to re-evaluate
     /// whether disc detection should be active.
     /// </summary>
-    public void SignalSettingChanged()
+    public void NotifySettingChanged()
     {
         try { _settingChanged.Release(); } catch (SemaphoreFullException) { }
     }
@@ -147,7 +147,7 @@ public sealed class DiscPollingService(
     {
         _logger.LogInformation("DiscPollingService stopping");
         // Unblock the main loop so it can exit promptly
-        SignalSettingChanged();
+        NotifySettingChanged();
         await base.StopAsync(cancellationToken);
     }
 
