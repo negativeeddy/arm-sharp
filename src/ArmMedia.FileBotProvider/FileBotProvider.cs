@@ -12,13 +12,15 @@ namespace ArmMedia.FileBotProvider;
 /// If the sidecar file is absent, this provider returns an empty result set
 /// and logs a debug message — it never throws.
 /// </summary>
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed class FileBotProvider : IEpisodeIdentificationProvider
 {
+    private const string DiagnosticCategory = "FileBotProvider";
     /// <summary>Constant provider name used by both the sidecar and CLI identification paths.</summary>
     public const string ProviderNameConst = "FileBot";
 
     private readonly FileBotProviderOptions        _options;
-    private readonly ILogger<FileBotProvider>      _logger;
+    private readonly ILogger                       _logger;
     private readonly FileBotCliService?            _cliService;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -30,11 +32,11 @@ public sealed class FileBotProvider : IEpisodeIdentificationProvider
     /// <summary>Initialises the provider with options, a logger, and an optional CLI service for runtime identification.</summary>
     public FileBotProvider(
         IOptions<FileBotProviderOptions>    options,
-        ILogger<FileBotProvider>            logger,
+        ILoggerFactory                      loggerFactory,
         FileBotCliService?                  cliService = null)
     {
         _options = options.Value;
-        _logger  = logger;
+        _logger  = loggerFactory.CreateLogger(DiagnosticCategory);
         _cliService = cliService;
     }
 

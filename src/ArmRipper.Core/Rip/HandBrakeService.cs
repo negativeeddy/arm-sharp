@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 
 namespace ArmRipper.Core.Rip;
 
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed partial class HandBrakeService(
     ICliProcessRunner runner,
     ILoggerFactory loggerFactory,
@@ -15,7 +16,8 @@ public sealed partial class HandBrakeService(
     IOptions<ArmSettings> settings,
     ITranscodeSlotLimiter transcodeSlotLimiter) : IHandBrakeService
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("HandBrakeService");
+    private const string DiagnosticCategory = "HandBrakeService";
+    private readonly ILogger logger = loggerFactory.CreateLogger(DiagnosticCategory);
     public async Task<CliResult> TranscodeMkvAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         logger.LogInformation("Starting HandBrake for MKV files");

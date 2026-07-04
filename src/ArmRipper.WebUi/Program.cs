@@ -135,7 +135,7 @@ if (!string.IsNullOrEmpty(dbDir) && !Directory.Exists(dbDir))
 
 using (var scope = app.Services.CreateScope())
 {
-    var initLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    var initLogger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("ArmRipper.WebUi.Program");
     var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
 
     var yamlPath = "/etc/arm/config/arm.yaml";

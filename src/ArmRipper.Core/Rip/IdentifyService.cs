@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 
 namespace ArmRipper.Core.Rip;
 
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed partial class IdentifyService(
     ICliProcessRunner runner,
     ILoggerFactory loggerFactory,
@@ -22,7 +23,8 @@ public sealed partial class IdentifyService(
     IDiscDbMappingService discDbMappingService,
     IBackgroundRipService backgroundRipService) : IIdentifyService
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("IdentifyService");
+    private const string DiagnosticCategory = "IdentifyService";
+    private readonly ILogger logger = loggerFactory.CreateLogger(DiagnosticCategory);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

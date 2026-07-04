@@ -25,7 +25,7 @@ public sealed class FileBotProviderTests : IDisposable
     private ArmMedia.FileBotProvider.FileBotProvider MakeProvider(string mapPath)
     {
         var options = Options.Create(new FileBotProviderOptions { MapFilePath = mapPath });
-        return new ArmMedia.FileBotProvider.FileBotProvider(options, NullLogger<ArmMedia.FileBotProvider.FileBotProvider>.Instance);
+        return new ArmMedia.FileBotProvider.FileBotProvider(options, NullLoggerFactory.Instance);
     }
 
     private DiscContext MakeContext(string discId = "TEST_DISC") => new()

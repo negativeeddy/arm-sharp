@@ -11,11 +11,13 @@ namespace ArmMedia.FileBotProvider;
 /// Uses <c>filebot -rename --action test</c> in dry-run mode to get episode
 /// mappings without modifying files on disk.
 /// </summary>
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed partial class FileBotCliService
 {
+    private const string DiagnosticCategory = "FileBotCliService";
     private readonly FileBotCliRunner?        _runner;
     private readonly FileBotProviderOptions    _options;
-    private readonly ILogger<FileBotCliService> _logger;
+    private readonly ILogger                   _logger;
 
     /// <summary>
     /// Regex that matches a single filebot dry-run line:
@@ -30,11 +32,11 @@ public sealed partial class FileBotCliService
     /// <summary>Initialises the service with an optional CLI runner, options, and logger.</summary>
     public FileBotCliService(
         FileBotCliRunner?                runner,
-        ILogger<FileBotCliService>       logger,
+        ILoggerFactory                   loggerFactory,
         IOptions<FileBotProviderOptions> options)
     {
         _runner  = runner;
-        _logger  = logger;
+        _logger  = loggerFactory.CreateLogger(DiagnosticCategory);
         _options = options.Value;
     }
 

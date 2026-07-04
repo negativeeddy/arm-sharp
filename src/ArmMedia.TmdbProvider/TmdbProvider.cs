@@ -13,10 +13,12 @@ namespace ArmMedia.TmdbProvider;
 /// Returns results with <see cref="Confidence.High"/> when a matching series
 /// is found and episodes can be assigned.
 /// </summary>
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed class TmdbProvider : IEpisodeIdentificationProvider
 {
+    private const string DiagnosticCategory = "TmdbProvider";
     private readonly ITmdbApiKeySource          _apiKeySource;
-    private readonly ILogger<TmdbProvider>      _logger;
+    private readonly ILogger                    _logger;
     private readonly IHttpClientFactory?        _httpClientFactory;
 
     private const string BaseUrl = "https://api.themoviedb.org/3";
@@ -24,11 +26,11 @@ public sealed class TmdbProvider : IEpisodeIdentificationProvider
     /// <summary>Initialises the provider with an API key source, logger, and optional HTTP client factory.</summary>
     public TmdbProvider(
         ITmdbApiKeySource            apiKeySource,
-        ILogger<TmdbProvider>        logger,
+        ILoggerFactory               loggerFactory,
         IHttpClientFactory?          httpClientFactory = null)
     {
         _apiKeySource       = apiKeySource;
-        _logger             = logger;
+        _logger             = loggerFactory.CreateLogger(DiagnosticCategory);
         _httpClientFactory  = httpClientFactory;
     }
 

@@ -1,7 +1,6 @@
 using ArmRipper.Core.Models;
 using ArmRipper.Core.Rip;
-using Microsoft.Extensions.Logging;
-using Moq;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ArmRipper.Core.Tests.Rip;
 
@@ -9,8 +8,7 @@ public class DiscDbHashServiceTests
 {
     private static DiscDbHashService CreateService()
     {
-        var logger = new Mock<ILogger<DiscDbHashService>>().Object;
-        return new DiscDbHashService(logger);
+        return new DiscDbHashService(NullLoggerFactory.Instance);
     }
 
     [Fact]

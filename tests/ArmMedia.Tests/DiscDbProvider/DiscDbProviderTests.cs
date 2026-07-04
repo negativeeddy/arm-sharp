@@ -67,7 +67,7 @@ public sealed class DiscDbProviderTests
 
         var provider = new ArmMedia.DiscDbProvider.DiscDbProvider(
             lookupService.Object,
-            NullLogger<ArmMedia.DiscDbProvider.DiscDbProvider>.Instance);
+            NullLoggerFactory.Instance);
 
         var results = await provider.IdentifyAsync(MakeContext());
 
@@ -90,7 +90,7 @@ public sealed class DiscDbProviderTests
 
         var provider = new ArmMedia.DiscDbProvider.DiscDbProvider(
             lookupService.Object,
-            NullLogger<ArmMedia.DiscDbProvider.DiscDbProvider>.Instance);
+            NullLoggerFactory.Instance);
 
         var results = await provider.IdentifyAsync(MakeContext());
 
@@ -107,7 +107,7 @@ public sealed class DiscDbProviderTests
         var lookupService = new Mock<IDiscDbLookupService>();
         var provider = new ArmMedia.DiscDbProvider.DiscDbProvider(
             lookupService.Object,
-            NullLogger<ArmMedia.DiscDbProvider.DiscDbProvider>.Instance);
+            NullLoggerFactory.Instance);
 
         Assert.Equal("DiscDb", provider.ProviderName);
     }

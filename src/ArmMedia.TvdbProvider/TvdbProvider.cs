@@ -16,11 +16,13 @@ namespace ArmMedia.TvdbProvider;
 /// ordering, which matches the physical track layout on optical discs.
 /// Returns results with <see cref="Confidence.High"/>.
 /// </summary>
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed class TvdbProvider : IEpisodeIdentificationProvider
 {
+    private const string DiagnosticCategory = "TvdbProvider";
     private readonly ITvdbApiKeySource          _apiKeySource;
     private readonly TvdbProviderOptions        _options;
-    private readonly ILogger<TvdbProvider>      _logger;
+    private readonly ILogger                    _logger;
     private readonly IHttpClientFactory?        _httpClientFactory;
 
     // Token is cached in-memory with a simple expiry (TVDB tokens last ~24h).
@@ -31,12 +33,12 @@ public sealed class TvdbProvider : IEpisodeIdentificationProvider
     public TvdbProvider(
         ITvdbApiKeySource            apiKeySource,
         IOptions<TvdbProviderOptions> options,
-        ILogger<TvdbProvider>        logger,
+        ILoggerFactory               loggerFactory,
         IHttpClientFactory?          httpClientFactory = null)
     {
         _apiKeySource       = apiKeySource;
         _options            = options.Value;
-        _logger             = logger;
+        _logger             = loggerFactory.CreateLogger(DiagnosticCategory);
         _httpClientFactory  = httpClientFactory;
     }
 

@@ -44,7 +44,7 @@ public sealed class OrchestratorMergeTests
         return new EpisodeIdentificationOrchestrator(
             providers,
             options,
-            NullLogger<EpisodeIdentificationOrchestrator>.Instance);
+            NullLoggerFactory.Instance);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

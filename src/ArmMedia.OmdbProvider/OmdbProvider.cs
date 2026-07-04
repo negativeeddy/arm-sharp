@@ -13,20 +13,22 @@ namespace ArmMedia.OmdbProvider;
 /// Uses the already-configured OMDB API key from host settings.
 /// Returns results with <see cref="Confidence.High"/>.
 /// </summary>
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed class OmdbProvider : IEpisodeIdentificationProvider
 {
+    private const string DiagnosticCategory = "OmdbProvider";
     private readonly IOmdbApiKeySource       _apiKeySource;
-    private readonly ILogger<OmdbProvider>   _logger;
+    private readonly ILogger                 _logger;
     private readonly IHttpClientFactory?     _httpClientFactory;
 
     /// <summary>Initialises the provider with an API key source and logger.</summary>
     public OmdbProvider(
         IOmdbApiKeySource          apiKeySource,
-        ILogger<OmdbProvider>      logger,
+        ILoggerFactory             loggerFactory,
         IHttpClientFactory?        httpClientFactory = null)
     {
         _apiKeySource      = apiKeySource;
-        _logger            = logger;
+        _logger            = loggerFactory.CreateLogger(DiagnosticCategory);
         _httpClientFactory = httpClientFactory;
     }
 

@@ -8,10 +8,13 @@ namespace ArmRipper.Core.Rip;
 /// Matches TheDiscDb title metadata to MakeMKV-identified tracks using
 /// a combination of track index, duration, and file size matching.
 /// </summary>
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed class TrackMapperService(
     ArmDbContext db,
-    ILogger<TrackMapperService> logger) : ITrackMapperService
+    ILoggerFactory loggerFactory) : ITrackMapperService
 {
+    private const string DiagnosticCategory = "TrackMapperService";
+    private readonly ILogger logger = loggerFactory.CreateLogger(DiagnosticCategory);
     // Duration tolerance: ±5% or ±30s, whichever is larger
     private const double DurationTolerancePercent = 0.05;
     private const int DurationToleranceSeconds = 30;

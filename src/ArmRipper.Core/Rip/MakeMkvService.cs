@@ -10,8 +10,10 @@ using Microsoft.Extensions.Options;
 
 namespace ArmRipper.Core.Rip;
 
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public partial class MakeMkvService : IMakeMkvService
 {
+    private const string DiagnosticCategory = "MakeMkvService";
     private const string Source = "MakeMKV";
     private const string BetaKeyApi = "https://cable.ayra.ch/MakeMKV/api.php?json";
     private const string BetaKeyForum = "https://forum.makemkv.com/forum/viewtopic.php?f=5&t=1053";
@@ -28,7 +30,7 @@ public partial class MakeMkvService : IMakeMkvService
     public MakeMkvService(ICliProcessRunner runner, ILoggerFactory loggerFactory, IOptions<ArmSettings> settings, ArmDbContext db, IHttpClientFactory httpClientFactory)
     {
         _runner = runner;
-        _logger = loggerFactory.CreateLogger("MakeMkvService");
+        _logger = loggerFactory.CreateLogger(DiagnosticCategory);
         _settings = settings;
         _db = db;
         _httpClientFactory = httpClientFactory;

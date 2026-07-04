@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 
 namespace ArmRipper.Core.Rip;
 
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed class Conductor(
     ILoggerFactory loggerFactory,
     ArmDbContext db,
@@ -21,7 +22,8 @@ public sealed class Conductor(
     IEnumerable<INotificationBroadcaster> broadcasters,
     JobFileLoggerProvider fileLogProvider) : IConductor
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("Conductor");
+    private const string DiagnosticCategory = "Conductor";
+    private readonly ILogger logger = loggerFactory.CreateLogger(DiagnosticCategory);
     /// <summary>Broadcast job state to all connected UI clients with error handling.</summary>
     private async Task BroadcastJobUpdateAsync(Job job)
     {

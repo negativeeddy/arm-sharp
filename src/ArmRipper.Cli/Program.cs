@@ -123,7 +123,7 @@ if (!string.IsNullOrEmpty(dbDir) && !Directory.Exists(dbDir))
 
 using (var initScope = host.Services.CreateScope())
 {
-    var initLogger = initScope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    var initLogger = initScope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("ArmRipper.Cli.Program");
     var db = initScope.ServiceProvider.GetRequiredService<ArmDbContext>();
 
     var yamlPath = "/etc/arm/config/arm.yaml";
@@ -187,7 +187,7 @@ if (deviceArg is null && reidentifyJobStr is null)
     return 1;
 }
 
-var logger = host.Services.GetRequiredService<ILogger<Program>>();
+var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ArmRipper.Cli.Program");
 logger.LogInformation("ARM .NET Ripper starting for device {Device}", deviceArg);
 
 using var scope = host.Services.CreateScope();
@@ -201,7 +201,7 @@ return exitCode;
 
 static async Task<int> RunReidentifyJobAsync(IServiceProvider services, int jobId, bool save)
 {
-    var logger = services.GetRequiredService<ILogger<Program>>();
+    var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("ArmRipper.Cli.Program");
     var db = services.GetRequiredService<ArmDbContext>();
     var orchestrator = services.GetRequiredService<IEpisodeIdentificationOrchestrator>();
     var settings = services.GetRequiredService<IOptions<ArmSettings>>().Value;

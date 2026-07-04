@@ -10,10 +10,13 @@ namespace ArmRipper.Core.Rip;
 /// Caches TheDiscDb lookups in the local database so re-rips of the same disc
 /// don't require a network call. Keyed by content hash.
 /// </summary>
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed class DiscDbMappingService(
     ArmDbContext db,
-    ILogger<DiscDbMappingService> logger) : IDiscDbMappingService
+    ILoggerFactory loggerFactory) : IDiscDbMappingService
 {
+    private const string DiagnosticCategory = "DiscDbMappingService";
+    private readonly ILogger logger = loggerFactory.CreateLogger(DiagnosticCategory);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,

@@ -12,6 +12,7 @@ using Microsoft.Extensions.Options;
 
 namespace ArmRipper.Core.Rip;
 
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed class ArmRipperService(
     ILoggerFactory loggerFactory,
     ArmDbContext db,
@@ -27,7 +28,8 @@ public sealed class ArmRipperService(
     ITrackMapperService trackMapperService,
     IEpisodeIdentificationOrchestrator? episodeOrchestrator = null) : IArmRipperService
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("ArmRipperService");
+    private const string DiagnosticCategory = "ArmRipperService";
+    private readonly ILogger logger = loggerFactory.CreateLogger(DiagnosticCategory);
     private static readonly TimeSpan ProgressBroadcastInterval = TimeSpan.FromMilliseconds(200);
     private readonly ConcurrentDictionary<string, (int Percent, DateTime LastBroadcastUtc)> progressBroadcastState = new();
     public async Task<string> RipVisualMediaAsync(Job job, string logFile, bool hasDupes, bool protection, CancellationToken ct = default)

@@ -10,23 +10,25 @@ namespace ArmMedia.Core.Orchestration;
 /// Runs the registered provider pipeline in configured order, merges results by
 /// confidence, then applies multi-part and extras post-processing.
 /// </summary>
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed class EpisodeIdentificationOrchestrator : IEpisodeIdentificationOrchestrator
 {
+    private const string DiagnosticCategory = "EpisodeIdentificationOrchestrator";
     private readonly IReadOnlyList<IEpisodeIdentificationProvider> _providers;
     private readonly EpisodeIdentificationOptions                  _options;
-    private readonly ILogger<EpisodeIdentificationOrchestrator>    _logger;
+    private readonly ILogger                                       _logger;
 
     /// <summary>Initialises the orchestrator with a DI-injected provider list.</summary>
     public EpisodeIdentificationOrchestrator(
         IEnumerable<IEpisodeIdentificationProvider>    providers,
         IOptions<EpisodeIdentificationOptions>          options,
-        ILogger<EpisodeIdentificationOrchestrator>      logger)
+        ILoggerFactory                                  loggerFactory)
     {
         _providers = providers
             .OrderBy(p => options.Value.ProviderOrder.IndexOf(p.ProviderName) is int i && i >= 0 ? i : int.MaxValue)
             .ToList();
         _options   = options.Value;
-        _logger    = logger;
+        _logger    = loggerFactory.CreateLogger(DiagnosticCategory);
 
         _logger.LogInformation("Provider execution order: {Order}",
             string.Join(" → ", _providers.Select(p => p.ProviderName)));
