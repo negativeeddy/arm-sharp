@@ -46,15 +46,7 @@ public sealed class DiscPollingService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation(
-            "DiscPollingService started (event-driven mode, enabled: {Enabled})",
-            _settings.Value.DiscPollingEnabled);
-
-        if (!_settings.Value.DiscPollingEnabled)
-        {
-            _logger.LogInformation("Disc detection is disabled via configuration");
-            return;
-        }
+        _logger.LogInformation("DiscPollingService started (event-driven mode, live setting monitoring)");
 
         if (!OperatingSystem.IsLinux())
         {
@@ -62,18 +54,56 @@ public sealed class DiscPollingService(
             return;
         }
 
-        _monitor = await TryStartUeventMonitorAsync(stoppingToken);
-        if (_monitor is null)
+        // Run a loop that checks the effective DiscPollingEnabled setting from
+        // the DB on every iteration — changes via the UI take effect immediately
+        // without requiring an application restart.
+        CancellationTokenSource? pumpCts = null;
+        Task? pumpTask = null;
+
+        try
         {
-            _logger.LogWarning("Failed to start UeventMonitor — disc detection unavailable");
-            return;
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                var enabled = await CheckDiscPollingEnabledAsync(stoppingToken);
+
+                if (enabled && pumpTask is null)
+                {
+                    // ── Start the monitor ──
+                    var monitor = await TryStartUeventMonitorAsync(stoppingToken);
+                    if (monitor is not null)
+                    {
+                        _monitor = monitor;
+                        pumpCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                        pumpTask = PumpUeventsAsync(monitor, pumpCts.Token);
+                        _logger.LogInformation("UeventMonitor active — disc detection is purely event-driven");
+                    }
+                }
+                else if (!enabled && pumpTask is not null)
+                {
+                    // ── Stop the monitor ──
+                    _logger.LogInformation("Disc detection disabled via configuration — stopping UeventMonitor");
+                    await StopPumpAsync(pumpCts, pumpTask);
+                    _monitor?.Dispose();
+                    _monitor = null;
+                    pumpCts?.Dispose();
+                    pumpCts = null;
+                    pumpTask = null;
+                }
+
+                // Re-check the setting every 5 s.  The pump is configured with
+                // a 1 s poll() timeout, so when the CTS is cancelled the pump
+                // exits within ~1 s regardless of this delay.
+                await Task.Delay(5000, stoppingToken);
+            }
         }
-
-        _logger.LogInformation("UeventMonitor active — disc detection is purely event-driven");
-
-#pragma warning disable CA1416 // Platform guard verified above
-        await PumpUeventsAsync(_monitor, stoppingToken);
-#pragma warning restore CA1416
+        finally
+        {
+            // Ensure cleanup on shutdown
+            if (pumpTask is not null)
+                await StopPumpAsync(pumpCts, pumpTask);
+            _monitor?.Dispose();
+            pumpCts?.Dispose();
+        }
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
@@ -84,11 +114,42 @@ public sealed class DiscPollingService(
 
     public override void Dispose()
     {
+        // Safety net — the monitor should already be cleaned up in ExecuteAsync
         if (OperatingSystem.IsLinux())
         {
             _monitor?.Dispose();
         }
         base.Dispose();
+    }
+
+    /// <summary>Cancel the pump token and await the pump task gracefully.</summary>
+    private static async Task StopPumpAsync(CancellationTokenSource? pumpCts, Task? pumpTask)
+    {
+        if (pumpTask is null) return;
+        if (pumpCts is not null && !pumpCts.IsCancellationRequested)
+            pumpCts.Cancel();
+        try { await pumpTask; } catch (OperationCanceledException) { }
+    }
+
+    /// <summary>
+    /// Queries the effective <c>DiscPollingEnabled</c> setting from the DB.
+    /// Returns the live value as last saved via the settings UI, not the
+    /// startup file-config snapshot.
+    /// </summary>
+    private async Task<bool> CheckDiscPollingEnabledAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var effective = await SettingsHelper.GetEffectiveSettingsAsync(db, _settings.Value, ct);
+            return effective.DiscPollingEnabled;
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "Failed to query effective DiscPollingEnabled setting; using file config");
+            return _settings.Value.DiscPollingEnabled;
+        }
     }
 
     // ─────────────────────────────────────────────────────────
