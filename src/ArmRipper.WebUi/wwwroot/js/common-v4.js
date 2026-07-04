@@ -15,15 +15,13 @@ arm._showToast = function (msg) {
     if (!container) {
         container = document.createElement('div');
         container.id = 'toastContainer';
-        container.style.cssText = 'position:fixed; bottom:1rem; right:1rem; z-index:9999; max-width:400px;';
+        container.style.cssText = 'position:fixed; bottom:1rem; right:1rem; z-index:9999; max-width:450px;';
         document.body.appendChild(container);
     }
     var toast = document.createElement('div');
-    toast.className = 'alert alert-info alert-dismissible fade show py-1 px-2 mb-1 small';
-    toast.style.fontSize = '11px';
-    toast.style.lineHeight = '1.3';
-    toast.innerHTML = '<span>' + msg + '</span>' +
-        '<button type="button" class="close py-0 px-1" data-dismiss="alert" style="font-size:14px;">&times;</button>';
+    toast.className = 'alert alert-info alert-dismissible fade show toast-notification';
+    toast.innerHTML = '<span class="toast-msg">' + msg + '</span>' +
+        '<button type="button" class="close" data-dismiss="alert">&times;</button>';
     container.appendChild(toast);
     setTimeout(function () {
         if (toast.parentNode) {
