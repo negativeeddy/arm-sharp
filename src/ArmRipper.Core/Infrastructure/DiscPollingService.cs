@@ -13,11 +13,9 @@ using Microsoft.Extensions.Options;
 namespace ArmRipper.Core.Infrastructure;
 
 /// <summary>
-/// Background service that detects optical disc insertion/removal events.
-///
-/// On Linux it uses an <see cref="UeventMonitor"/> (AF_NETLINK / NETLINK_KOBJECT_UEVENT)
-/// for instant, event-driven notifications — no polling delay.
-/// A periodic safety sync (at the configured poll interval) catches any missed events.
+/// Background service that detects optical disc insertion/removal events via
+/// kernel uevents (AF_NETLINK / NETLINK_KOBJECT_UEVENT).  Purely event-driven —
+/// no polling, no startup scan, no SCSI commands.
 ///
 /// When a disc is inserted on a drive in "autodetect" mode, it automatically kicks off
 /// a rip via <see cref="IBackgroundRipService"/>.
@@ -33,75 +31,49 @@ public sealed class DiscPollingService(
     private readonly ILogger _logger = loggerFactory.CreateLogger("DiscPollingService");
     private readonly IOptions<ArmSettings> _settings = settings;
 
-    /// <summary>Known device states: dev name ("sr0") → sector count (≤0 = no media).</summary>
-    private readonly ConcurrentDictionary<string, long> _deviceStates = new(StringComparer.Ordinal);
-
-    /// <summary>When the last uevent fired for a device.  Used to let the drive
-    /// settle before re-reading sysfs.</summary>
-    private readonly ConcurrentDictionary<string, DateTime> _lastEventAt = new(StringComparer.Ordinal);
-
-    /// <summary>True after the initial scan completes.  Prevents sysfs-stale
-    /// data from triggering a rip on startup.</summary>
-    private volatile bool _initialScanDone;
-
-    /// <summary>Seconds to wait after a uevent before trusting sysfs readings.</summary>
+    /// <summary>Seconds to wait after a uevent before reading sysfs.</summary>
     private static readonly TimeSpan SettleTime = TimeSpan.FromSeconds(3);
 
     /// <summary>Optional netlink uevent monitor (Linux only).</summary>
     private UeventMonitor? _monitor;
 
+    /// <summary>Tracks devices currently undergoing a settle+check cycle to
+    /// avoid duplicate rips when the kernel fires multiple change uevents
+    /// for a single insertion.</summary>
+    private readonly ConcurrentDictionary<string, bool> _inflightChecks = new(StringComparer.Ordinal);
+
     // ── Startup / main loop ─────────────────────────────────
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var pollInterval = TimeSpan.FromSeconds(Math.Max(1, _settings.Value.DiscPollIntervalSeconds));
-
         _logger.LogInformation(
-            "DiscPollingService started (poll interval: {Interval}s, enabled: {Enabled})",
-            pollInterval.TotalSeconds, _settings.Value.DiscPollingEnabled);
+            "DiscPollingService started (event-driven mode, enabled: {Enabled})",
+            _settings.Value.DiscPollingEnabled);
 
         if (!_settings.Value.DiscPollingEnabled)
         {
-            _logger.LogInformation("Disc polling is disabled via configuration");
+            _logger.LogInformation("Disc detection is disabled via configuration");
             return;
         }
 
-        // ── Initial scan ─────────────────────────────────────
-        await SyncAllDevicesAsync(stoppingToken);
-        _initialScanDone = true;
-        _logger.LogInformation("Initial device scan complete — {Count} device(s) found",
-            _deviceStates.Count);
-
-        if (_deviceStates.Count > 0)
+        if (!OperatingSystem.IsLinux())
         {
-            foreach (var (dev, size) in _deviceStates)
-            {
-                _logger.LogDebug("  {Dev}: {Size} sectors ({Label})",
-                    dev, size, size > 0 ? "media present" : "no media");
-            }
+            _logger.LogWarning("UeventMonitor requires Linux — disc detection unavailable");
+            return;
         }
 
-        // ── Start event-driven listener (Linux only) ─────────
-        if (OperatingSystem.IsLinux())
+        _monitor = await TryStartUeventMonitorAsync(stoppingToken);
+        if (_monitor is null)
         {
-            _monitor = await TryStartUeventMonitorAsync(stoppingToken);
-            if (_monitor is not null)
-            {
-                _logger.LogInformation("UeventMonitor active — disc detection is now event-driven");
+            _logger.LogWarning("Failed to start UeventMonitor — disc detection unavailable");
+            return;
+        }
 
-                // Pump events in the background
+        _logger.LogInformation("UeventMonitor active — disc detection is purely event-driven");
+
 #pragma warning disable CA1416 // Platform guard verified above
-                _ = Task.Run(() => PumpUeventsAsync(_monitor, stoppingToken), stoppingToken);
+        await PumpUeventsAsync(_monitor, stoppingToken);
 #pragma warning restore CA1416
-            }
-        }
-
-        // ── Main loop: safety sync + pump any queued events ──
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            await Task.Delay(pollInterval, stoppingToken);
-            await SyncAllDevicesAsync(stoppingToken);
-        }
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
@@ -142,20 +114,44 @@ public sealed class DiscPollingService(
         {
             await foreach (var msg in monitor.ListenAsync(ct))
             {
-                if (msg.Subsystem != "block" || !msg.IsMediaChange)
+                // Log every block uevent for an sr device at Debug level so we can
+                // diagnose detection issues from logs.
+                if (msg.Subsystem == "block" && msg.DevName?.StartsWith("sr") == true)
+                {
+                    var dmc = msg.Properties.TryGetValue("DISK_MEDIA_CHANGE", out var d) ? d : "(absent)";
+                    _logger.LogInformation(
+                        "Uevent: {Action} on /dev/{Dev} (mediaChange={IsMediaChange}, DISK_MEDIA_CHANGE={Dmc})",
+                        msg.Action, msg.DevName, msg.IsMediaChange, dmc);
+                }
+
+                // We accept ANY change uevent for an sr device, not just those with
+                // DISK_MEDIA_CHANGE=1.  The DISK_MEDIA_CHANGE flag is set by udev's
+                // cdrom_id built-in which opens the device node — in containers or
+                // systems without udev it may never appear.  The sysfs size check
+                // in HandleMediaChangeAsync is the authoritative test.
+                if (msg.Subsystem != "block")
+                    continue;
+
+                if (msg.Action != "change" && !msg.IsMediaChange)
                     continue;
 
                 if (msg.DevName is null || !msg.DevName.StartsWith("sr"))
                     continue;
 
                 var devPath = $"/dev/{msg.DevName}";
-                var devName = msg.DevName;
-                _logger.LogDebug("Uevent: {Action} on {Dev} (media change)", msg.Action, devPath);
 
-                // Record the event time and clear the cached state so the
-                // next poll cycle re-reads sysfs (after a settle delay).
-                _lastEventAt[devName] = DateTime.UtcNow;
-                _deviceStates.TryRemove(devName, out _);
+                // Dedup: kernel may fire multiple change uevents for one insertion.
+                // Only one settle/check cycle per device at a time.
+                if (!_inflightChecks.TryAdd(msg.DevName, true))
+                {
+                    _logger.LogInformation("Settle already in progress for /dev/{Dev} — ignoring duplicate uevent", msg.DevName);
+                    continue;
+                }
+
+                _logger.LogInformation("Media change detected on {Dev} — starting settle timer", devPath);
+
+                // Handle asynchronously (settle + sysfs verify); release lock when done
+                _ = HandleMediaChangeAsync(devPath, ct);
             }
         }
         catch (OperationCanceledException)
@@ -164,120 +160,44 @@ public sealed class DiscPollingService(
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Uevent pump exiting — falling back to polling only");
+            _logger.LogWarning(ex, "Uevent pump exited unexpectedly");
         }
     }
 
-    // ─────────────────────────────────────────────────────────
-    //  Device sync
-    // ─────────────────────────────────────────────────────────
-
-    /// <summary>Enumerate all /dev/sr* devices and check for state changes.</summary>
-    private async Task SyncAllDevicesAsync(CancellationToken ct)
-    {
-        string[] devices;
-        try
-        {
-            devices = Directory.GetFiles("/dev", "sr*");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to enumerate /dev/sr* devices");
-            return;
-        }
-
-        // Check each existing device
-        foreach (var devPath in devices)
-            await CheckDeviceAsync(devPath, ct);
-
-        // Prune devices that no longer exist
-        var currentSet = new HashSet<string>(devices.Select(d => Path.GetFileName(d)!));
-        foreach (var key in _deviceStates.Keys)
-        {
-            if (!currentSet.Contains(key))
-            {
-                _deviceStates.TryRemove(key, out _);
-                _lastEventAt.TryRemove(key, out _);
-                _logger.LogInformation("Device /dev/{Dev} removed", key);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Compare sysfs sector count with the last known value and fire
-    /// insertion / removal handlers on transitions.
-    ///
-    /// After a uevent we wait <see cref="SettleTime"/> (3 s) before reading
-    /// sysfs, giving the drive mechanism time to finish cycling so the
-    /// kernel cache is fresh.
-    /// </summary>
-    private async Task CheckDeviceAsync(string devPath, CancellationToken ct)
+    [SupportedOSPlatform("linux")]
+    private async Task HandleMediaChangeAsync(string devPath, CancellationToken ct)
     {
         var devName = Path.GetFileName(devPath);
-
-        // ── Settle delay ────────────────────────────────────
-        if (_lastEventAt.TryGetValue(devName, out var lastEvent))
+        try
         {
-            var age = DateTime.UtcNow - lastEvent;
-            if (age < SettleTime)
-            {
-                _logger.LogDebug("Device /dev/{Dev} still settling ({Age:F1}s since uevent) — skipping",
-                    devName, age.TotalSeconds);
-                return;
-            }
-            _lastEventAt.TryRemove(devName, out _);
-        }
+            // Let the drive mechanism finish cycling before reading sysfs
+            await Task.Delay(SettleTime, ct);
 
-        // Read sector count from sysfs — safe, no SCSI commands issued.
-        var currentSize = await ReadSysfsSizeAsync(devName, ct);
-        var prevSize = _deviceStates.GetValueOrDefault(devName, -1L);
+            var size = await ReadSysfsSizeAsync(devName, ct);
 
-        // First time seeing this device (initial scan or post-uevent reset).
-        if (prevSize < 0)
-        {
-            _deviceStates[devName] = currentSize;
-
-            if (currentSize <= 0)
+            if (size > 0)
             {
-                _logger.LogDebug("/dev/{Dev}: {Size} sectors (no media)", devName, currentSize);
-            }
-            else if (_initialScanDone)
-            {
-                // Post-uevent re-check: media present → insertion
-                _logger.LogInformation("Disc detected in /dev/{Dev} ({Size} sectors)", devName, currentSize);
-                _ = HandleDiscInsertedAsync(devPath);
+                _logger.LogInformation("Disc detected in /dev/{Dev} ({Size} sectors)", devName, size);
+                await HandleDiscInsertedAsync(devPath);
             }
             else
             {
-                // Initial scan: just record — sysfs may be stale
-                _logger.LogDebug("/dev/{Dev}: {Size} sectors (initial scan)", devName, currentSize);
+                _logger.LogInformation("Disc removed from /dev/{Dev}", devName);
+                backgroundRipService.RecordManualEject(devPath);
+                await HandleDiscRemovedAsync(devPath);
             }
-            return;
         }
-
-        if (prevSize == currentSize)
-            return;
-
-        // State changed
-        _deviceStates[devName] = currentSize;
-
-        if (currentSize > 0 && prevSize <= 0)
+        catch (OperationCanceledException)
         {
-            // Media appeared → disc was inserted
-            _logger.LogInformation("Disc detected in /dev/{Dev} ({Size} sectors)", devName, currentSize);
-            _ = HandleDiscInsertedAsync(devPath);
+            // shutting down
         }
-        else if (currentSize <= 0 && prevSize > 0)
+        catch (Exception ex)
         {
-            // Media removed → set cooldown
-            backgroundRipService.RecordManualEject(devPath);
-            _logger.LogInformation("Disc removed from /dev/{Dev} — cooldown started", devName);
-            _ = HandleDiscRemovedAsync(devPath);
+            _logger.LogError(ex, "Error handling media change for {DevPath}", devPath);
         }
-        else
+        finally
         {
-            _logger.LogDebug("Size changed for /dev/{Dev}: {Prev} → {Size} sectors (no action)",
-                devName, prevSize, currentSize);
+            _inflightChecks.TryRemove(devName, out _);
         }
     }
 
@@ -294,8 +214,8 @@ public sealed class DiscPollingService(
         var verifySectors = await ReadSysfsSizeAsync(devName, CancellationToken.None);
         if (verifySectors <= 0)
         {
-            _logger.LogDebug(
-                "Ignoring insertion event for {DevPath} — no media present ({Sectors} sectors)",
+            _logger.LogInformation(
+                "Ignoring insertion event for {DevPath} — no media present ({Sectors} sectors, likely tray closed without disc)",
                 devPath, verifySectors);
             return;
         }
@@ -317,31 +237,22 @@ public sealed class DiscPollingService(
                     DriveMode = "autodetect",
                 };
 
-                // Try to enrich with udev info
-                try
-                {
-                    var runner = scope.ServiceProvider.GetRequiredService<ICliProcessRunner>();
-                    var result = await runner.RunAsync("udevadm",
-                        $"info --query=property {devPath}", timeoutMs: 10_000);
+                // Enrich drive info via sysfs — never opens the device node,
+                // so no SCSI commands are issued.  This avoids triggering tray
+                // closure on drives that close when they receive any command.
+                drive.Model = await ReadSysfsStringAsync(devName, "device/model", CancellationToken.None);
+                drive.Serial = await ReadSysfsStringAsync(devName, "device/serial", CancellationToken.None);
+                drive.Firmware = await ReadSysfsStringAsync(devName, "device/firmware_revision", CancellationToken.None);
 
-                    foreach (var line in result.StdOut.Split('\n'))
-                    {
-                        if (line.StartsWith("ID_MODEL="))
-                            drive.Model = line["ID_MODEL=".Length..].Trim('"');
-                        else if (line.StartsWith("ID_SERIAL_SHORT="))
-                            drive.SerialId = line["ID_SERIAL_SHORT=".Length..].Trim('"');
-                        else if (line.StartsWith("ID_REVISION="))
-                            drive.Firmware = line["ID_REVISION=".Length..].Trim('"');
-                        else if (line.StartsWith("ID_CDROM_DVD=") && line.EndsWith("1"))
-                            drive.ReadDvd = true;
-                        else if (line.StartsWith("ID_CDROM_BD=") && line.EndsWith("1"))
-                            drive.ReadBd = true;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug(ex, "Could not query udev info for {DevPath}", devPath);
-                }
+                // Capability bits: /sys/block/*/capability is a hex mask
+                //   0x02 = CD-ROM, 0x04 = DVD-ROM, 0x100 = BD-ROM
+                var caps = await ReadSysfsCapabilityAsync(devName, CancellationToken.None);
+                drive.ReadCd = (caps & 0x02) != 0;
+                drive.ReadDvd = (caps & 0x04) != 0;
+                drive.ReadBd = (caps & 0x100) != 0;
+
+                _logger.LogDebug("Enriched drive /dev/{Dev} from sysfs: Model={Model}, Firmware={Fw}, Caps=0x{Caps:X}",
+                    devName, drive.Model, drive.Firmware, caps);
 
                 db.SystemDrives.Add(drive);
                 await db.SaveChangesAsync();
@@ -401,7 +312,7 @@ public sealed class DiscPollingService(
     }
 
     // ─────────────────────────────────────────────────────────
-    //  Low-level helpers
+    //  Low-level helpers — sysfs (safe, no SCSI commands)
     // ─────────────────────────────────────────────────────────
 
     /// <summary>
@@ -428,6 +339,52 @@ public sealed class DiscPollingService(
         catch (Exception) when (!(ct.IsCancellationRequested))
         {
             return Task.FromResult(0L);
+        }
+    }
+
+    /// <summary>
+    /// Read a string attribute from <c>/sys/block/{devName}/{subPath}</c>.
+    /// All sysfs reads are kernel-cached and do NOT open the device node,
+    /// so no SCSI commands are issued.  Returns the trimmed value, or
+    /// <c>null</c> if the file is missing or unreadable.
+    /// </summary>
+    private static async Task<string?> ReadSysfsStringAsync(string devName, string subPath, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var path = $"/sys/block/{devName}/{subPath}";
+        try
+        {
+            if (!File.Exists(path))
+                return null;
+
+            var content = await File.ReadAllTextAsync(path, ct);
+            return content.Trim().Trim('"');
+        }
+        catch (Exception) when (!(ct.IsCancellationRequested))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Read the capability bitmask from <c>/sys/block/{devName}/capability</c>.
+    /// Returns 0 if the file is missing or unreadable.
+    /// </summary>
+    private static async Task<int> ReadSysfsCapabilityAsync(string devName, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var path = $"/sys/block/{devName}/capability";
+        try
+        {
+            if (!File.Exists(path))
+                return 0;
+
+            var content = await File.ReadAllTextAsync(path, ct);
+            return Convert.ToInt32(content.Trim(), 16);
+        }
+        catch (Exception) when (!(ct.IsCancellationRequested))
+        {
+            return 0;
         }
     }
 }

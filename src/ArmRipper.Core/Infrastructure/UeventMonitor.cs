@@ -24,6 +24,12 @@ internal sealed record UeventMessage
 
     /// <summary>True when DISK_MEDIA_CHANGE=1 is present.</summary>
     public bool IsMediaChange { get; init; }
+
+    /// <summary>
+    /// All key-value pairs parsed from the uevent buffer.
+    /// Useful for diagnostic logging.
+    /// </summary>
+    public Dictionary<string, string> Properties { get; init; } = new();
 }
 
 /// <summary>
@@ -195,6 +201,7 @@ internal sealed class UeventMonitor : IDisposable
         string? devName = null;
         string? subsystem = null;
         var isMediaChange = false;
+        var properties = new Dictionary<string, string>();
 
         // Split on null bytes
         var start = 0;
@@ -231,6 +238,8 @@ internal sealed class UeventMonitor : IDisposable
             {
                 var key = seg[..eqIdx];
                 var value = seg[(eqIdx + 1)..];
+
+                properties[key] = value;
 
                 switch (key)
                 {
@@ -269,6 +278,7 @@ internal sealed class UeventMonitor : IDisposable
             DevName = devName,
             Subsystem = subsystem,
             IsMediaChange = isMediaChange,
+            Properties = properties,
         };
     }
 

@@ -63,18 +63,52 @@ public sealed class DatabaseSubmitService(
                       $"&vt={Uri.EscapeDataString(job.VideoType ?? "")}";
 
             var httpClient = httpClientFactory.CreateClient("DatabaseSubmitService");
-            var response = await httpClient.GetStringAsync(url, ct);
-            var result = JsonSerializer.Deserialize<SubmitApiResponse>(response);
+            var responseBody = await httpClient.GetStringAsync(url, ct);
 
-            if (result?.Success == true)
+            logger.LogDebug("Raw API response for job {JobId}: {Response}", job.Id, responseBody);
+
+            // Parse the response. The API has two shapes:
+            //   Success: {"mode":"post", "results":{"crc_id":"...","date_added":"...",...}}
+            //   Failure: {"mode":"post", "error":"message"}
+            SubmitApiResponse? parsed;
+            try
+            {
+                parsed = JsonSerializer.Deserialize<SubmitApiResponse>(responseBody);
+            }
+            catch (JsonException ex)
+            {
+                logger.LogWarning(ex, "Failed to parse API response for job {JobId}: {Response}", job.Id, responseBody);
+                return new DatabaseSubmitResult
+                {
+                    Success = false, JobId = job.Id,
+                    Message = $"Unparseable response: {responseBody}",
+                    Status = "failed"
+                };
+            }
+
+            if (parsed is null)
+            {
+                return new DatabaseSubmitResult
+                {
+                    Success = false, JobId = job.Id,
+                    Message = $"Null response from API",
+                    Status = "failed"
+                };
+            }
+
+            // ── Success: results object is present ──
+            if (parsed.Results is not null)
             {
                 job.MarkStageComplete(RipStage.CrcSubmitted);
                 await db.SaveChangesAsync(ct);
-                logger.LogInformation("Successfully submitted CRC64 for job {JobId} ({Title})", job.Id, job.Title);
+                logger.LogInformation(
+                    "Successfully submitted CRC64 for job {JobId} ({Title}) — crc_id={CrcId}",
+                    job.Id, job.Title, parsed.Results.CrcId);
                 return new DatabaseSubmitResult { Success = true, JobId = job.Id, Message = "Submitted", Status = "added" };
             }
 
-            var errorMsg = result?.Error ?? "Unknown error from remote API";
+            // ── Failure: error field is present ──
+            var errorMsg = parsed.Error ?? responseBody;
 
             // If the remote says the CRC already exists, treat it as submitted
             // so we never retry.
@@ -127,9 +161,29 @@ public sealed class DatabaseSubmitService(
         return results;
     }
 
-    private record SubmitApiResponse
+    /// <summary>
+    /// Models the JSON response from the ARM online database API.
+    /// The actual wire format is:
+    /// <code>
+    ///   Success — {"mode":"post", "results":{"crc_id":"...", "date_added":"...", "title":"...", ...}}
+    ///   Failure — {"mode":"post", "error":"..."}
+    /// </code>
+    /// </summary>
+    private sealed record SubmitApiResponse
     {
-        public bool Success { get; init; }
+        public string? Mode { get; init; }
+        public SubmitApiResults? Results { get; init; }
         public string? Error { get; init; }
+    }
+
+    private sealed record SubmitApiResults
+    {
+        public string? CrcId { get; init; }
+        public string? DateAdded { get; init; }
+        public string? Disctype { get; init; }
+        public string? Hasnicetitle { get; init; }
+        public string? Imdb { get; init; }
+        public string? Title { get; init; }
+        public string? Year { get; init; }
     }
 }
