@@ -285,12 +285,16 @@ public class SettingsController(
     }
 
     [HttpPost("start-rip")]
-    public async Task<IActionResult> StartRip(string devPath, CancellationToken ct = default)
+    public async Task<IActionResult> StartRip(string devPath, string? returnUrl = null, CancellationToken ct = default)
     {
+        var fallback = string.IsNullOrWhiteSpace(returnUrl)
+            ? (IActionResult)RedirectToAction("Index")
+            : Redirect(returnUrl);
+
         if (string.IsNullOrWhiteSpace(devPath) || !devPath.StartsWith("/dev/sr", StringComparison.Ordinal))
         {
-            TempData["Message"] = "Invalid optical drive path.";
-            return RedirectToAction("Index");
+            SetError("Invalid optical drive path.");
+            return fallback;
         }
 
         if (!System.IO.File.Exists(devPath))
@@ -298,21 +302,21 @@ public class SettingsController(
 
         if (!System.IO.File.Exists(devPath))
         {
-            TempData["Message"] = $"Drive {devPath} is not currently available. Rescan drives and try again.";
-            return RedirectToAction("Index");
+            SetError($"Drive {devPath} is not currently available. Rescan drives and try again.");
+            return fallback;
         }
 
         var drive = await db.SystemDrives.FirstOrDefaultAsync(d => d.Mount == devPath, ct);
         if (drive is null)
         {
-            TempData["Message"] = $"Drive {devPath} is not registered. Please scan drives first.";
-            return RedirectToAction("Index");
+            SetError($"Drive {devPath} is not registered. Please scan drives first.");
+            return fallback;
         }
 
         if (string.Equals(drive.DriveMode, "disabled", StringComparison.OrdinalIgnoreCase))
         {
-            TempData["Message"] = $"Drive {devPath} is disabled. Enable it before starting a rip.";
-            return RedirectToAction("Index");
+            SetError($"Drive {devPath} is disabled. Enable it before starting a rip.");
+            return fallback;
         }
 
         // Check if a job is already actively ripping on this device.
@@ -348,7 +352,9 @@ public class SettingsController(
         }
 
         TempData["Message"] = $"Rip started for {devPath}. Job page will appear shortly.";
-        return RedirectToAction("Index");
+        TempData["ToastMessage"] = $"Rip started for {devPath}. Job page will appear shortly.";
+        TempData["ToastType"] = "warning";
+        return fallback;
     }
 
     private async Task TryCreateOpticalDeviceNodesAsync(string devPath, CancellationToken ct = default)
@@ -448,7 +454,7 @@ public class SettingsController(
     }
 
     [HttpPost("eject")]
-    public async Task<IActionResult> EjectDrive(string devPath)
+    public async Task<IActionResult> EjectDrive(string devPath, string? returnUrl = null)
     {
         try
         {
@@ -462,9 +468,9 @@ public class SettingsController(
         }
         catch (Exception ex)
         {
-            TempData["Message"] = $"Failed to eject {devPath}: {ex.Message}";
+            SetError($"Failed to eject {devPath}: {ex.Message}");
         }
-        return RedirectToAction("Index");
+        return string.IsNullOrWhiteSpace(returnUrl) ? RedirectToAction("Index") : Redirect(returnUrl);
     }
 
     [HttpGet("sysinfo")]
@@ -538,5 +544,12 @@ public class SettingsController(
         TempData["Message"] = "Notification settings saved.";
         TempData["ActiveTab"] = "tab6";
         return RedirectToAction("Index");
+    }
+
+    private void SetError(string message)
+    {
+        TempData["Message"] = message;
+        TempData["ToastMessage"] = message;
+        TempData["ToastType"] = "danger";
     }
 }

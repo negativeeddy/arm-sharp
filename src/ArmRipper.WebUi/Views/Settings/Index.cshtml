@@ -245,7 +245,7 @@
         <h2>Ripper Settings</h2>
         <form method="post" action="/settings/save-ripper">
             <table class="table table-sm">
-                <tr><td class="w-25"><label>Rip Method:</label>@Html.Raw(tip("RipMethod", tips))</td><td><input type="text" name="RipMethod" value="@armSettings?.RipMethod" class="form-control" /></td></tr>
+                <tr><td class="w-25"><label>Rip Method:</label>@Html.Raw(tip("RipMethod", tips))</td><td><select name="RipMethod" class="form-control"><option value="mkv" selected="@(armSettings?.RipMethod == "mkv")">mkv (MakeMKV)</option><option value="backup" selected="@(armSettings?.RipMethod == "backup")">backup</option><option value="abcde" selected="@(armSettings?.RipMethod == "abcde")">abcde (Audio CD)</option></select></td></tr>
                 <tr><td><label>MKV Args:</label>@Html.Raw(tip("MkvArgs", tips))</td><td><input type="text" name="MkvArgs" value="@armSettings?.MkvArgs" class="form-control" /></td></tr>
                 <tr><td><label>Min Length:</label>@Html.Raw(tip("MinLength", tips))</td><td><input type="number" name="MinLength" value="@armSettings?.MinLength" class="form-control" /></td></tr>
                 <tr><td><label>Max Length:</label>@Html.Raw(tip("MaxLength", tips))</td><td><input type="number" name="MaxLength" value="@armSettings?.MaxLength" class="form-control" /></td></tr>

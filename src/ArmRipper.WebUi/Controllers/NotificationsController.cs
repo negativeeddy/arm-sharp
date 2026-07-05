@@ -1,4 +1,6 @@
 using ArmRipper.Core.Infrastructure.Data;
+using ArmRipper.Core.Models;
+using ArmRipper.Core.Notifications;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -7,7 +9,7 @@ namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("notifications")]
-public class NotificationsController(ArmDbContext db) : Controller
+public class NotificationsController(ArmDbContext db, IEnumerable<INotificationBroadcaster> broadcasters) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index(string? filter = "unread", CancellationToken ct = default)
@@ -56,5 +58,24 @@ public class NotificationsController(ArmDbContext db) : Controller
             .ExecuteUpdateAsync(setters => setters.SetProperty(n => n.Read, true), ct);
 
         return RedirectToAction("Index");
+    }
+
+    [HttpPost("test")]
+    public async Task<IActionResult> TestNotification(CancellationToken ct = default)
+    {
+        var notification = new Notification
+        {
+            Timestamp = DateTime.UtcNow,
+            EventType = "Test Notification",
+            Message = "This is a sample notification. If you can see this, notifications are working correctly!",
+            Read = false
+        };
+        db.Notifications.Add(notification);
+        await db.SaveChangesAsync(ct);
+
+        foreach (var broadcaster in broadcasters)
+            await broadcaster.BroadcastAsync(notification, ct);
+
+        return Ok(new { id = notification.Id });
     }
 }

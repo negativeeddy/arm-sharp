@@ -71,6 +71,9 @@ public sealed class ArmRipperService(
         job.Ejected = true;
         await db.SaveChangesAsync(ct);
 
+        // Reload job from DB: user may have changed title/video-type via WebUI during the rip.
+        await db.Entry(job).ReloadAsync(ct);
+
         // ── 3. Test-mode trim (optional) ──
         if (settings.Value.TestMode && transcodeInPath is not null && Directory.Exists(transcodeInPath))
         {
@@ -100,6 +103,10 @@ public sealed class ArmRipperService(
         }
 
         // ── 5. Transcode (idempotent) ──
+        // Reload job from DB before transcode: user may have changed title/video-type
+        // via WebUI during episode identification.
+        await db.Entry(job).ReloadAsync(ct);
+
         if (job.IsStageComplete(RipStage.Transcode))
         {
             logger.LogInformation("Stage 'transcode' already completed — skipping transcode");
@@ -118,6 +125,10 @@ public sealed class ArmRipperService(
         await db.SaveChangesAsync(ct);
         await BroadcastJobUpdateAsync(job);
 
+        // Refresh job from DB to pick up any title / year / video-type changes
+        // the user made via the WebUI while the rip + transcode were running.
+        await db.Entry(job).ReloadAsync(ct);
+
         logger.LogDebug("Transcode status: [{SkipTranscode}] and MakeMKV Status: [{UseMakeMkv}]",
             job.Config?.SkipTranscode ?? settings.Value.SkipTranscode, useMakeMkv);
 
@@ -131,6 +142,7 @@ public sealed class ArmRipperService(
         if (!string.IsNullOrEmpty(job.TitleManual))
         {
             DeleteRawFiles(new[] { finalDirectory });
+            typeSubFolder = ConvertJobType(job.VideoType);
             jobTitle = FixJobTitle(job);
             finalDirectory = Path.Combine(job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value), typeSubFolder, jobTitle);
             // Re-apply dupe folder suffix — CheckForDupeFolder already determined a suffix

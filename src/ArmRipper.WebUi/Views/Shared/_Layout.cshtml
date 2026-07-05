@@ -86,6 +86,11 @@
             setTimeout(function () { arm.startSignalR(); }, 500);
         });
     </script>
+    @if (TempData["ToastMessage"] is string toastMsg)
+    {
+        var toastType = TempData["ToastType"] as string ?? "danger";
+        <script>arm._showToast(@Json.Serialize(toastMsg), @Json.Serialize(toastType));</script>
+    }
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

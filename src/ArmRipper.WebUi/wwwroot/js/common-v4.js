@@ -10,7 +10,9 @@ arm.onJobUpdate = function (fn) {
 };
 
 // --- Toast notifications ---
-arm._showToast = function (msg) {
+// type: 'info' (default), 'danger', 'warning', 'success'
+arm._showToast = function (msg, type) {
+    type = type || 'info';
     var container = document.getElementById('toastContainer');
     if (!container) {
         container = document.createElement('div');
@@ -19,7 +21,7 @@ arm._showToast = function (msg) {
         document.body.appendChild(container);
     }
     var toast = document.createElement('div');
-    toast.className = 'alert alert-info alert-dismissible fade show toast-notification';
+    toast.className = 'alert alert-' + type + ' alert-dismissible fade show toast-notification';
     toast.innerHTML = '<span class="toast-msg">' + msg + '</span>' +
         '<button type="button" class="close" data-dismiss="alert">&times;</button>';
     container.appendChild(toast);
