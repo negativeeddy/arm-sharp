@@ -63,114 +63,7 @@ public sealed partial class IdentifyService(
 
         if (job.DiscType is DiscType.Dvd or DiscType.Bluray)
         {
-            logger.LogInformation("Disc identified as video");
-
-            if (settings.Value.GetVideoTitle)
-            {
-                var identified = job.DiscType switch
-                {
-                    DiscType.Dvd => await IdentifyDvdAsync(job, ct),
-                    DiscType.Bluray => await IdentifyBlurayAsync(job, ct),
-                    _ => false
-                };
-
-                if (identified)
-                {
-                    job.ProgressMessage = "Fetching metadata...";
-                    await db.SaveChangesAsync(ct);
-                    await GetVideoDetailsAsync(job, ct);
-                }
-                else
-                {
-                    job.HasNiceTitle = false;
-                    if (!string.IsNullOrEmpty(job.Label))
-                    {
-                        job.Title = job.TitleAuto = job.Label;
-                        job.Warnings = "Disc not identified. Using label as title.";
-                        logger.LogWarning("{Warning}", job.Warnings);
-                    }
-                }
-
-                await db.SaveChangesAsync(ct);
-
-                logger.LogInformation("Disc title post-ident: title={Title} year={Year} video_type={VideoType} disctype={DiscType}",
-                    job.Title, job.Year, job.VideoType, job.DiscType);
-            }
-
-            // ── TheDiscDb hash computation and query ──
-            if (settings.Value.DiscDbEnabled && !string.IsNullOrEmpty(job.MountPoint))
-            {
-                job.ProgressMessage = "Querying TheDiscDb...";
-                await db.SaveChangesAsync(ct);
-
-                var hash = await discDbHashService.ComputeHashAsync(job.MountPoint!, job.DiscType, ct);
-                if (hash is not null)
-                {
-                    job.DiscDbHash = hash;
-                    logger.LogInformation("DiscDb content hash computed: {Hash}", hash);
-
-                    var mapping = await discDbMappingService.GetCachedMappingAsync(hash, ct);
-                    if (mapping is null)
-                    {
-                        mapping = await discDbQueryService.QueryByHashAsync(hash, ct);
-                        if (mapping is not null)
-                        {
-                            await discDbMappingService.SaveMappingAsync(hash, mapping, ct);
-                            logger.LogInformation("DiscDb mapping cached for hash {Hash}: {MediaTitle} ({MediaYear})",
-                                hash, mapping.Title, mapping.Year);
-                        }
-                    }
-                    else
-                    {
-                        await discDbMappingService.TouchMappingAsync(hash, ct);
-                        logger.LogInformation("DiscDb mapping cache hit for hash {Hash}: {MediaTitle} ({MediaYear})",
-                            hash, mapping.Title, mapping.Year);
-                    }
-
-                    if (mapping is not null)
-                    {
-                        // Populate job-level metadata from DiscDb
-                        // TheDiscDb returns "Series" (not "tv") for TV shows
-                        if (!string.IsNullOrEmpty(mapping.Type) &&
-                            (mapping.Type.Equals("tv", StringComparison.OrdinalIgnoreCase) ||
-                             mapping.Type.Equals("Series", StringComparison.OrdinalIgnoreCase)))
-                        {
-                            job.VideoType = "tv";
-                        }
-
-                        // Fill year if not already set by other metadata sources
-                        if (string.IsNullOrEmpty(job.YearAuto) && !string.IsNullOrEmpty(mapping.Year))
-                        {
-                            job.Year = job.YearAuto = mapping.Year;
-                        }
-
-                        // Fill poster from TheDiscDb if no valid poster already found
-                        // (OMDB frequently returns "N/A" for missing posters)
-                        if ((string.IsNullOrEmpty(job.PosterUrlAuto) ||
-                             job.PosterUrlAuto!.Equals("N/A", StringComparison.OrdinalIgnoreCase)) &&
-                            !string.IsNullOrEmpty(mapping.ImageUrl))
-                        {
-                            var posterUrl = BuildDiscDbImageUrl(mapping.ImageUrl);
-                            job.PosterUrl = job.PosterUrlAuto = posterUrl;
-                            logger.LogInformation("DiscDb poster URL set: {PosterUrl}", posterUrl);
-                        }
-                    }
-                }
-                else
-                {
-                    logger.LogWarning("DiscDb hash computation returned null (unsupported disc or I/O error)");
-                }
-
-                await db.SaveChangesAsync(ct);
-            }
-        }
-
-        // ── OVID fingerprint ──────────────────────────────────────────
-        if (string.IsNullOrEmpty(job.OvidFingerprint))
-        {
-            job.ProgressMessage = "Computing OVID fingerprint...";
-            await db.SaveChangesAsync(ct);
-            await ComputeOvidFingerprintAsync(job, ct);
+            await IdentifyVideoDiscAsync(job, ct);
         }
 
         job.ProgressMessage = "Computing disc fingerprint...";
@@ -180,6 +73,137 @@ public sealed partial class IdentifyService(
         job.ProgressMessage = "Unmounting disc...";
         await db.SaveChangesAsync(ct);
         await UnmountAsync(job, ct);
+    }
+
+    private async Task IdentifyVideoDiscAsync(Job job, CancellationToken ct)
+    {
+        logger.LogInformation("Disc identified as video");
+
+        // Phase 1: Exact disc ID via content hash
+        await QueryDiscDbAsync(job, ct);
+
+        // Phase 2: OVID structural fingerprint
+        if (string.IsNullOrEmpty(job.OvidFingerprint))
+        {
+            job.ProgressMessage = "Computing OVID fingerprint...";
+            await db.SaveChangesAsync(ct);
+            await ComputeOvidFingerprintAsync(job, ct);
+        }
+
+        // Phase 3: Fallback title/metadata lookups (fill gaps only)
+        await RunFallbackTitleLookupAsync(job, ct);
+    }
+
+    private async Task QueryDiscDbAsync(Job job, CancellationToken ct)
+    {
+        if (!settings.Value.DiscDbEnabled || string.IsNullOrEmpty(job.MountPoint))
+            return;
+
+        job.ProgressMessage = "Querying TheDiscDb...";
+        await db.SaveChangesAsync(ct);
+
+        var hash = await discDbHashService.ComputeHashAsync(job.MountPoint!, job.DiscType, ct);
+        if (hash is not null)
+        {
+            job.DiscDbHash = hash;
+            logger.LogInformation("DiscDb content hash computed: {Hash}", hash);
+
+            var mapping = await discDbMappingService.GetCachedMappingAsync(hash, ct);
+            if (mapping is null)
+            {
+                mapping = await discDbQueryService.QueryByHashAsync(hash, ct);
+                if (mapping is not null)
+                {
+                    await discDbMappingService.SaveMappingAsync(hash, mapping, ct);
+                    logger.LogInformation("DiscDb mapping cached for hash {Hash}: {MediaTitle} ({MediaYear})",
+                        hash, mapping.Title, mapping.Year);
+                }
+            }
+            else
+            {
+                await discDbMappingService.TouchMappingAsync(hash, ct);
+                logger.LogInformation("DiscDb mapping cache hit for hash {Hash}: {MediaTitle} ({MediaYear})",
+                    hash, mapping.Title, mapping.Year);
+            }
+
+            if (mapping is not null)
+            {
+                // DiscDb is authoritative — set title/year from exact content hash match.
+                // These will not be overwritten by fallback lookups (see guards below).
+                if (!string.IsNullOrEmpty(mapping.Title))
+                {
+                    job.Title = job.TitleAuto = mapping.Title;
+                    job.HasNiceTitle = true;
+                }
+
+                // TheDiscDb returns "Series" (not "tv") for TV shows
+                if (!string.IsNullOrEmpty(mapping.Type) &&
+                    (mapping.Type.Equals("tv", StringComparison.OrdinalIgnoreCase) ||
+                     mapping.Type.Equals("Series", StringComparison.OrdinalIgnoreCase)))
+                {
+                    job.VideoType = "tv";
+                }
+
+                if (string.IsNullOrEmpty(job.YearAuto) && !string.IsNullOrEmpty(mapping.Year))
+                {
+                    job.Year = job.YearAuto = mapping.Year;
+                }
+
+                // Fill poster from TheDiscDb if no valid poster already found
+                if ((string.IsNullOrEmpty(job.PosterUrlAuto) ||
+                     job.PosterUrlAuto!.Equals("N/A", StringComparison.OrdinalIgnoreCase)) &&
+                    !string.IsNullOrEmpty(mapping.ImageUrl))
+                {
+                    var posterUrl = BuildDiscDbImageUrl(mapping.ImageUrl);
+                    job.PosterUrl = job.PosterUrlAuto = posterUrl;
+                    logger.LogInformation("DiscDb poster URL set: {PosterUrl}", posterUrl);
+                }
+            }
+        }
+        else
+        {
+            logger.LogWarning("DiscDb hash computation returned null (unsupported disc or I/O error)");
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    private async Task RunFallbackTitleLookupAsync(Job job, CancellationToken ct)
+    {
+        if (!settings.Value.GetVideoTitle)
+            return;
+
+        var identified = job.DiscType switch
+        {
+            DiscType.Dvd => await IdentifyDvdAsync(job, ct),
+            DiscType.Bluray => await IdentifyBlurayAsync(job, ct),
+            _ => false
+        };
+
+        if (identified)
+        {
+            // Only run fuzzy metadata search if no authoritative match was found
+            if (!job.HasNiceTitle)
+            {
+                job.ProgressMessage = "Fetching metadata...";
+                await db.SaveChangesAsync(ct);
+                await GetVideoDetailsAsync(job, ct);
+            }
+        }
+        else if (!job.HasNiceTitle)
+        {
+            if (!string.IsNullOrEmpty(job.Label))
+            {
+                job.Title = job.TitleAuto = job.Label;
+                job.Warnings = "Disc not identified. Using label as title.";
+                logger.LogWarning("{Warning}", job.Warnings);
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation("Disc title post-ident: title={Title} year={Year} video_type={VideoType} disctype={DiscType}",
+            job.Title, job.Year, job.VideoType, job.DiscType);
     }
 
     private async Task<bool> CheckMountAsync(Job job, CancellationToken ct)
@@ -392,12 +416,27 @@ public sealed partial class IdentifyService(
                 {
                     var first = armApiResult.Results["0"];
                     logger.LogInformation("Found CRC64 id from online API: title={Title}", first.Title);
-                    job.Title = job.TitleAuto = first.Title;
-                    job.Year = job.YearAuto = first.Year;
-                    job.ImdbId = job.ImdbIdAuto = first.ImdbId;
-                    job.VideoType = job.VideoTypeAuto = first.VideoType;
-                    job.PosterUrl = job.PosterUrlAuto = first.PosterUrl;
-                    job.HasNiceTitle = true;
+
+                    // CRC64/ARM API is a fallback — only fill fields not already set
+                    // by authoritative exact-disc-ID sources (DiscDb, OVID).
+                    if (string.IsNullOrEmpty(job.TitleAuto))
+                    {
+                        job.Title = job.TitleAuto = first.Title;
+                        job.HasNiceTitle = true;
+                    }
+
+                    if (string.IsNullOrEmpty(job.YearAuto))
+                        job.Year = job.YearAuto = first.Year;
+
+                    if (string.IsNullOrEmpty(job.ImdbIdAuto))
+                        job.ImdbId = job.ImdbIdAuto = first.ImdbId;
+
+                    if (string.IsNullOrEmpty(job.VideoTypeAuto))
+                        job.VideoType = job.VideoTypeAuto = first.VideoType;
+
+                    if (string.IsNullOrEmpty(job.PosterUrlAuto) ||
+                        job.PosterUrlAuto!.Equals("N/A", StringComparison.OrdinalIgnoreCase))
+                        job.PosterUrl = job.PosterUrlAuto = first.PosterUrl;
 
                     // CRC already exists in the remote DB — mark as submitted so
                     // the submit service skips it rather than trying to re-upload.
@@ -558,7 +597,7 @@ public sealed partial class IdentifyService(
         {
             logger.LogWarning("Blu-ray identification skipped: mount point is unavailable for {DevPath}", job.DevPath);
 
-            if (!string.IsNullOrWhiteSpace(job.Label))
+            if (!string.IsNullOrWhiteSpace(job.Label) && string.IsNullOrEmpty(job.TitleAuto))
             {
                 var blurayTitle = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(
                     job.Label.Replace("_", " ").ToLowerInvariant());
@@ -568,7 +607,7 @@ public sealed partial class IdentifyService(
                 return true;
             }
 
-            return false;
+            return !string.IsNullOrEmpty(job.TitleAuto);
         }
 
         var bdmtPath = Path.Combine(job.MountPoint, "BDMV", "META", "DL", "bdmt_eng.xml");
@@ -592,8 +631,12 @@ public sealed partial class IdentifyService(
             title = RemoveBluraySuffixes(title ?? "");
             title = CleanForFilename(title);
 
-            job.Title = job.TitleAuto = title;
-            job.Year = job.YearAuto = year;
+            // Only set title if not already populated by an authoritative source (DiscDb/OVID)
+            if (string.IsNullOrEmpty(job.TitleAuto))
+                job.Title = job.TitleAuto = title;
+
+            if (string.IsNullOrEmpty(job.YearAuto))
+                job.Year = job.YearAuto = year;
 
             await db.SaveChangesAsync(ct);
             return true;
@@ -602,7 +645,7 @@ public sealed partial class IdentifyService(
         {
             logger.LogError(ex, "Failed to parse bdmt_eng.xml for Bluray identification");
 
-            if (!string.IsNullOrEmpty(job.Label))
+            if (!string.IsNullOrEmpty(job.Label) && string.IsNullOrEmpty(job.TitleAuto))
             {
                 var blurayTitle = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(
                     job.Label.Replace("_", " ").ToLowerInvariant());
@@ -635,6 +678,13 @@ public sealed partial class IdentifyService(
             return;
         }
 
+        // Safety guard: if an authoritative source already populated metadata, skip
+        if (job.HasNiceTitle)
+        {
+            logger.LogDebug("GetVideoDetailsAsync skipped: authoritative title already set");
+            return;
+        }
+
         var searchTitle = Regex.Replace(title.Trim(), "[_ ]", "+");
         var year = string.IsNullOrEmpty(job.Year) ? "" : Regex.Replace(job.Year, @"\D", "");
 
@@ -656,7 +706,8 @@ public sealed partial class IdentifyService(
                     var resultImdb = first.TryGetProperty("imdbID", out var im) ? im.GetString() : null;
                     var resultPoster = first.TryGetProperty("Poster", out var po) ? po.GetString() : null;
 
-                    if (!string.IsNullOrEmpty(resultType))
+                    // Only set VideoType if not already determined by authoritative source
+                    if (!string.IsNullOrEmpty(resultType) && string.IsNullOrEmpty(job.VideoTypeAuto))
                     {
                         job.VideoType = job.VideoTypeAuto = resultType switch
                         {
