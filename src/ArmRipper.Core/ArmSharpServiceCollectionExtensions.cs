@@ -8,6 +8,7 @@ using ArmMedia.Linting.Rules;
 using ArmMedia.Naming;
 using ArmMedia.Naming.Abstractions;
 using ArmMedia.OmdbProvider;
+using ArmMedia.OvidProvider;
 using ArmMedia.TmdbProvider;
 using ArmMedia.TvdbProvider;
 using ArmRipper.Core.Configuration;
@@ -45,6 +46,7 @@ public static class ArmSharpServiceCollectionExtensions
             .AddEpisodeIdentification(configuration)
             // Add providers in preferred order; ProviderOrder in config overrides eval order.
             .AddProvider<ArmMedia.DiscDbProvider.DiscDbProvider>()
+            .AddProvider<OvidProvider>()
             .AddProvider<ArmMedia.DvdCompareProvider.DvdCompareProvider>()
             .AddProvider<ArmMedia.TmdbProvider.TmdbProvider>()
             .AddProvider<ArmMedia.TvdbProvider.TvdbProvider>()
@@ -53,6 +55,15 @@ public static class ArmSharpServiceCollectionExtensions
         // Bridge the existing IDiscDbMappingService to the lightweight
         // IDiscDbLookupService used by the provider layer.
         services.AddSingleton<IDiscDbLookupService, DiscDbLookupAdapter>();
+
+        // ── OVID provider options ───────────────────────────────────────────
+        services.Configure<OvidProviderOptions>(
+            configuration.GetSection(OvidProviderOptions.SectionName));
+        services.AddHttpClient<OvidApiClient>(client =>
+        {
+            client.DefaultRequestHeaders.Add("Accept", "application/json");
+            client.DefaultRequestHeaders.Add("User-Agent", "ARM-Sharp/1.0 (OVID integration)");
+        });
 
         // ── DvdCompare provider options ─────────────────────────────────────
         services.Configure<DvdCompareProviderOptions>(

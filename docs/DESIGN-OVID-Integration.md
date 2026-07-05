@@ -1,8 +1,7 @@
 # OVID Integration — Architecture & Process
 
-> **Status:** Draft  
-> **Last updated:** 2026-07-04  
-> **Branch:** `feature/ovid-integration`
+> **Status:** Phase 1 implemented (branch `feature/ovid-integration`)  
+> **Last updated:** 2026-07-04
 
 ## 1. Overview
 
@@ -165,13 +164,17 @@ This gives ARM-Sharp two independent disc identification sources: TheDiscDb and 
 ```
 src/ArmMedia.OvidProvider/
 ├── ArmMedia.OvidProvider.csproj
-├── OvidProvider.cs            # IEpisodeIdentificationProvider implementation
-├── OvidProviderOptions.cs     # Configuration (API URL, API key, timeouts)
-├── OvidFingerprintService.cs  # Computes OVID fingerprint from mounted disc
-├── OvidApiClient.cs           # HTTP client for OVID REST API
+├── OvidProvider.cs                 # IEpisodeIdentificationProvider implementation
+├── OvidProviderOptions.cs          # Configuration (API URL, API key, timeouts)
+├── OvidApiClient.cs                # HTTP client for OVID REST API
+├── Fingerprint/
+│   ├── IfoModels.cs                # C# data models (VMGInfo, VTSInfo, PGCInfo, etc.)
+│   ├── IfoParser.cs                # Pure-C# IFO binary parser (ported from Python ifo_parser.py)
+│   ├── DvdFingerprinter.cs         # OVID-DVD-1 canonical string builder + SHA-256 hash
+│   └── OvidDisc.cs                 # High-level service for computing fingerprints from mounted disc
 └── Models/
-    ├── OvidDiscLookupResponse.cs  # Response DTO from GET /v1/disc/{fp}
-    └── OvidTrackInfo.cs           # Track-level DTO
+    ├── OvidDiscLookupResponse.cs   # Response DTO from GET /v1/disc/{fp}
+    └── OvidTrackInfo.cs            # Track-level DTO
 ```
 
 ### 4.2 Fingerprint Computation Strategy
@@ -305,31 +308,39 @@ Since OVID identifies the exact disc pressing, the provider can:
 
 ## 7. Implementation Plan
 
-### Phase 1: Foundation (This Branch)
+### Phase 1: Foundation ✅ (This Branch)
 
-1. **Create `ArmMedia.OvidProvider` project**
+1. ✅ **Create `ArmMedia.OvidProvider` project**
    - `.csproj` referencing `ArmMedia.Core`
    - `OvidProviderOptions` class
    - `OvidApiClient` — HTTP client for OVID API lookups
 
-2. **Create `OvidProvider`**
+2. ✅ **Create `OvidProvider`**
    - Implement `IEpisodeIdentificationProvider`
    - Query OVID API by fingerprint from `DiscContext`
    - Map results to `ProviderResult[]` array
    - Return `Confidence.Definitive` for verified OVID matches
 
-3. **Register provider in DI**
-   - Add to `ArmSharpServiceCollectionExtensions`
-   - Update default provider order
+3. ✅ **Port IFO parser to C#**
+   - `IfoParser` — pure-C# binary parser for VIDEO_TS.IFO and VTS_XX_0.IFO
+   - `DvdFingerprinter` — OVID-DVD-1 canonical string builder + SHA-256 hasher
+   - `OvidDisc` — high-level service for computing fingerprints from mounted disc
+   - Fingerprint identical to Python output (same deterministic algorithm)
 
-4. **Add OVID fingerprint to IdentifyService**
-   - Compute OVID fingerprint from mounted disc (using Python CLI or ported parser)
+4. ✅ **Add OVID fingerprint to IdentifyService**
+   - Compute OVID fingerprint from mounted disc using C# parser (no Python dependency)
    - Store on `Job.OvidFingerprint`
    - Flow through to `DiscContext.OvidFingerprint`
 
-5. **Add database migration** for new `Job` fields
+5. ✅ **Register provider in DI**
+   - Add to `ArmSharpServiceCollectionExtensions`
+   - Register `OvidApiClient` via `AddHttpClient`
+   - Bind `OvidProviderOptions` from configuration
+   - Update default provider order to `["DiscDb", "Ovid", ...]`
 
-6. **Configuration** — Add `OvidProviderOptions` binding
+6. ⬜ **Database migration** for new `Job` fields (pending EF migration generation)
+
+7. ✅ **Add project to solution** — `ArmRipper.slnx`
 
 ### Phase 2: Enhanced Identification (Future)
 

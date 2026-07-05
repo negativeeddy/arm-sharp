@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using ArmMedia.OvidProvider.Fingerprint;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
@@ -162,6 +163,14 @@ public sealed partial class IdentifyService(
 
                 await db.SaveChangesAsync(ct);
             }
+        }
+
+        // ── OVID fingerprint ──────────────────────────────────────────
+        if (string.IsNullOrEmpty(job.OvidFingerprint))
+        {
+            job.ProgressMessage = "Computing OVID fingerprint...";
+            await db.SaveChangesAsync(ct);
+            await ComputeOvidFingerprintAsync(job, ct);
         }
 
         job.ProgressMessage = "Computing disc fingerprint...";
@@ -492,6 +501,50 @@ public sealed partial class IdentifyService(
             }
         }
         catch { }
+    }
+
+    private async Task ComputeOvidFingerprintAsync(Job job, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(job.MountPoint))
+        {
+            logger.LogDebug("OVID fingerprint skipped: no mount point");
+            return;
+        }
+
+        try
+        {
+            var format = job.DiscType switch
+            {
+                DiscType.Dvd => OvidDiscFormat.Dvd,
+                DiscType.Bluray => OvidDiscFormat.Bluray,
+                _ => (OvidDiscFormat?)null
+            };
+
+            if (format is null)
+            {
+                logger.LogDebug("OVID fingerprint skipped: unsupported disc type {DiscType}", job.DiscType);
+                return;
+            }
+
+            var ovidDisc = new OvidDisc(
+                loggerFactory.CreateLogger<OvidDisc>());
+
+            var result = await ovidDisc.ComputeAsync(job.MountPoint, format.Value, ct);
+
+            if (result.IsSuccess)
+            {
+                job.OvidFingerprint = result.Fingerprint;
+                logger.LogInformation("OVID fingerprint: {Fingerprint}", result.Fingerprint);
+            }
+            else
+            {
+                logger.LogWarning("OVID fingerprint computation returned no result at {MountPoint}", job.MountPoint);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "OVID fingerprint computation failed at {MountPoint}", job.MountPoint);
+        }
     }
 
     private Task<string> ComputeDvdCrc64Async(string mountPoint, CancellationToken ct)

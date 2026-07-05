@@ -55,6 +55,9 @@ public class Job
     /// <summary>TheDiscDb content hash for this disc (computed during identify).</summary>
     public string? DiscDbHash { get; set; }
 
+    /// <summary>OVID disc fingerprint (e.g. "dvd1-a3f92c1b..."), computed during identify.</summary>
+    public string? OvidFingerprint { get; set; }
+
     /// <summary>TMDB series ID (populated from TheDiscDb metadata or fallback).</summary>
     public int? SeriesTmdbId { get; set; }
 

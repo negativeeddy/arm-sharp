@@ -53,4 +53,12 @@ public sealed class DiscContext
     /// this value and use their own numbering.
     /// </summary>
     public int? StartingEpisodeNumber { get; init; }
+
+    /// <summary>
+    /// Gets the OVID disc fingerprint, if it was computed during the identify stage.
+    /// Used by the <c>OvidProvider</c> for API lookups.
+    /// Format: <c>"dvd1-{40 hex chars}"</c> for DVDs.
+    /// </summary>
+    public string? OvidFingerprint { get; init; }
 }
+
