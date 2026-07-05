@@ -44,11 +44,11 @@ public static class IfoParser
 
         // TT_SRPT sector offset at 0x00C4 (4 bytes BE)
         var ttSrptSector = BinaryPrimitives.ReadUInt32BigEndian(data[0xC4..]);
-        var ttSrptOffset = (int)ttSrptSector * SectorSize;
+        var ttSrptOffset = (long)ttSrptSector * SectorSize;
 
-        if (ttSrptOffset + 2 <= data.Length)
+        if (ttSrptOffset >= 0 && ttSrptOffset + 2 <= data.Length)
         {
-            titleCount = BinaryPrimitives.ReadUInt16BigEndian(data[ttSrptOffset..]);
+            titleCount = BinaryPrimitives.ReadUInt16BigEndian(data[(int)ttSrptOffset..]);
         }
 
         return new VmgInfo
@@ -75,9 +75,17 @@ public static class IfoParser
 
         // VTS_PGCI sector offset at 0x00CC (4 bytes BE)
         var pgciSector = BinaryPrimitives.ReadUInt32BigEndian(data[0xCC..]);
-        var pgciOffset = (int)pgciSector * SectorSize;
+        var pgciOffset = (long)pgciSector * SectorSize;
 
-        var pgcList = ParsePgci(data, pgciOffset);
+        IReadOnlyList<PgcInfo> pgcList;
+        if (pgciOffset < 0 || pgciOffset > int.MaxValue)
+        {
+            pgcList = Array.Empty<PgcInfo>();
+        }
+        else
+        {
+            pgcList = ParsePgci(data, (int)pgciOffset);
+        }
 
         return new VtsInfo
         {
@@ -171,7 +179,7 @@ public static class IfoParser
     /// </summary>
     private static IReadOnlyList<PgcInfo> ParsePgci(ReadOnlySpan<byte> data, int pgciOffset)
     {
-        if (pgciOffset + 8 > data.Length)
+        if (pgciOffset < 0 || pgciOffset + 8 > data.Length)
             return Array.Empty<PgcInfo>();
 
         var pgcCount = BinaryPrimitives.ReadUInt16BigEndian(data[pgciOffset..]);
