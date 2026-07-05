@@ -94,6 +94,10 @@ public class ArmSettings
     public bool DiscDbEnabled { get; set; } = true;
     // public string? DiscDbApiBaseUrl { get; set; } = "https://api.thediscdb.com/graphql";
     public string? DiscDbApiBaseUrl { get; set; } = "https://thediscdb.com/graphql";
+
+    // ── OVID Integration ──
+    /// <summary>Whether to submit OVID fingerprints to the community OVID database.</summary>
+    public bool OvidSubmitEnabled { get; set; } = true;
     public double DiscDbMinConfidence { get; set; } = 0.7;
     public bool DiscDbRequireConfirmation { get; set; } = false;
 

@@ -1,7 +1,7 @@
 # OVID Integration — Architecture & Process
 
-> **Status:** Phase 1 implemented (branch `feature/ovid-integration`)  
-> **Last updated:** 2026-07-04
+> **Status:** Phase 2 implemented (branch `feature/ovid-integration`)  
+> **Last updated:** 2026-07-05
 
 ## 1. Overview
 
@@ -98,16 +98,23 @@ Throughout the pipeline, ARM-Sharp already collects the following data that OVID
 ```
 IdentifyService.IdentifyAsync()
   │
-  ├── 1. Mount disc
-  ├── 2. Detect DiscType
-  ├── 3. CRC64 computation (DVD) + ARM API lookup
-  ├── 4. OMDB/TMDB metadata search
-  ├── 5. TheDiscDb hash computation + query
-  ├── 6. ★ OVID fingerprint computation + query (NEW)
-  │       ├── Compute OVID fingerprint from IFO/BDMV structure
+  ├── 1. Mount disc ──► CheckMountAsync()
+  ├── 2. Detect DiscType ──► GetDiscType() / DetectDiscTypeFallbackAsync()
+  ├── 3. QueryDiscDbAsync() — TheDiscDb hash computation + query (Phase 1)
+  │       └── Exact match → HasNiceTitle = true, skip further lookups
+  │
+  ├── 4. ★ OVID fingerprint computation + API query (Phase 2)
+  │       ├── Compute OVID fingerprint from IFO/BDMV structure (C# parser)
   │       ├── Query api.oviddb.org /v1/disc/{fingerprint}
   │       ├── On match: populate job metadata (title, year, TMDB ID)
-  │       └── Store OVID fingerprint on Job for later provider use
+  │       ├── Store OVID fingerprint on Job for later provider use
+  │       └── HasNiceTitle = true → skip CRC64 / OMDB/TMDB fallbacks
+  │
+  ├── 5. CRC64 computation (DVD) + ARM API lookup (fallback)
+  │       └── Only if !HasNiceTitle && !string.IsNullOrEmpty(job.TitleAuto)
+  │
+  ├── 6. OMDB/TMDB metadata search (fallback)
+  │       └── Only if !HasNiceTitle
   │
   ├── 7. Compute disc fingerprint
   └── 8. Unmount disc
@@ -118,7 +125,7 @@ ArmRipperService.RipVisualMediaAsync()
   ├── 2. RunEpisodeIdentificationAsync()
   │       └── EpisodeIdentificationOrchestrator
   │             ├── DiscDbProvider (existing)
-  │             ├── ★ OvidProvider (NEW)
+  │             ├── ★ OvidProvider (existing)
   │             ├── DvdCompareProvider (existing)
   │             ├── TmdbProvider (existing)
   │             ├── TvdbProvider (existing)
@@ -208,6 +215,9 @@ public string? OvidFingerprint { get; set; }
 
 /// <summary>Raw OVID API response JSON, cached for later provider use.</summary>
 public string? OvidApiResponse { get; set; }
+
+/// <summary>Whether this disc has been submitted to the OVID database.</summary>
+public bool OvidSubmitted { get; set; }
 ```
 
 ### 4.4 New Field on `DiscContext`
@@ -220,7 +230,24 @@ public string? OvidApiResponse { get; set; }
 public string? OvidFingerprint { get; init; }
 ```
 
-### 4.5 Provider Registration
+### 4.5 Submission Service
+
+`IOvidSubmitService` (in `ArmRipper.Core/Rip/`) provides disc submission to OVID:
+
+```csharp
+public interface IOvidSubmitService
+{
+    /// <summary>Submits a single disc's OVID fingerprint for registration.</summary>
+    Task<OvidSubmitResult> SubmitDiscAsync(Job job, CancellationToken ct = default);
+
+    /// <summary>Submits all discs that have not yet been submitted to OVID.</summary>
+    Task<int> SubmitPendingAsync(CancellationToken ct = default);
+}
+```
+
+The implementation calls `OvidApiClient.RegisterFingerprintAsync()` with the JWT token from settings. Registered as scoped in DI.
+
+### 4.6 Provider Registration
 
 In `ArmSharpServiceCollectionExtensions.AddArmMediaTvPipeline()`:
 
@@ -236,7 +263,7 @@ Registered after `DiscDbProvider` and before `DvdCompareProvider` in the default
 }
 ```
 
-### 4.6 OvidProvider Options
+### 4.7 OvidProvider Options
 
 ```csharp
 public class OvidProviderOptions
@@ -299,10 +326,11 @@ Since OVID identifies the exact disc pressing, the provider can:
 }
 ```
 
-### 6.2 New Settings in `ArmSettings` (Optional)
+### 6.2 New Settings in `ArmSettings`
 
 - `OvidEnabled` (bool, default `true`) — Enable/disable OVID integration
 - `OvidApiToken` (string, optional) — Bearer token for submissions
+- `OvidSubmitEnabled` (bool, default `true`) — Enable/disable OVID submission feature (sends fingerprints to api.oviddb.org)
 
 ---
 
@@ -338,39 +366,43 @@ Since OVID identifies the exact disc pressing, the provider can:
    - Bind `OvidProviderOptions` from configuration
    - Update default provider order to `["DiscDb", "Ovid", ...]`
 
-6. ⬜ **Database migration** for new `Job` fields (pending EF migration generation)
+6. ✅ **Database migration** — EF migration `AddOvidFields` adds `OvidFingerprint`, `OvidApiResponse`, `OvidSubmitted` columns
 
 7. ✅ **Add project to solution** — `ArmRipper.slnx`
 
-### Phase 2: Enhanced Identification (Future)
+### Phase 2: Enhanced Identification ✅ (This Branch)
 
-1. **OVID identify-stage integration**
-   - Query OVID during `IdentifyService.IdentifyAsync()`
-   - Populate title/year metadata when DiscDb has no match
-   - Submit unknown discs to OVID for registration (opt-in)
+1. ✅ **OVID identify-stage integration**
+   - `QueryOvidApiAsync()` called after fingerprint computation in `IdentifyAsync()`
+   - Populates job title/year metadata when DiscDb has no match
+   - Sets `HasNiceTitle = true` on match, preventing fuzzy fallbacks from overwriting
 
-2. **C# fingerprint port**
-   - Port IFO parser (`ifo_parser.py`, `fingerprint.py`) to C#
-   - Port BD fingerprint (`bd_fingerprint.py`) to C#
-   - Remove Python `ovid` CLI dependency
+2. ✅ **C# fingerprint port**
+   - IFO parser (`IfoParser.cs`) and fingerprinter (`DvdFingerprinter.cs`) ported to C#
+   - OVID-DVD-1 fingerprint identical to Python output (same deterministic SHA-256 algorithm)
+   - No Python `ovid` CLI dependency needed
 
-3. **UPC lookup support**
+3. ✅ **OVID submission feature**
+   - `IOvidSubmitService` + `OvidSubmitService` — submits fingerprints to OVID via `POST /v1/disc/register`
+   - `POST submit-ovid/{id}` and `POST submit-ovid/pending` API endpoints
+   - Settings UI card for sending pending fingerprints
+   - `OvidSubmitEnabled` setting (default `true`)
+
+4. ⬜ **UPC lookup support** (Future)
    - Query `/v1/disc/upc/{upc}` for barcode-based identification
-   - Useful when fingerprint computation fails
 
-4. **Local OVID API mirror** (Optional)
+5. ⬜ **Local OVID API mirror** (Optional, Future)
    - Support self-hosted OVID API for air-gapped environments
-   - Sync from public OVID periodically
 
 ---
 
-## 8. Open Questions
+## 8. Resolved Questions
 
-1. **Python dependency** — Should we add `ovid-client` pip package to the Docker image, or port the fingerprint algorithm to C# first?
-2. **API rate limits** — What are the OVID API rate limits for unauthenticated lookups?
-3. **OVID submission** — Should we submit unknown discs to OVID (opt-in feature)?
-4. **Confidence level** — Should OVID match be `Definitive` (like DiscDb) or `High` (since OVID is community data)?
-5. **Self-hosted OVID** — Should we support self-hosted OVID instances for users who want local-only operation?
+1. ✅ **Python dependency** — Ported IFO parser and fingerprint algorithm to C#. No Python dependency needed.
+2. ✅ **API rate limits** — 100 req/min unauthenticated, 500 req/min authenticated (confirmed via `api.oviddb.org` docs).
+3. ✅ **OVID submission** — Implemented as opt-in feature (`OvidSubmitEnabled`), with Settings UI and API endpoints.
+4. ✅ **Confidence level** — OVID match is `Confidence.Definitive` (same as DiscDb) since OVID identifies the exact disc pressing.
+5. ⬜ **Self-hosted OVID** — Not yet implemented. Future consideration.
 
 ---
 

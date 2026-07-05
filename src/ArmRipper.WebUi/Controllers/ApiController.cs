@@ -17,7 +17,8 @@ public partial class ApiController(
     ArmDbContext db,
     ICliProcessRunner runner,
     IOptions<ArmSettings> settings,
-    IDatabaseSubmitService databaseSubmitService) : Controller
+    IDatabaseSubmitService databaseSubmitService,
+    IOvidSubmitService ovidSubmitService) : Controller
 {
     [HttpGet("health")]
     public IActionResult Health()
@@ -295,6 +296,52 @@ public partial class ApiController(
     public async Task<IActionResult> SubmitPendingCrc(CancellationToken ct = default)
     {
         var results = await databaseSubmitService.SubmitPendingAsync(ct);
+        return Json(new
+        {
+            success = true,
+            total = results.Count,
+            submitted = results.Count(r => r.Success),
+            failed = results.Count(r => !r.Success),
+            results = results.Select(r => new
+            {
+                r.Success,
+                r.Message,
+                r.Status,
+                r.JobId
+            })
+        });
+    }
+
+    /// <summary>
+    /// Submit a single job's OVID fingerprint to the OVID database.
+    /// </summary>
+    [HttpPost("submit-ovid/{id:int}")]
+    public async Task<IActionResult> SubmitOvid(int id, CancellationToken ct = default)
+    {
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, ct);
+        if (job is null)
+            return NotFound(new { success = false, error = "Job not found" });
+
+        if (string.IsNullOrEmpty(job.OvidFingerprint))
+            return Json(new { success = false, error = "Job has no OVID fingerprint", jobId = id });
+
+        var result = await ovidSubmitService.SubmitJobAsync(job, ct);
+        return Json(new
+        {
+            success = result.Success,
+            message = result.Message,
+            status = result.Status,
+            jobId = id
+        });
+    }
+
+    /// <summary>
+    /// Submit all pending (not-yet-submitted) OVID fingerprints to the OVID database.
+    /// </summary>
+    [HttpPost("submit-ovid/pending")]
+    public async Task<IActionResult> SubmitPendingOvid(CancellationToken ct = default)
+    {
+        var results = await ovidSubmitService.SubmitPendingAsync(ct);
         return Json(new
         {
             success = true,

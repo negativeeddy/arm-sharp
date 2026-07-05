@@ -555,7 +555,26 @@
                 </div>
             </div>
         </div>
-    </div>
+        <div class=\"card\">
+            <div class=\"card-header\"><h5 class=\"mb-0\">Send Fingerprints to OVID Database</h5></div>
+            <div class="card-body">
+                <p>This will submit all jobs that have an OVID fingerprint and a nice title to the
+                    community OVID database. Previously submitted fingerprints are skipped automatically.</p>
+                <p class="text-warning"><strong>Warning:</strong> This may take a while with a large database.</p>
+                <button id="sendOvidBtn" class="btn btn-info" onclick="sendPendingOvid()"
+                        @(ViewBag.PendingOvidCount == 0 ? "disabled" : "")>
+                    Send @ViewBag.PendingOvidCount Pending Fingerprints
+                </button>
+                <div id="sendOvidProgress" class="mt-3" style="display:none;">
+                    <div class="progress mb-2">
+                        <div id="sendOvidProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                             role="progressbar" style="width:0%"></div>
+                    </div>
+                    <div id="sendOvidStatus" class="text-muted"></div>
+                    <div id="sendOvidResults" class="mt-2"></div>
+                </div>
+            </div>
+        </div>    </div>
 
     <!-- Apprise -->
     <div class="tab-pane fade @(ViewBag.ActiveTab == "tab6" ? "show active" : "")" id="tab6" role="tabpanel">
@@ -662,6 +681,85 @@
 
                         // Update the button text and disable if nothing left
                         btn.textContent = "🚀 Send " + failed + " Pending Movies";
+                        if (failed === 0) btn.disabled = true;
+                    } else {
+                        status.textContent = "Failed to send: " + (data.error || "Unknown error");
+                    }
+                })
+                .catch(function (err) {
+                    bar.style.width = "0%";
+                    bar.classList.remove("progress-bar-animated", "progress-bar-striped");
+                    bar.classList.add("bg-danger");
+                    status.textContent = "Error: " + err.message;
+                })
+                .finally(function () {
+                    btn.disabled = false;
+                });
+        }
+
+        function sendPendingOvid() {
+            var btn = document.getElementById("sendOvidBtn");
+            var progress = document.getElementById("sendOvidProgress");
+            var bar = document.getElementById("sendOvidProgressBar");
+            var status = document.getElementById("sendOvidStatus");
+            var results = document.getElementById("sendOvidResults");
+
+            btn.disabled = true;
+            progress.style.display = "block";
+            bar.style.width = "50%";
+            status.textContent = "Sending...";
+
+            fetch("/api/submit-ovid/pending", { method: "POST" })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    bar.style.width = "100%";
+                    bar.classList.remove("progress-bar-animated", "progress-bar-striped");
+                    if (data.success && data.failed === 0) {
+                        bar.classList.add("bg-success");
+                    } else if (data.failed > 0) {
+                        bar.classList.add("bg-warning");
+                    } else {
+                        bar.classList.add("bg-danger");
+                    }
+                    if (data.success) {
+                        var registered = 0, alreadyExists = 0, skipped = 0, failed = 0;
+                        data.results.forEach(function (r) {
+                            if (r.status === "registered") registered++;
+                            else if (r.status === "already_exists") alreadyExists++;
+                            else if (r.status === "skipped") skipped++;
+                            else failed++;
+                        });
+                        var parts = [];
+                        if (registered > 0) parts.push(registered + " registered");
+                        if (alreadyExists > 0) parts.push(alreadyExists + " already in OVID");
+                        if (skipped > 0) parts.push(skipped + " skipped");
+                        if (failed > 0) parts.push(failed + " failed");
+                        status.textContent = parts.join(", ") || "No fingerprints to send.";
+
+                        var html = "";
+                        data.results.forEach(function (r) {
+                            var icon, color;
+                            if (r.status === "registered") {
+                                icon = "&#9989;"; color = "text-success";
+                            } else if (r.status === "already_exists") {
+                                icon = "&#128204;"; color = "text-info";
+                            } else if (r.status === "skipped") {
+                                icon = "&#9193;"; color = "text-secondary";
+                            } else {
+                                icon = "&#10060;"; color = "text-danger";
+                            }
+                            var tipTitle = r.status === "registered" ? "Successfully registered with OVID"
+                                : r.status === "already_exists" ? "Already in the OVID database"
+                                : r.status === "skipped" ? "Already submitted locally"
+                                : r.message || "Submission failed";
+                            html += "<div class='d-inline-block mr-2 mb-1' title=''>" +
+                                "<span class='" + color + "' data-toggle='tooltip' title='" + escHtml(tipTitle) + "'>" + icon + "</span>" +
+                                " Job #" + r.jobId + "</div>";
+                        });
+                        results.innerHTML = html;
+                        $('[data-toggle="tooltip"]').tooltip();
+
+                        btn.textContent = \"Send \" + failed + \" Pending Fingerprints\";
                         if (failed === 0) btn.disabled = true;
                     } else {
                         status.textContent = "Failed to send: " + (data.error || "Unknown error");

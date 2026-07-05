@@ -72,6 +72,14 @@ public class SettingsController(
             .CountAsync(ct);
         ViewBag.PendingCrcCount = pendingCrcCount;
 
+        // Count pending OVID submissions
+        var pendingOvidCount = await db.Jobs
+            .Where(j => !string.IsNullOrEmpty(j.OvidFingerprint) &&
+                        (j.HasNiceTitle || !string.IsNullOrEmpty(j.TitleManual)) &&
+                        !j.OvidSubmitted)
+            .CountAsync(ct);
+        ViewBag.PendingOvidCount = pendingOvidCount;
+
         // Read abcde config if available
         var abcdePath = "/etc/arm/config/abcde.conf";
         var abcdeConfig = new Dictionary<string, string>();

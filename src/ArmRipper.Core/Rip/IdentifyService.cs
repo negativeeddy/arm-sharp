@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using ArmMedia.OvidProvider;
 using ArmMedia.OvidProvider.Fingerprint;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
@@ -21,7 +22,9 @@ public sealed partial class IdentifyService(
     IDiscDbHashService discDbHashService,
     IDiscDbQueryService discDbQueryService,
     IDiscDbMappingService discDbMappingService,
-    IBackgroundRipService backgroundRipService) : IIdentifyService
+    IBackgroundRipService backgroundRipService,
+    OvidApiClient ovidApiClient,
+    IOptions<OvidProviderOptions> ovidOptions) : IIdentifyService
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("IdentifyService");
 
@@ -82,12 +85,18 @@ public sealed partial class IdentifyService(
         // Phase 1: Exact disc ID via content hash
         await QueryDiscDbAsync(job, ct);
 
-        // Phase 2: OVID structural fingerprint
+        // Phase 2: OVID structural fingerprint + API lookup
         if (string.IsNullOrEmpty(job.OvidFingerprint))
         {
             job.ProgressMessage = "Computing OVID fingerprint...";
             await db.SaveChangesAsync(ct);
             await ComputeOvidFingerprintAsync(job, ct);
+        }
+
+        // If DiscDb didn't find a match, try OVID API for authoritative metadata
+        if (!job.HasNiceTitle && !string.IsNullOrEmpty(job.OvidFingerprint))
+        {
+            await QueryOvidApiAsync(job, ct);
         }
 
         // Phase 3: Fallback title/metadata lookups (fill gaps only)
@@ -204,6 +213,67 @@ public sealed partial class IdentifyService(
 
         logger.LogInformation("Disc title post-ident: title={Title} year={Year} video_type={VideoType} disctype={DiscType}",
             job.Title, job.Year, job.VideoType, job.DiscType);
+    }
+
+    private async Task QueryOvidApiAsync(Job job, CancellationToken ct)
+    {
+        if (!ovidOptions.Value.Enabled)
+            return;
+
+        var fingerprint = job.OvidFingerprint;
+        if (string.IsNullOrWhiteSpace(fingerprint))
+            return;
+
+        job.ProgressMessage = "Looking up OVID database...";
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation("Querying OVID API for fingerprint {Fingerprint}", fingerprint);
+
+        var record = await ovidApiClient.LookupByFingerprintAsync(fingerprint, ct);
+
+        if (record is null || record.Release is null)
+        {
+            logger.LogDebug("OVID API returned no match for fingerprint {Fingerprint}", fingerprint);
+            return;
+        }
+
+        // OVID is authoritative — set title/year from exact structural fingerprint match.
+        // These will not be overwritten by fallback lookups (see phase 3 guards).
+        if (!string.IsNullOrEmpty(record.Release.Title))
+        {
+            job.Title = job.TitleAuto = record.Release.Title;
+            job.HasNiceTitle = true;
+        }
+
+        if (record.Release.Year.HasValue && string.IsNullOrEmpty(job.YearAuto))
+        {
+            job.Year = job.YearAuto = record.Release.Year.Value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        if (!string.IsNullOrEmpty(record.Release.ImdbId) && string.IsNullOrEmpty(job.ImdbIdAuto))
+        {
+            job.ImdbId = job.ImdbIdAuto = record.Release.ImdbId;
+        }
+
+        // Map OVID content type to ARM video type
+        if (string.IsNullOrEmpty(job.VideoTypeAuto) && !string.IsNullOrEmpty(record.Release.ContentType))
+        {
+            job.VideoType = job.VideoTypeAuto = record.Release.ContentType switch
+            {
+                "movie" => "movie",
+                "tvshow" => "tv",
+                _ => null
+            };
+        }
+
+        // Cache the raw API response for later provider pipeline use
+        job.OvidApiResponse = System.Text.Json.JsonSerializer.Serialize(record);
+
+        logger.LogInformation(
+            "OVID API identified disc: {Title} ({Year}), content type: {ContentType}, tmdb_id: {TmdbId}",
+            record.Release.Title, record.Release.Year, record.Release.ContentType, record.Release.TmdbId);
+
+        await db.SaveChangesAsync(ct);
     }
 
     private async Task<bool> CheckMountAsync(Job job, CancellationToken ct)

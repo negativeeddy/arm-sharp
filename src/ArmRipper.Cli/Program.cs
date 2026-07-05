@@ -49,6 +49,7 @@ builder.Services.AddScoped<IFfmpegService, FfmpegService>();
 builder.Services.AddScoped<IArmRipperService, ArmRipperService>();
 builder.Services.AddScoped<IMakeMkvService, MakeMkvService>();
 builder.Services.AddScoped<IDatabaseSubmitService, DatabaseSubmitService>();
+builder.Services.AddScoped<IOvidSubmitService, OvidSubmitService>();
 builder.Services.AddHttpClient<IMusicBrainzService, MusicBrainzService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(15);
