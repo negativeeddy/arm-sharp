@@ -79,7 +79,7 @@ public sealed class PipelineIntegrationTests
         var orchestrator = new EpisodeIdentificationOrchestrator(
             [discDbProvider.Object, fileBotProvider.Object],
             options,
-            NullLogger<EpisodeIdentificationOrchestrator>.Instance);
+            NullLoggerFactory.Instance);
 
         // ── Act: Run identification ──────────────────────────────────────────
         var episodeMap = await orchestrator.IdentifyAsync(ctx);
@@ -143,7 +143,7 @@ public sealed class PipelineIntegrationTests
             [new DuplicateEpisodeLintRule(), new EpisodeGapLintRule(),
              new LowConfidenceLintRule(), new RuntimeMismatchLintRule(),
              new MultiPartDurationMismatchLintRule(), new SeasonMismatchLintRule()],
-            NullLogger<DefaultLintingEngine>.Instance);
+            NullLoggerFactory.Instance);
         var report = lintEngine.Lint(episodeMap, lintOptions);
 
         // ── Assert: Lint report is clean ─────────────────────────────────────

@@ -16,22 +16,24 @@ namespace ArmRipper.WebUi.Services;
 ///   - For each active rip, sets the job status to Stopping and saves to DB
 ///     BEFORE cancelling the token. This ensures the job can be resumed on restart.
 /// </summary>
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed class ShutdownJobCancellationService : IHostedService
 {
+    private const string DiagnosticCategory = "ShutdownJobCancellationService";
     private readonly IBackgroundRipService _backgroundRipService;
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ILogger<ShutdownJobCancellationService> _logger;
+    private readonly ILogger _logger;
     private readonly IHostApplicationLifetime _appLifetime;
 
     public ShutdownJobCancellationService(
         IBackgroundRipService backgroundRipService,
         IServiceScopeFactory scopeFactory,
-        ILogger<ShutdownJobCancellationService> logger,
+        ILoggerFactory loggerFactory,
         IHostApplicationLifetime appLifetime)
     {
         _backgroundRipService = backgroundRipService;
         _scopeFactory = scopeFactory;
-        _logger = logger;
+        _logger = loggerFactory.CreateLogger(DiagnosticCategory);
         _appLifetime = appLifetime;
     }
 

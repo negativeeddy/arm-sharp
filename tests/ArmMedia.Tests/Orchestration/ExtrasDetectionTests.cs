@@ -24,7 +24,7 @@ public sealed class ExtrasDetectionTests
         IEnumerable<IEpisodeIdentificationProvider> providers,
         EpisodeIdentificationOptions? opts = null)
         => new(providers, Options.Create(opts ?? DefaultOptions()),
-               NullLogger<EpisodeIdentificationOrchestrator>.Instance);
+               NullLoggerFactory.Instance);
 
     // ─────────────────────────────────────────────────────────────────────────
     // TC-EX-01: Short track with no episode match → IsExtra = true

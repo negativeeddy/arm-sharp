@@ -4,9 +4,11 @@ using Microsoft.Extensions.Logging;
 
 namespace ArmRipper.Core.Metadata;
 
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed partial class TmdbService(ILoggerFactory loggerFactory, HttpClient httpClient)
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("TmdbService");
+    private const string DiagnosticCategory = "TmdbService";
+    private readonly ILogger logger = loggerFactory.CreateLogger(DiagnosticCategory);
     private const string PosterBase = "https://image.tmdb.org/t/p/original";
 
     public async Task<TmdbProcessedResult?> SearchMovieAsync(string apiKey, string query, string? year = null, CancellationToken ct = default)

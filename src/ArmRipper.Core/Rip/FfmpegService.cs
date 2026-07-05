@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 
 namespace ArmRipper.Core.Rip;
 
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed partial class FfmpegService(
     ICliProcessRunner runner,
     ILoggerFactory loggerFactory,
@@ -16,7 +17,8 @@ public sealed partial class FfmpegService(
     IOptions<ArmSettings> settings,
     ITranscodeSlotLimiter transcodeSlotLimiter) : IFfmpegService
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("FfmpegService");
+    private const string DiagnosticCategory = "FfmpegService";
+    private readonly ILogger logger = loggerFactory.CreateLogger(DiagnosticCategory);
     public async Task<CliResult> TranscodeMkvAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         logger.LogInformation("Starting FFmpeg for MKV files");

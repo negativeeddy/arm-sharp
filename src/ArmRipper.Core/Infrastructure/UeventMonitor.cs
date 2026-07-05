@@ -39,8 +39,12 @@ internal sealed record UeventMessage
 /// returns <c>false</c>.
 /// </summary>
 [SupportedOSPlatform("linux")]
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 internal sealed class UeventMonitor : IDisposable
 {
+    /// <summary>DiagnosticSource category name for dotnet-monitor filtering.</summary>
+    internal const string DiagnosticCategory = "UeventMonitor";
+
     // ── Linux constants ──────────────────────────────────────
     private const int AF_NETLINK = 16;
     private const int SOCK_RAW = 3;

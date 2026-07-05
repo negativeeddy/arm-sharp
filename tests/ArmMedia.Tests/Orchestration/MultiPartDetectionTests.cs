@@ -28,7 +28,7 @@ public sealed class MultiPartDetectionTests
         return new EpisodeIdentificationOrchestrator(
             providers,
             Options.Create(opts ?? DefaultOptions()),
-            NullLogger<EpisodeIdentificationOrchestrator>.Instance);
+            NullLoggerFactory.Instance);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

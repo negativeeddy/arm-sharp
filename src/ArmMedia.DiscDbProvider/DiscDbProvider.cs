@@ -10,18 +10,20 @@ namespace ArmMedia.DiscDbProvider;
 /// When a matching DiscDb record is found, returns results with
 /// <see cref="Confidence.Definitive"/>, causing the orchestrator to short-circuit.
 /// </summary>
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed class DiscDbProvider : IEpisodeIdentificationProvider
 {
+    private const string DiagnosticCategory = "DiscDbProvider";
     private readonly IDiscDbLookupService _discDbLookup;
-    private readonly ILogger<DiscDbProvider> _logger;
+    private readonly ILogger _logger;
 
     /// <summary>Initialises the provider with a DiscDb lookup service.</summary>
     public DiscDbProvider(
         IDiscDbLookupService discDbLookup,
-        ILogger<DiscDbProvider> logger)
+        ILoggerFactory loggerFactory)
     {
         _discDbLookup = discDbLookup;
-        _logger = logger;
+        _logger = loggerFactory.CreateLogger(DiagnosticCategory);
     }
 
     /// <inheritdoc/>

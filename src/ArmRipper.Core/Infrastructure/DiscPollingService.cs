@@ -20,6 +20,7 @@ namespace ArmRipper.Core.Infrastructure;
 /// When a disc is inserted on a drive in "autodetect" mode, it automatically kicks off
 /// a rip via <see cref="IBackgroundRipService"/>.
 /// </summary>
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed class DiscPollingService(
     IServiceScopeFactory scopeFactory,
     IOptions<ArmSettings> settings,
@@ -28,7 +29,8 @@ public sealed class DiscPollingService(
     IBackgroundRipService backgroundRipService)
     : BackgroundService, IDiscPollingNotifier
 {
-    private readonly ILogger _logger = loggerFactory.CreateLogger("DiscPollingService");
+    private const string DiagnosticCategory = "DiscPollingService";
+    private readonly ILogger _logger = loggerFactory.CreateLogger(DiagnosticCategory);
     private readonly IOptions<ArmSettings> _settings = settings;
 
     /// <summary>Seconds to wait after a uevent before reading sysfs.</summary>
@@ -198,7 +200,7 @@ public sealed class DiscPollingService(
     [SupportedOSPlatform("linux")]
     private Task<UeventMonitor?> TryStartUeventMonitorAsync(CancellationToken ct)
     {
-        var logger = loggerFactory.CreateLogger<UeventMonitor>();
+        var logger = loggerFactory.CreateLogger(UeventMonitor.DiagnosticCategory);
         var monitor = new UeventMonitor(logger);
 
         if (!monitor.TryStart())

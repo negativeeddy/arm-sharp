@@ -11,8 +11,11 @@ namespace ArmRipper.Core.Rip;
 ///
 /// Reference: https://github.com/TheDiscDb/data/blob/main/tools/ImportBuddy/source/ImportBuddy/TheDiscDb.Core/DiscHash/HashingExtensions.cs
 /// </summary>
-public sealed class DiscDbHashService(ILogger<DiscDbHashService> logger) : IDiscDbHashService
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
+public sealed class DiscDbHashService(ILoggerFactory loggerFactory) : IDiscDbHashService
 {
+    private const string DiagnosticCategory = "DiscDbHashService";
+    private readonly ILogger logger = loggerFactory.CreateLogger(DiagnosticCategory);
     public Task<string?> ComputeHashAsync(string mountPoint, DiscType discType, CancellationToken ct = default)
     {
         var (searchPath, pattern) = discType switch

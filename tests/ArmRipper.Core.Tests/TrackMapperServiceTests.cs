@@ -4,8 +4,7 @@ using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
 using ArmRipper.Core.Rip;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
-using Moq;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ArmRipper.Core.Tests.Rip;
 
@@ -19,8 +18,7 @@ public class TrackMapperServiceTests
         var db = new ArmDbContext(options);
         db.Database.OpenConnection();
         db.Database.EnsureCreated();
-        var logger = new Mock<ILogger<TrackMapperService>>().Object;
-        return (new TrackMapperService(db, logger), db);
+        return (new TrackMapperService(db, NullLoggerFactory.Instance), db);
     }
 
     private static async Task<Job> AddJobWithTracksAsync(ArmDbContext db, Job job, params Track[] tracks)

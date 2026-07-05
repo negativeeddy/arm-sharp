@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 
 namespace ArmRipper.Core.Rip;
 
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed partial class MusicBrainzService(
     ICliProcessRunner runner,
     ILoggerFactory loggerFactory,
@@ -16,7 +17,8 @@ public sealed partial class MusicBrainzService(
     IOptions<ArmSettings> settings,
     HttpClient httpClient) : IMusicBrainzService
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("MusicBrainzService");
+    private const string DiagnosticCategory = "MusicBrainzService";
+    private readonly ILogger logger = loggerFactory.CreateLogger(DiagnosticCategory);
     public async Task<string> IdentifyAsync(Job job, CancellationToken ct = default)
     {
         var discId = await GetDiscIdAsync(job.DevPath!, ct);

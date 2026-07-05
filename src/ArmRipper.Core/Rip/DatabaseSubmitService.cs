@@ -8,13 +8,15 @@ using Microsoft.Extensions.Options;
 
 namespace ArmRipper.Core.Rip;
 
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed class DatabaseSubmitService(
     ArmDbContext db,
     IHttpClientFactory httpClientFactory,
     IOptions<ArmSettings> settings,
     ILoggerFactory loggerFactory) : IDatabaseSubmitService
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("DatabaseSubmitService");
+    private const string DiagnosticCategory = "DatabaseSubmitService";
+    private readonly ILogger logger = loggerFactory.CreateLogger(DiagnosticCategory);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

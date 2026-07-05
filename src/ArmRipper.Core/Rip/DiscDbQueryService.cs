@@ -13,11 +13,14 @@ namespace ArmRipper.Core.Rip;
 ///
 /// Reference: https://github.com/TheDiscDb/data/blob/main/tools/ImportBuddy/source/ImportBuddy/TheDiscDb.Client/GraphQL/Queries/GetDiscDetailByContentHash.graphql
 /// </summary>
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed class DiscDbQueryService(
     IHttpClientFactory httpClientFactory,
     IOptions<ArmSettings> settings,
-    ILogger<DiscDbQueryService> logger) : IDiscDbQueryService
+    ILoggerFactory loggerFactory) : IDiscDbQueryService
 {
+    private const string DiagnosticCategory = "DiscDbQueryService";
+    private readonly ILogger logger = loggerFactory.CreateLogger(DiagnosticCategory);
     private const string DefaultApiBaseUrl = "https://thediscdb.com/graphql";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

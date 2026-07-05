@@ -9,18 +9,20 @@ namespace ArmMedia.Linting;
 /// Default implementation of <see cref="ILintingEngine"/> that evaluates all
 /// registered <see cref="ILintRule"/> implementations against the episode map.
 /// </summary>
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed class DefaultLintingEngine : ILintingEngine
 {
+    private const string DiagnosticCategory = "DefaultLintingEngine";
     private readonly IReadOnlyList<ILintRule>        _rules;
-    private readonly ILogger<DefaultLintingEngine>   _logger;
+    private readonly ILogger                         _logger;
 
     /// <summary>Initialises the engine with DI-injected rules.</summary>
     public DefaultLintingEngine(
         IEnumerable<ILintRule>          rules,
-        ILogger<DefaultLintingEngine>   logger)
+        ILoggerFactory                  loggerFactory)
     {
         _rules  = rules.ToList();
-        _logger = logger;
+        _logger = loggerFactory.CreateLogger(DiagnosticCategory);
     }
 
     /// <inheritdoc/>

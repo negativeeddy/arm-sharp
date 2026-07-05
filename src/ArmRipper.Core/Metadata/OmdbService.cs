@@ -4,9 +4,11 @@ using Microsoft.Extensions.Logging;
 
 namespace ArmRipper.Core.Metadata;
 
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed class OmdbService(ILoggerFactory loggerFactory, HttpClient httpClient)
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("OmdbService");
+    private const string DiagnosticCategory = "OmdbService";
+    private readonly ILogger logger = loggerFactory.CreateLogger(DiagnosticCategory);
     public async Task<OmdbSearchResult?> SearchAsync(string apiKey, string title, string? year = null, string? plot = "short", CancellationToken ct = default)
     {
         var url = $"https://www.omdbapi.com/?s={Uri.EscapeDataString(title)}&plot={plot}&r=json&apikey={apiKey}";

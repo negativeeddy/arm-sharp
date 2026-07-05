@@ -14,20 +14,22 @@ namespace ArmMedia.DvdCompareProvider;
 /// MakeMKV produces generic track filenames but the episode structure and
 /// runtimes are well-documented on dvdcompare.net.
 /// </summary>
+[ArmMedia.Core.DiagnosticName(DiagnosticCategory)]
 public sealed partial class DvdCompareProvider : IEpisodeIdentificationProvider
 {
+    private const string DiagnosticCategory = "DvdCompareProvider";
     private readonly DvdCompareProviderOptions   _options;
-    private readonly ILogger<DvdCompareProvider>  _logger;
+    private readonly ILogger                     _logger;
     private readonly IHttpClientFactory?          _httpClientFactory;
 
     /// <summary>Initialises the provider with options, logger, and optional HTTP client factory.</summary>
     public DvdCompareProvider(
         IOptions<DvdCompareProviderOptions>   options,
-        ILogger<DvdCompareProvider>           logger,
+        ILoggerFactory                        loggerFactory,
         IHttpClientFactory?                   httpClientFactory = null)
     {
         _options            = options.Value;
-        _logger             = logger;
+        _logger             = loggerFactory.CreateLogger(DiagnosticCategory);
         _httpClientFactory  = httpClientFactory;
     }
 
