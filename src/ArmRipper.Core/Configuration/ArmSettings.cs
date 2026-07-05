@@ -61,6 +61,13 @@ public class ArmSettings
     public string? TmdbApiKey { get; set; }
     public string? TvdbApiKey { get; set; }
 
+    /// <summary>
+    /// OAuth bearer token for authenticated OVID API operations
+    /// (fingerprint registration and disc submission).
+    /// Obtainable via OAuth at https://api.oviddb.org.
+    /// </summary>
+    public string? OvidApiToken { get; set; }
+
     public string? WebServerIp { get; set; } = "0.0.0.0";
     public int WebServerPort { get; set; } = 8080;
     public string? UiBaseUrl { get; set; }

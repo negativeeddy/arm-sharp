@@ -498,6 +498,7 @@ public class SettingsController(
     [HttpPost("save-metadata")]
     public async Task<IActionResult> SaveMetadata(
         string? OmdbApiKey, string? TmdbApiKey, string? TvdbApiKey, string? ArmApiKey,
+        string? OvidApiToken,
         CancellationToken ct = default)
     {
         var fields = new Dictionary<string, string?>
@@ -506,6 +507,7 @@ public class SettingsController(
             ["TmdbApiKey"] = TmdbApiKey is not null ? JsonSerialize(TmdbApiKey) : null,
             ["TvdbApiKey"] = TvdbApiKey is not null ? JsonSerialize(TvdbApiKey) : null,
             ["ArmApiKey"] = ArmApiKey is not null ? JsonSerialize(ArmApiKey) : null,
+            ["OvidApiToken"] = OvidApiToken is not null ? JsonSerialize(OvidApiToken) : null,
         };
 
         await SettingsHelper.MergeIntoDbAsync(db, fields, ct);

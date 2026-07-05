@@ -529,6 +529,20 @@
                                 </div>
                             </td>
                         </tr>
+                        <tr>
+                            <td><label for="OvidApiToken">OVID API Token:</label></td>
+                            <td>
+                                <div class="input-group">
+                                    <input type="password" class="form-control" id="OvidApiToken" name="OvidApiToken"
+                                           value="@(armSettings?.OvidApiToken ?? "")" placeholder="OAuth bearer token for disc submission" />
+                                    <div class="input-group-append">
+                                        <span class="input-group-text">
+                                            <a href="#" onclick="toggleFieldVisibility('OvidApiToken')" title="Toggle visibility">👁️</a>
+                                        </span>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
                     </table>
                     <button type="submit" class="btn btn-primary mt-2">Save API Keys</button>
                 </form>

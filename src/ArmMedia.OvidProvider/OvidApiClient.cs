@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using ArmMedia.Core.Abstractions;
 using ArmMedia.OvidProvider.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -16,6 +17,7 @@ public sealed class OvidApiClient
 {
     private readonly HttpClient _httpClient;
     private readonly OvidProviderOptions _options;
+    private readonly IOvidApiTokenSource _tokenSource;
     private readonly ILogger<OvidApiClient> _logger;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -26,14 +28,17 @@ public sealed class OvidApiClient
     /// <summary>Initialises the OVID API client.</summary>
     /// <param name="httpClient">The typed HTTP client instance.</param>
     /// <param name="options">OVID provider configuration.</param>
+    /// <param name="tokenSource">Resolves the OVID API token (DB override > config).</param>
     /// <param name="logger">Logger instance.</param>
     public OvidApiClient(
         HttpClient httpClient,
         IOptions<OvidProviderOptions> options,
+        IOvidApiTokenSource tokenSource,
         ILogger<OvidApiClient> logger)
     {
         _httpClient = httpClient;
         _options = options.Value;
+        _tokenSource = tokenSource;
         _logger = logger;
     }
 
@@ -157,7 +162,7 @@ public sealed class OvidApiClient
         if (string.IsNullOrWhiteSpace(fingerprint))
             return (false, "Empty fingerprint", 0);
 
-        var token = _options.ApiToken;
+        var token = _tokenSource.GetToken();
         if (string.IsNullOrWhiteSpace(token))
             return (false, "No OVID API token configured (OvidProvider:ApiToken)", 0);
 
@@ -231,7 +236,7 @@ public sealed class OvidApiClient
         string? discLabel = null,
         CancellationToken cancellationToken = default)
     {
-        var token = _options.ApiToken;
+        var token = _tokenSource.GetToken();
         if (string.IsNullOrWhiteSpace(token))
             return (false, "No OVID API token configured (OvidProvider:ApiToken)", 0);
 

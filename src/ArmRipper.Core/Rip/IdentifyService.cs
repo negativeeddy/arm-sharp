@@ -191,13 +191,14 @@ public sealed partial class IdentifyService(
 
         if (identified)
         {
-            // Only run fuzzy metadata search if no authoritative match was found
-            if (!job.HasNiceTitle)
-            {
-                job.ProgressMessage = "Fetching metadata...";
-                await db.SaveChangesAsync(ct);
-                await GetVideoDetailsAsync(job, ct);
-            }
+            // Always fetch supplementary metadata (poster, IMDb ID, etc.)
+            // even when an authoritative source already set the title.
+            // The individual field assignments inside GetVideoDetailsAsync
+            // are guarded by null/empty checks so they won't overwrite
+            // values already provided by DiscDb or OVID.
+            job.ProgressMessage = "Fetching metadata...";
+            await db.SaveChangesAsync(ct);
+            await GetVideoDetailsAsync(job, ct);
         }
         else if (!job.HasNiceTitle)
         {
@@ -748,13 +749,10 @@ public sealed partial class IdentifyService(
             return;
         }
 
-        // Safety guard: if an authoritative source already populated metadata, skip
-        if (job.HasNiceTitle)
-        {
-            logger.LogDebug("GetVideoDetailsAsync skipped: authoritative title already set");
-            return;
-        }
-
+        // Note: the outer caller (RunFallbackTitleLookupAsync) always invokes this
+        // method when identified=true, regardless of HasNiceTitle. The individual
+        // field assignments below are guarded by null/empty checks, so they will
+        // not overwrite values already set by authoritative sources (DiscDb, OVID).
         var searchTitle = Regex.Replace(title.Trim(), "[_ ]", "+");
         var year = string.IsNullOrEmpty(job.Year) ? "" : Regex.Replace(job.Year, @"\D", "");
 

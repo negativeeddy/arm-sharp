@@ -64,6 +64,9 @@ public static class ArmSharpServiceCollectionExtensions
             client.DefaultRequestHeaders.Add("Accept", "application/json");
             client.DefaultRequestHeaders.Add("User-Agent", "ARM-Sharp/1.0 (OVID integration)");
         });
+        // Register a resolver that merges the DB-stored ArmSettings.OvidApiToken
+        // at runtime so Web UI changes take effect without restarting.
+        services.AddSingleton<IOvidApiTokenSource, OvidApiTokenResolver>();
 
         // ── DvdCompare provider options ─────────────────────────────────────
         services.Configure<DvdCompareProviderOptions>(
