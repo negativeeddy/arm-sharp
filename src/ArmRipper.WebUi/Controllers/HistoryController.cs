@@ -17,6 +17,7 @@ public class HistoryController(ArmDbContext db) : Controller
         string? status = null,
         string? discType = null,
         string? search = null,
+        string? niceTitle = null,
         CancellationToken ct = default)
     {
         var query = db.Jobs.AsQueryable();
@@ -43,6 +44,13 @@ public class HistoryController(ArmDbContext db) : Controller
                 (j.TitleManual != null && EF.Functions.Like(j.TitleManual, pattern)));
         }
 
+        if (!string.IsNullOrWhiteSpace(niceTitle))
+        {
+            query = niceTitle.Equals("true", StringComparison.OrdinalIgnoreCase)
+                ? query.Where(j => j.HasNiceTitle)
+                : query.Where(j => !j.HasNiceTitle);
+        }
+
         var totalJobs = await query.CountAsync(ct);
         var totalPages = Math.Max(1, (int)Math.Ceiling(totalJobs / (double)PageSize));
         page = Math.Clamp(page, 1, totalPages);
@@ -59,6 +67,7 @@ public class HistoryController(ArmDbContext db) : Controller
         ViewBag.StatusFilter = status;
         ViewBag.DiscTypeFilter = discType;
         ViewBag.SearchFilter = search;
+        ViewBag.NiceTitleFilter = niceTitle;
 
         return View(jobs);
     }
