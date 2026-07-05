@@ -555,8 +555,8 @@
                 </div>
             </div>
         </div>
-        <div class=\"card\">
-            <div class=\"card-header\"><h5 class=\"mb-0\">Send Fingerprints to OVID Database</h5></div>
+        <div class="card">
+            <div class="card-header"><h5 class="mb-0">Send Fingerprints to OVID Database</h5></div>
             <div class="card-body">
                 <p>This will submit all jobs that have an OVID fingerprint and a nice title to the
                     community OVID database. Previously submitted fingerprints are skipped automatically.</p>
@@ -759,7 +759,7 @@
                         results.innerHTML = html;
                         $('[data-toggle="tooltip"]').tooltip();
 
-                        btn.textContent = \"Send \" + failed + \" Pending Fingerprints\";
+                        btn.textContent = "Send " + failed + " Pending Fingerprints";
                         if (failed === 0) btn.disabled = true;
                     } else {
                         status.textContent = "Failed to send: " + (data.error || "Unknown error");
