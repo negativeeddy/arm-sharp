@@ -538,6 +538,65 @@ public class CompletedController(IOptions<ArmSettings> settings, ArmDbContext db
         };
     }
 
+    /// <summary>
+    /// Shows the video player page for a completed file.
+    /// </summary>
+    [HttpGet("play")]
+    public async Task<IActionResult> Play(string filePath, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath))
+            return NotFound();
+
+        var (basePath, source) = ResolveSource(filePath);
+        var info = await ProbeFileAsync(filePath, basePath, source, ct);
+        if (info == null)
+            return NotFound();
+
+        return View("Player", info);
+    }
+
+    /// <summary>
+    /// Streams a video file supporting byte-range requests for the HTML5 video player.
+    /// Range processing is explicitly enabled so the browser can seek and buffer
+    /// in chunks rather than downloading the entire file before playing.
+    /// </summary>
+    [HttpGet("stream")]
+    public IActionResult Stream(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath))
+            return NotFound();
+
+        var fileName = Path.GetFileName(filePath);
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+
+        // Determine content type based on file extension
+        var contentType = extension switch
+        {
+            ".mp4" => "video/mp4",
+            ".m4v" => "video/mp4",
+            ".mkv" => "video/x-matroska",
+            ".webm" => "video/webm",
+            ".avi" => "video/x-msvideo",
+            ".mov" => "video/quicktime",
+            ".m2ts" => "video/mp2t",
+            ".ts" => "video/mp2t",
+            ".mpeg" or ".mpg" => "video/mpeg",
+            ".wmv" => "video/x-ms-wmv",
+            ".flv" => "video/x-flv",
+            ".ogv" => "video/ogg",
+            _ => "application/octet-stream"
+        };
+
+        Response.Headers["Accept-Ranges"] = "bytes";
+        Response.Headers["Cache-Control"] = "no-cache";
+
+        return new Microsoft.AspNetCore.Mvc.PhysicalFileResult(filePath, contentType)
+        {
+            EnableRangeProcessing = true,
+            FileDownloadName = fileName
+        };
+    }
+
     private string GetRelativeDirectory(string filePath, string basePath)
     {
         var dir = Path.GetDirectoryName(filePath);
