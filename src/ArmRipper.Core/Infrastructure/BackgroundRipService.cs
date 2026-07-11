@@ -173,6 +173,49 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
         }, cts.Token);
     }
 
+    public void StartImportJob(string rawFilePath, string title, string? year, string? videoType, CancellationToken ct = default)
+    {
+        var key = $"import-{rawFilePath.GetHashCode()}";
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        if (!_activeRips.TryAdd(key, cts))
+        {
+            logger.LogWarning("Import transcode already in progress for raw path {RawPath}", rawFilePath);
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            using var scope = scopeFactory.CreateScope();
+            try
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+                var effectiveSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, _settings.Value, cts.Token);
+
+                // ── Acquire concurrency slot ──────────────────────
+                await WaitForOperationSlotAsync(effectiveSettings.MaxConcurrentRips, cts.Token);
+
+                var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
+                await conductor.RunImportTranscodeAsync(rawFilePath, title, year, videoType, cts.Token);
+                logger.LogInformation("Import transcode completed for \"{Title}\", raw path {RawPath}",
+                    title, rawFilePath);
+            }
+            catch (OperationCanceledException)
+            {
+                logger.LogWarning("Import transcode cancelled for \"{Title}\"", title);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Import transcode failed for \"{Title}\"", title);
+            }
+            finally
+            {
+                ReleaseOperationSlot();
+                _activeRips.TryRemove(key, out _);
+                cts.Dispose();
+            }
+        }, cts.Token);
+    }
+
     public void CancelRip(string devPath)
     {
         if (_activeRips.TryRemove(devPath, out var cts))

@@ -293,8 +293,12 @@ public class CompletedController(IOptions<ArmSettings> settings, ArmDbContext db
 
         if (jobId is null or 0)
         {
-            TempData["ErrorMessage"] = "Could not find the original job for this file. Ensure it was ripped through ARM first.";
-            return RedirectToAction("Index");
+            // No matching original job found — redirect to movie search so the user
+            // can identify it manually. The file path is carried via TempData so the
+            // search results page can offer an "Import & Transcode" action.
+            TempData["ImportFilePath"] = filePath;
+            TempData["InfoMessage"] = "No matching job found for this file. Search for the movie to create a new import transcode job.";
+            return RedirectToAction("TitleSearch", "Jobs");
         }
 
         backgroundRip.StartForkedJob(jobId.Value, filePath, ct);

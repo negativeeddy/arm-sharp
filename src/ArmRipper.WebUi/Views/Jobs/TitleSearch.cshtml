@@ -6,6 +6,8 @@
     var query = Context.Request.Query["query"];
     bool Selected(int jobId) => selectedJobId.HasValue && selectedJobId.Value == jobId;
     var jobIdValue = selectedJobId.GetValueOrDefault();
+    var importFilePath = ViewBag.ImportFilePath as string;
+    var isImportMode = !string.IsNullOrEmpty(importFilePath);
 }
 
 <h1>Search Movies</h1>
@@ -41,6 +43,15 @@
     </div>
 </div>
 
+@if (isImportMode)
+{
+    <div class="alert alert-info">
+        <strong>Import Mode:</strong> Select a movie below to create a new transcode job for
+        <code>@System.IO.Path.GetFileName(importFilePath)</code>.
+        The rip stage will be skipped — only transcoding will be performed.
+    </div>
+}
+
 @if (string.IsNullOrEmpty(query))
 {
     <div class="alert alert-info">Enter a movie title above to search online databases (OMDB/TMDB).</div>
@@ -69,7 +80,17 @@ else
                         <p class="card-text small text-muted mb-2">
                             @(item.Type ?? "movie") (@item.Year)
                         </p>
-                        @if (hasJob)
+                        @if (isImportMode)
+                        {
+                            <form method="post" action="/jobs/import-from-search" class="mt-auto">
+                                <input type="hidden" name="filePath" value="@importFilePath" />
+                                <input type="hidden" name="title" value="@item.Title" />
+                                <input type="hidden" name="year" value="@item.Year" />
+                                <input type="hidden" name="videoType" value="@item.Type" />
+                                <button type="submit" class="btn btn-primary btn-sm btn-block">Import &amp; Transcode</button>
+                            </form>
+                        }
+                        else if (hasJob)
                         {
                             <form method="post" action="/jobs/assign-movie" class="mt-auto">
                                 <input type="hidden" name="jobId" value="@jobIdValue" />

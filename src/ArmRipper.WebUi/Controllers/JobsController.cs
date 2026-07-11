@@ -209,6 +209,16 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
             .ToListAsync(ct);
         ViewBag.SelectedJobId = jobId;
 
+        // If redirected from the Completed page with an import file path, pass it to the view
+        // so search results display an "Import & Transcode" button.
+        var importFilePath = TempData["ImportFilePath"] as string;
+        if (!string.IsNullOrEmpty(importFilePath))
+        {
+            ViewBag.ImportFilePath = importFilePath;
+            // Persist for the POST that follows
+            TempData.Keep("ImportFilePath");
+        }
+
         if (string.IsNullOrWhiteSpace(query))
             return View(Array.Empty<OmdbSearchItem>());
 
@@ -274,6 +284,38 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
         await db.SaveChangesAsync(ct);
 
         return RedirectToAction("JobDetail", new { jobId });
+    }
+
+    /// <summary>
+    /// Creates a standalone import transcode job from a movie search result and a raw file path.
+    /// Used when the user has raw MKV files (ripped elsewhere) and selects a movie from the
+    /// TitleSearch page to identify them.
+    /// </summary>
+    [HttpPost("import-from-search")]
+    public IActionResult ImportFromSearch(string title, string? year, string? videoType, string? filePath, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            TempData["ErrorMessage"] = "Movie title is required.";
+            return RedirectToAction("TitleSearch");
+        }
+
+        if (string.IsNullOrEmpty(filePath))
+        {
+            // Try TempData as fallback (set by CompletedController redirect)
+            filePath = TempData["ImportFilePath"] as string;
+        }
+
+        if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath))
+        {
+            TempData["ErrorMessage"] = "Raw file not found. Please go back to the Completed page and select a file first.";
+            return RedirectToAction("TitleSearch");
+        }
+
+        backgroundRip.StartImportJob(filePath, title, year, videoType ?? "movie", ct);
+
+        TempData["SuccessMessage"] = $"Import transcode started for \"{title}\" – job queued in the background.";
+        return RedirectToAction("Index", "Home");
     }
 
     [HttpPost("continue-wait")]

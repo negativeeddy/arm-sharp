@@ -4,6 +4,14 @@ public interface IBackgroundRipService
 {
     void StartRip(string devPath, CancellationToken ct = default);
     void StartForkedJob(int originalJobId, string rawFilePath, CancellationToken ct = default);
+
+    /// <summary>
+    /// Starts a standalone import transcode job for raw MKV files that came from another machine.
+    /// Unlike StartForkedJob, this does not require an existing original job record — the caller
+    /// provides the movie metadata directly.
+    /// </summary>
+    void StartImportJob(string rawFilePath, string title, string? year, string? videoType, CancellationToken ct = default);
+
     void CancelRip(string devPath);
 
     /// <summary>Cancels ALL active rips and returns their dev paths.

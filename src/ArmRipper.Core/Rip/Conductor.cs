@@ -260,6 +260,157 @@ public sealed class Conductor(
         }
     }
 
+    /// <summary>
+    /// Creates a new standalone job from raw MKV files that were ripped elsewhere,
+    /// skipping identify and rip stages — jumps straight to transcoding.
+    /// </summary>
+    public async Task<int> RunImportTranscodeAsync(string rawFilePath, string title, string? year, string? videoType, CancellationToken ct = default)
+    {
+        // ── 1. Determine the raw directory ──
+        var rawDir = File.Exists(rawFilePath)
+            ? Path.GetDirectoryName(rawFilePath)!
+            : rawFilePath;
+
+        if (!Directory.Exists(rawDir))
+        {
+            logger.LogError("Raw directory {RawDir} does not exist", rawDir);
+            return 1;
+        }
+
+        // ── 2. Create the job with user-provided metadata ──
+        var armSettings = settings.Value;
+        var job = new Job
+        {
+            DevPath = rawDir,
+            Status = JobState.Active,
+            StartTime = DateTime.UtcNow,
+            Title = title,
+            TitleAuto = title,
+            Year = year ?? "0000",
+            YearAuto = year ?? "0000",
+            VideoType = videoType ?? "movie",
+            VideoTypeAuto = videoType ?? "movie",
+            Label = title,
+            ManualStart = true
+        };
+
+        db.Jobs.Add(job);
+        await db.SaveChangesAsync(ct);
+
+        job.LogFile = $"{job.Id}.log";
+        job.TransitionToStage(RipStage.Setup);
+
+        // ── 3. Create config snapshot from current settings ──
+        var config = new ConfigSnapshot
+        {
+            JobId = job.Id,
+            SkipTranscode = armSettings.SkipTranscode,
+            MainFeature = armSettings.MainFeature,
+            UseFfmpeg = armSettings.UseFfmpeg,
+            ManualWait = false,
+            AllowDuplicates = armSettings.AllowDuplicates,
+            Prevent99 = armSettings.Prevent99,
+            GetVideoTitle = false,
+            GetAudioTitle = armSettings.GetAudioTitle,
+            AutoEject = false,
+            DelRawFiles = armSettings.DelRawFiles,
+            RawPath = armSettings.RawPath,
+            TranscodePath = armSettings.TranscodePath,
+            CompletedPath = armSettings.CompletedPath,
+            LogPath = armSettings.LogPath,
+            RipMethod = armSettings.RipMethod,
+            MinLength = armSettings.MinLength,
+            MaxLength = armSettings.MaxLength,
+            HbPresetDvd = armSettings.HbPresetDvd,
+            HbPresetBd = armSettings.HbPresetBd,
+            HbArgsDvd = armSettings.HbArgsDvd,
+            HbArgsBd = armSettings.HbArgsBd,
+            DestExt = armSettings.DestExt,
+            FfmpegCli = armSettings.FfmpegCli,
+            FfmpegPreFileArgs = armSettings.FfmpegPreFileArgs,
+            FfmpegPostFileArgs = armSettings.FfmpegPostFileArgs,
+            MkvArgs = armSettings.MkvArgs,
+            ExtrasSub = armSettings.ExtrasSub,
+            InstallPath = armSettings.InstallPath,
+            DbFile = armSettings.DbFile,
+            NotifyRip = false,
+            NotifyTranscode = armSettings.NotifyTranscode,
+            PbKey = armSettings.PbKey,
+            IftttKey = armSettings.IftttKey,
+            PoUserKey = armSettings.PoUserKey,
+            BashScript = armSettings.BashScript,
+            JsonUrl = armSettings.JsonUrl,
+            Apprise = armSettings.Apprise,
+            OmdbApiKey = armSettings.OmdbApiKey,
+            TmdbApiKey = armSettings.TmdbApiKey,
+            ArmApiKey = armSettings.ArmApiKey,
+            MetadataProvider = armSettings.MetadataProvider,
+            WebServerPort = armSettings.WebServerPort,
+            WebServerIp = armSettings.WebServerIp,
+            UiBaseUrl = armSettings.UiBaseUrl,
+            EmbyRefresh = armSettings.EmbyRefresh,
+            EmbyServer = armSettings.EmbyServer,
+            EmbyPort = armSettings.EmbyPort,
+            EmbyApiKey = armSettings.EmbyApiKey,
+            MaxConcurrentRips = armSettings.MaxConcurrentRips,
+            MaxConcurrentTranscodes = armSettings.MaxConcurrentTranscodes,
+            MaxConcurrentMakemkvInfo = armSettings.MaxConcurrentMakemkvInfo,
+            DiscDbEnabled = armSettings.DiscDbEnabled,
+            DiscDbApiBaseUrl = armSettings.DiscDbApiBaseUrl,
+            DiscDbMinConfidence = armSettings.DiscDbMinConfidence,
+            DiscDbRequireConfirmation = armSettings.DiscDbRequireConfirmation
+        };
+
+        db.ConfigSnapshots.Add(config);
+        job.MarkStageComplete(RipStage.Setup);
+        job.MarkStageComplete(RipStage.Identify);
+        job.MarkStageComplete(RipStage.Rip);
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation("Import job {JobId} created for title \"{Title}\" from raw directory {RawDir}",
+            job.Id, title, rawDir);
+
+        // ── 4. Set up file logger and run ──
+        using var _ = logger.BeginScope(new Dictionary<string, object>
+        {
+            [JobFileLoggerProvider.LogFilePathKey] = job.GetLogFilePath()
+        });
+
+        try
+        {
+            logger.LogInformation("************* Starting imported transcode *************");
+            logger.LogInformation("Title: {Title} ({Year})", title, year);
+            logger.LogInformation("Raw directory: {RawDir}", rawDir);
+
+            var directory = await armRipperService.RipVisualMediaAsync(job, job.LogFile ?? "", false, false, ct);
+            job.Path = directory;
+
+            if (job.Status is not JobState.Failure)
+                job.Status = JobState.Success;
+            job.StopTime = DateTime.UtcNow;
+            if (job.StartTime != default)
+            {
+                var jobLength = job.StopTime.Value - job.StartTime;
+                job.JobLength = $"{(int)jobLength.TotalHours}:{jobLength.Minutes:D2}:{jobLength.Seconds:D2}";
+            }
+
+            await db.SaveChangesAsync(ct);
+            await BroadcastJobUpdateAsync(job);
+            logger.LogInformation("************* Imported transcode complete *************");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            logger.LogCritical(ex, "Imported transcode failed for job {JobId}", job.Id);
+            job.Status = JobState.Failure;
+            job.Errors = ex.Message;
+            job.ProgressMessage = null;
+            try { await db.SaveChangesAsync(ct); } catch { /* best effort */ }
+            await BroadcastJobUpdateAsync(job);
+            return 1;
+        }
+    }
+
     private void Setup()
     {
         var armSettings = settings.Value;
