@@ -270,7 +270,7 @@ public sealed partial class HandBrakeService(
             return (job.Config?.HbPresetDvd ?? settings.Value.HbPresetDvd,
                     job.Config?.HbArgsDvd ?? settings.Value.HbArgsDvd);
 
-        if (job.DiscType == DiscType.Bluray)
+        if (job.DiscType is DiscType.Bluray or DiscType.Uhd)
             return (job.Config?.HbPresetBd ?? settings.Value.HbPresetBd,
                     job.Config?.HbArgsBd ?? settings.Value.HbArgsBd);
 

@@ -64,7 +64,7 @@ public sealed partial class IdentifyService(
             job.DiscType = await DetectDiscTypeFallbackAsync(job, ct);
         }
 
-        if (job.DiscType is DiscType.Dvd or DiscType.Bluray)
+        if (job.DiscType is DiscType.Dvd or DiscType.Bluray or DiscType.Uhd)
         {
             await IdentifyVideoDiscAsync(job, ct);
         }
@@ -185,7 +185,7 @@ public sealed partial class IdentifyService(
         var identified = job.DiscType switch
         {
             DiscType.Dvd => await IdentifyDvdAsync(job, ct),
-            DiscType.Bluray => await IdentifyBlurayAsync(job, ct),
+            DiscType.Bluray or DiscType.Uhd => await IdentifyBlurayAsync(job, ct),
             _ => false
         };
 

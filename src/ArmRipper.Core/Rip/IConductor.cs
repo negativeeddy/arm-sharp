@@ -15,5 +15,6 @@ public interface IConductor
     /// <param name="title">Movie/show title from user search selection.</param>
     /// <param name="year">Release year (optional).</param>
     /// <param name="videoType">"movie", "series", or "tv" (optional, defaults to "movie").</param>
-    Task<int> RunImportTranscodeAsync(string rawFilePath, string title, string? year, string? videoType, CancellationToken ct = default);
+    /// <param name="discType">Source disc type: "dvd", "bluray", or "uhd" (optional, defaults to "bluray").</param>
+    Task<int> RunImportTranscodeAsync(string rawFilePath, string title, string? year, string? videoType, string? discType, CancellationToken ct = default);
 }

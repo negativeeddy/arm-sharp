@@ -173,7 +173,7 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
         }, cts.Token);
     }
 
-    public void StartImportJob(string rawFilePath, string title, string? year, string? videoType, CancellationToken ct = default)
+    public void StartImportJob(string rawFilePath, string title, string? year, string? videoType, string? discType, CancellationToken ct = default)
     {
         var key = $"import-{rawFilePath.GetHashCode()}";
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -195,7 +195,7 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
                 await WaitForOperationSlotAsync(effectiveSettings.MaxConcurrentRips, cts.Token);
 
                 var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
-                await conductor.RunImportTranscodeAsync(rawFilePath, title, year, videoType, cts.Token);
+                await conductor.RunImportTranscodeAsync(rawFilePath, title, year, videoType, discType, cts.Token);
                 logger.LogInformation("Import transcode completed for \"{Title}\", raw path {RawPath}",
                     title, rawFilePath);
             }

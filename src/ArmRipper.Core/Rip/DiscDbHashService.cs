@@ -18,7 +18,7 @@ public sealed class DiscDbHashService(ILogger<DiscDbHashService> logger) : IDisc
         var (searchPath, pattern) = discType switch
         {
             DiscType.Dvd => (Path.Combine(mountPoint, "VIDEO_TS"), "*"),
-            DiscType.Bluray => (Path.Combine(mountPoint, "BDMV", "STREAM"), "*.m2ts"),
+            DiscType.Bluray or DiscType.Uhd => (Path.Combine(mountPoint, "BDMV", "STREAM"), "*.m2ts"),
             _ => (null, null)
         };
 

@@ -156,7 +156,7 @@ public sealed class NotificationService(
 
         var title = job.DiscType switch
         {
-            DiscType.Dvd or DiscType.Bluray =>
+            DiscType.Dvd or DiscType.Bluray or DiscType.Uhd =>
                 $"Found disc: {job.Title}. Disc type is {job.DiscType}. Main Feature is {cfg?.MainFeature}. "
                 + $"Edit entry here: {baseUrl}/jobdetail?job_id={job.Id}",
             DiscType.Music =>

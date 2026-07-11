@@ -6,5 +6,6 @@ public enum DiscType
     Dvd,
     Bluray,
     Music,
-    Data
+    Data,
+    Uhd
 }

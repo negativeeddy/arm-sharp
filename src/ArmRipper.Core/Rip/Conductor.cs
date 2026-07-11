@@ -264,7 +264,7 @@ public sealed class Conductor(
     /// Creates a new standalone job from raw MKV files that were ripped elsewhere,
     /// skipping identify and rip stages — jumps straight to transcoding.
     /// </summary>
-    public async Task<int> RunImportTranscodeAsync(string rawFilePath, string title, string? year, string? videoType, CancellationToken ct = default)
+    public async Task<int> RunImportTranscodeAsync(string rawFilePath, string title, string? year, string? videoType, string? discType, CancellationToken ct = default)
     {
         // ── 1. Determine the raw directory ──
         var rawDir = File.Exists(rawFilePath)
@@ -276,6 +276,15 @@ public sealed class Conductor(
             logger.LogError("Raw directory {RawDir} does not exist", rawDir);
             return 1;
         }
+
+        // ── 2. Parse disc type ──
+        var parsedDiscType = (discType ?? "").ToLowerInvariant() switch
+        {
+            "dvd" => DiscType.Dvd,
+            "bluray" or "bd" or "blu-ray" => DiscType.Bluray,
+            "uhd" or "4k" => DiscType.Uhd,
+            _ => DiscType.Bluray // safest default for imported MKVs
+        };
 
         // ── 2. Create the job with user-provided metadata ──
         var armSettings = settings.Value;
@@ -290,6 +299,7 @@ public sealed class Conductor(
             YearAuto = year ?? "0000",
             VideoType = videoType ?? "movie",
             VideoTypeAuto = videoType ?? "movie",
+            DiscType = parsedDiscType,
             Label = title,
             ManualStart = true
         };
@@ -367,8 +377,8 @@ public sealed class Conductor(
         job.MarkStageComplete(RipStage.Rip);
         await db.SaveChangesAsync(ct);
 
-        logger.LogInformation("Import job {JobId} created for title \"{Title}\" from raw directory {RawDir}",
-            job.Id, title, rawDir);
+        logger.LogInformation("Import job {JobId} created for title \"{Title}\" ({DiscType}) from raw directory {RawDir}",
+            job.Id, title, parsedDiscType, rawDir);
 
         // ── 4. Set up file logger and run ──
         using var _ = logger.BeginScope(new Dictionary<string, object>
@@ -379,7 +389,7 @@ public sealed class Conductor(
         try
         {
             logger.LogInformation("************* Starting imported transcode *************");
-            logger.LogInformation("Title: {Title} ({Year})", title, year);
+            logger.LogInformation("Title: {Title} ({Year}) — {DiscType}", title, year, parsedDiscType);
             logger.LogInformation("Raw directory: {RawDir}", rawDir);
 
             var directory = await armRipperService.RipVisualMediaAsync(job, job.LogFile ?? "", false, false, ct);
@@ -633,6 +643,7 @@ public sealed class Conductor(
         {
             case DiscType.Dvd:
             case DiscType.Bluray:
+            case DiscType.Uhd:
                 if (await IsCancelledAsync(job, ct))
                     return 1;
                 logger.LogInformation("Disc identified as video. Starting rip.");

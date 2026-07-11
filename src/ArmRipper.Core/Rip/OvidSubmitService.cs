@@ -38,6 +38,7 @@ public sealed class OvidSubmitService(
         {
             DiscType.Dvd => "DVD",
             DiscType.Bluray => "Blu-ray",
+            DiscType.Uhd => "UHD",
             _ => "Unknown"
         };
 

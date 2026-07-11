@@ -10,7 +10,7 @@ public interface IBackgroundRipService
     /// Unlike StartForkedJob, this does not require an existing original job record — the caller
     /// provides the movie metadata directly.
     /// </summary>
-    void StartImportJob(string rawFilePath, string title, string? year, string? videoType, CancellationToken ct = default);
+    void StartImportJob(string rawFilePath, string title, string? year, string? videoType, string? discType, CancellationToken ct = default);
 
     void CancelRip(string devPath);
 

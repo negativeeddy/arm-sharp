@@ -216,7 +216,7 @@ public sealed class ArmRipperService(
         var tracks = await makeMkv.GetTrackInfoWithCacheAsync(job, jobTitle, infoMinLength, ct);
 
         // Encrypted BDs often return 0 tracks from info; rip all titles directly
-        if (tracks.Count == 0 && job.DiscType is DiscType.Bluray or DiscType.Dvd)
+        if (tracks.Count == 0 && job.DiscType is DiscType.Bluray or DiscType.Dvd or DiscType.Uhd)
         {
             job.TransitionToStage(RipStage.Identify);
             GuardStage(job, "identify", "Active/VideoInfo", () => job.Status is JobState.Active or JobState.VideoInfo);
