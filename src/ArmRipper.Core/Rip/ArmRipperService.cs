@@ -186,7 +186,8 @@ public sealed class ArmRipperService(
         if (job.IsStageComplete(RipStage.Rip))
         {
             logger.LogInformation("Stage 'rip' already completed — skipping MakeMKV rip");
-            return makeMkvOutPath;
+            logger.LogInformation("Using job.DevPath as transcode input: {DevPath}", job.DevPath);
+            return job.DevPath;
         }
 
         if (settings.Value.TestMode)

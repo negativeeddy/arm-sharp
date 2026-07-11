@@ -323,7 +323,7 @@ public sealed class Conductor(
             GetVideoTitle = false,
             GetAudioTitle = armSettings.GetAudioTitle,
             AutoEject = false,
-            DelRawFiles = armSettings.DelRawFiles,
+            DelRawFiles = false, // Never auto-delete imported raw files — one-shot import from user
             RawPath = armSettings.RawPath,
             TranscodePath = armSettings.TranscodePath,
             CompletedPath = armSettings.CompletedPath,
