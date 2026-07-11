@@ -259,9 +259,18 @@ public class CompletedController(IOptions<ArmSettings> settings, ArmDbContext db
 
         // If no job ID was provided, try to find one by directory name
         var jobId = originalJobId;
+        var dirName = !string.IsNullOrEmpty(filePath) ? Path.GetFileName(Path.GetDirectoryName(filePath)) : null;
+
+        // Extract a likely movie title from the directory name for search pre-population
+        var dirTitle = "";
+        if (!string.IsNullOrEmpty(dirName))
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(dirName, @"^(.+?) \((\d{4})\)$");
+            dirTitle = match.Success ? match.Groups[1].Value : dirName;
+        }
+
         if (jobId is null or 0)
         {
-            var dirName = Path.GetFileName(Path.GetDirectoryName(filePath));
             if (!string.IsNullOrEmpty(dirName))
             {
                 // Try to parse "Title (Year)" format
@@ -298,7 +307,7 @@ public class CompletedController(IOptions<ArmSettings> settings, ArmDbContext db
             // search results page can offer an "Import & Transcode" action.
             TempData["ImportFilePath"] = filePath;
             TempData["InfoMessage"] = "No matching job found for this file. Search for the movie to create a new import transcode job.";
-            return RedirectToAction("TitleSearch", "Jobs");
+            return RedirectToAction("TitleSearch", "Jobs", new { query = dirTitle });
         }
 
         backgroundRip.StartForkedJob(jobId.Value, filePath, ct);
