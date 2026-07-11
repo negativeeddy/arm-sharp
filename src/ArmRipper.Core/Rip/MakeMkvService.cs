@@ -34,6 +34,25 @@ public partial class MakeMkvService : IMakeMkvService
         _httpClientFactory = httpClientFactory;
     }
 
+    public async Task<string> GetVersionAsync(CancellationToken ct = default)
+    {
+        var result = await _runner.RunAsync("makemkvcon", "--version", timeoutMs: 10_000, ct: ct);
+        var firstLine = result.StdOut
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim())
+            .FirstOrDefault(l => !string.IsNullOrWhiteSpace(l));
+
+        if (!string.IsNullOrWhiteSpace(firstLine))
+            return firstLine;
+
+        firstLine = result.StdErr
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim())
+            .FirstOrDefault(l => !string.IsNullOrWhiteSpace(l));
+
+        return string.IsNullOrWhiteSpace(firstLine) ? "Unknown" : firstLine;
+    }
+
     public async Task EnsureKeyAsync(CancellationToken ct = default)
     {
         var configuredKey = _settings.Value.MakeMkvPermaKey;

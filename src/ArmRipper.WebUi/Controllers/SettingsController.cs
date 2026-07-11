@@ -3,6 +3,7 @@ using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
+using ArmRipper.Core.Rip;
 using ArmRipper.WebUi.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -16,6 +17,8 @@ namespace ArmRipper.WebUi.Controllers;
 public class SettingsController(
     ArmDbContext db,
     ICliProcessRunner runner,
+    IMakeMkvService makeMkvService,
+    IFfmpegService ffmpegService,
     IHardwareEncoderInfoService hardwareEncoderInfoService,
     IOptions<ArmSettings> settings,
     IBackgroundRipService backgroundRip,
@@ -43,6 +46,15 @@ public class SettingsController(
         ViewBag.Hostname = Environment.MachineName;
         ViewBag.OsDesc = RuntimeInformation.OSDescription;
         ViewBag.ProcCount = Environment.ProcessorCount;
+
+        ViewBag.MakeMkvVersion = await GetToolVersionAsync(
+            token => makeMkvService.GetVersionAsync(token),
+            "MakeMKV",
+            ct);
+        ViewBag.FfmpegVersion = await GetToolVersionAsync(
+            token => ffmpegService.GetVersionAsync(token),
+            "FFmpeg",
+            ct);
 
         // Tab persistence: stay on the tab that was active after a save
         ViewBag.ActiveTab = TempData["ActiveTab"] as string ?? "tab3";
@@ -100,6 +112,22 @@ public class SettingsController(
         ViewBag.DiscDbCacheCount = await db.DiscDbMappings.CountAsync(ct);
 
         return View();
+    }
+
+    private async Task<string> GetToolVersionAsync(
+        Func<CancellationToken, Task<string>> getVersion,
+        string toolName,
+        CancellationToken ct)
+    {
+        try
+        {
+            var version = await getVersion(ct);
+            return string.IsNullOrWhiteSpace(version) ? "Unknown" : version;
+        }
+        catch (Exception ex)
+        {
+            return $"Unavailable ({toolName} not found or failed: {ex.Message})";
+        }
     }
 
     [HttpPost("save-ripper")]

@@ -6,6 +6,8 @@
     var armSettings = ViewBag.ArmSettings as ArmRipper.Core.Configuration.ArmSettings;
     var uiSettings = ViewBag.UiSettings as ArmRipper.Core.Models.UiSettings;
     var abcdeConfig = ViewBag.AbcdeConfig as Dictionary<string, string> ?? [];
+    var makeMkvVersion = ViewBag.MakeMkvVersion as string ?? "Unknown";
+    var ffmpegVersion = ViewBag.FfmpegVersion as string ?? "Unknown";
 }
 
 <div id="settingsPage">
@@ -48,6 +50,8 @@
         <h2>General Info</h2>
         <table class="table table-sm">
             <tr><td><strong>ARM Version:</strong></td><td>1.0.0</td></tr>
+            <tr><td><strong>MakeMKV Version:</strong></td><td>@makeMkvVersion</td></tr>
+            <tr><td><strong>FFmpeg Version:</strong></td><td>@ffmpegVersion</td></tr>
             <tr><td><strong>Hostname:</strong></td><td>@ViewBag.Hostname</td></tr>
             <tr><td><strong>OS:</strong></td><td>@ViewBag.OsDesc</td></tr>
             <tr><td><strong>CPU Cores:</strong></td><td>@ViewBag.ProcCount</td></tr>

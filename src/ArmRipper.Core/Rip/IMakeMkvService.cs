@@ -4,6 +4,7 @@ namespace ArmRipper.Core.Rip;
 
 public interface IMakeMkvService
 {
+    Task<string> GetVersionAsync(CancellationToken ct = default);
     Task EnsureKeyAsync(CancellationToken ct = default);
     IAsyncEnumerable<T> RunAsync<T>(string[] options, MakeMkvOutputType select, CancellationToken ct = default);
     /// <param name="infoMinLength">Optional override for the --minlength passed to makemkvcon info.

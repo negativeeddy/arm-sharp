@@ -17,6 +17,30 @@ public sealed partial class FfmpegService(
     ITranscodeSlotLimiter transcodeSlotLimiter) : IFfmpegService
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("FfmpegService");
+
+    public async Task<string> GetVersionAsync(CancellationToken ct = default)
+    {
+        var ffmpegCli = settings.Value.FfmpegCli;
+        if (string.IsNullOrWhiteSpace(ffmpegCli))
+            ffmpegCli = "ffmpeg";
+
+        var result = await runner.RunAsync(ffmpegCli, "-version", timeoutMs: 10_000, ct: ct);
+        var firstLine = result.StdOut
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim())
+            .FirstOrDefault(l => !string.IsNullOrWhiteSpace(l));
+
+        if (!string.IsNullOrWhiteSpace(firstLine))
+            return firstLine;
+
+        firstLine = result.StdErr
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim())
+            .FirstOrDefault(l => !string.IsNullOrWhiteSpace(l));
+
+        return string.IsNullOrWhiteSpace(firstLine) ? "Unknown" : firstLine;
+    }
+
     public async Task<CliResult> TranscodeMkvAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         logger.LogInformation("Starting FFmpeg for MKV files");
