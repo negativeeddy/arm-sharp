@@ -264,7 +264,7 @@ public sealed class Conductor(
     /// Creates a new standalone job from raw MKV files that were ripped elsewhere,
     /// skipping identify and rip stages — jumps straight to transcoding.
     /// </summary>
-    public async Task<int> RunImportTranscodeAsync(string rawFilePath, string title, string? year, string? videoType, string? discType, CancellationToken ct = default)
+    public async Task<Job> CreateImportJobAsync(string rawFilePath, string title, string? year, string? videoType, string? discType, CancellationToken ct = default)
     {
         // ── 1. Determine the raw directory ──
         var rawDir = File.Exists(rawFilePath)
@@ -273,8 +273,7 @@ public sealed class Conductor(
 
         if (!Directory.Exists(rawDir))
         {
-            logger.LogError("Raw directory {RawDir} does not exist", rawDir);
-            return 1;
+            throw new DirectoryNotFoundException($"Raw directory does not exist: {rawDir}");
         }
 
         // ── 2. Parse disc type ──
@@ -286,7 +285,7 @@ public sealed class Conductor(
             _ => DiscType.Bluray // safest default for imported MKVs
         };
 
-        // ── 2. Create the job with user-provided metadata ──
+        // ── 3. Create the job with user-provided metadata ──
         var armSettings = settings.Value;
         var job = new Job
         {
@@ -310,7 +309,7 @@ public sealed class Conductor(
         job.LogFile = $"{job.Id}.log";
         job.TransitionToStage(RipStage.Setup);
 
-        // ── 3. Create config snapshot from current settings ──
+        // ── 4. Create config snapshot from current settings ──
         var config = new ConfigSnapshot
         {
             JobId = job.Id,
@@ -323,7 +322,7 @@ public sealed class Conductor(
             GetVideoTitle = false,
             GetAudioTitle = armSettings.GetAudioTitle,
             AutoEject = false,
-            DelRawFiles = false, // Never auto-delete imported raw files — one-shot import from user
+            DelRawFiles = false, // Never auto-delete imported raw files
             RawPath = armSettings.RawPath,
             TranscodePath = armSettings.TranscodePath,
             CompletedPath = armSettings.CompletedPath,
@@ -380,7 +379,23 @@ public sealed class Conductor(
         logger.LogInformation("Import job {JobId} created for title \"{Title}\" ({DiscType}) from raw directory {RawDir}",
             job.Id, title, parsedDiscType, rawDir);
 
-        // ── 4. Set up file logger and run ──
+        return job;
+    }
+
+    public async Task<int> RunImportTranscodeForJobAsync(int jobId, CancellationToken ct = default)
+    {
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        if (job is null)
+        {
+            logger.LogError("Import job {JobId} not found in DB", jobId);
+            return 1;
+        }
+
+        var title = job.Title ?? "Unknown";
+        var year = job.Year;
+        var discType = job.DiscType.ToString();
+
+        // ── Set up file logger and run ──
         using var _ = logger.BeginScope(new Dictionary<string, object>
         {
             [JobFileLoggerProvider.LogFilePathKey] = job.GetLogFilePath()
@@ -389,8 +404,8 @@ public sealed class Conductor(
         try
         {
             logger.LogInformation("************* Starting imported transcode *************");
-            logger.LogInformation("Title: {Title} ({Year}) — {DiscType}", title, year, parsedDiscType);
-            logger.LogInformation("Raw directory: {RawDir}", rawDir);
+            logger.LogInformation("Title: {Title} ({Year}) — {DiscType}", title, year, discType);
+            logger.LogInformation("Raw directory: {DevPath}", job.DevPath);
 
             var directory = await armRipperService.RipVisualMediaAsync(job, job.LogFile ?? "", false, false, ct);
             job.Path = directory;
@@ -419,6 +434,12 @@ public sealed class Conductor(
             await BroadcastJobUpdateAsync(job);
             return 1;
         }
+    }
+
+    public async Task<int> RunImportTranscodeAsync(string rawFilePath, string title, string? year, string? videoType, string? discType, CancellationToken ct = default)
+    {
+        var job = await CreateImportJobAsync(rawFilePath, title, year, videoType, discType, ct);
+        return await RunImportTranscodeForJobAsync(job.Id, ct);
     }
 
     private void Setup()

@@ -302,12 +302,17 @@ public class CompletedController(IOptions<ArmSettings> settings, ArmDbContext db
 
         if (jobId is null or 0)
         {
-            // No matching original job found — redirect to movie search so the user
-            // can identify it manually. The file path is carried via TempData so the
-            // search results page can offer an "Import & Transcode" action.
-            TempData["ImportFilePath"] = filePath;
-            TempData["InfoMessage"] = "No matching job found for this file. Search for the movie to create a new import transcode job.";
-            return RedirectToAction("TitleSearch", "Jobs", new { query = dirTitle });
+            // No matching original job found — create a standalone import job right now
+            // and go straight to its job detail page.  From there the user can identify
+            // the title using the existing "Search for Title" feature on JobDetail,
+            // just like any other job.  No need to involve the TitleSearch page here.
+            var importTitle = !string.IsNullOrEmpty(dirTitle) ? dirTitle : dirName ?? "Unknown";
+            var importMatch = !string.IsNullOrEmpty(dirName)
+                ? System.Text.RegularExpressions.Regex.Match(dirName, @"^(.+?) \((\d{4})\)$")
+                : null;
+            var importYear = importMatch?.Success == true ? importMatch.Groups[2].Value : null;
+            var newJobId = backgroundRip.StartImportJob(filePath, importTitle, importYear, "movie", "bluray", ct);
+            return RedirectToAction("JobDetail", "Jobs", new { jobId = newJobId });
         }
 
         backgroundRip.StartForkedJob(jobId.Value, filePath, ct);

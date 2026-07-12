@@ -9,8 +9,10 @@ public interface IBackgroundRipService
     /// Starts a standalone import transcode job for raw MKV files that came from another machine.
     /// Unlike StartForkedJob, this does not require an existing original job record — the caller
     /// provides the movie metadata directly.
+    /// Creates the job in the DB synchronously and returns its ID so the caller can redirect
+    /// to the job detail page. The actual transcode runs in the background.
     /// </summary>
-    void StartImportJob(string rawFilePath, string title, string? year, string? videoType, string? discType, CancellationToken ct = default);
+    int StartImportJob(string rawFilePath, string title, string? year, string? videoType, string? discType, CancellationToken ct = default);
 
     void CancelRip(string devPath);
 

@@ -173,16 +173,36 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
         }, cts.Token);
     }
 
-    public void StartImportJob(string rawFilePath, string title, string? year, string? videoType, string? discType, CancellationToken ct = default)
+    public int StartImportJob(string rawFilePath, string title, string? year, string? videoType, string? discType, CancellationToken ct = default)
     {
+        // ── Create the job in the DB synchronously so we can return its ID ──
+        int jobId;
+        using (var scope = scopeFactory.CreateScope())
+        {
+            var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
+            try
+            {
+                var job = conductor.CreateImportJobAsync(rawFilePath, title, year, videoType, discType, ct)
+                    .GetAwaiter().GetResult();
+                jobId = job.Id;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to create import job for \"{Title}\" at {RawPath}", title, rawFilePath);
+                throw;
+            }
+        }
+
+        // ── Start the transcode in the background ──
         var key = $"import-{rawFilePath.GetHashCode()}";
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         if (!_activeRips.TryAdd(key, cts))
         {
             logger.LogWarning("Import transcode already in progress for raw path {RawPath}", rawFilePath);
-            return;
+            return jobId; // Job already created, still return the ID
         }
 
+        var capturedJobId = jobId;
         _ = Task.Run(async () =>
         {
             using var scope = scopeFactory.CreateScope();
@@ -195,17 +215,17 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
                 await WaitForOperationSlotAsync(effectiveSettings.MaxConcurrentRips, cts.Token);
 
                 var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
-                await conductor.RunImportTranscodeAsync(rawFilePath, title, year, videoType, discType, cts.Token);
-                logger.LogInformation("Import transcode completed for \"{Title}\", raw path {RawPath}",
-                    title, rawFilePath);
+                await conductor.RunImportTranscodeForJobAsync(capturedJobId, cts.Token);
+                logger.LogInformation("Import transcode completed for job {JobId} (\"{Title}\")",
+                    capturedJobId, title);
             }
             catch (OperationCanceledException)
             {
-                logger.LogWarning("Import transcode cancelled for \"{Title}\"", title);
+                logger.LogWarning("Import transcode cancelled for job {JobId} (\"{Title}\")", capturedJobId, title);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Import transcode failed for \"{Title}\"", title);
+                logger.LogError(ex, "Import transcode failed for job {JobId} (\"{Title}\")", capturedJobId, title);
             }
             finally
             {
@@ -214,6 +234,8 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
                 cts.Dispose();
             }
         }, cts.Token);
+
+        return jobId;
     }
 
     public void CancelRip(string devPath)

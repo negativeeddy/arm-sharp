@@ -211,12 +211,15 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
 
         // If redirected from the Completed page with an import file path, pass it to the view
         // so search results display an "Import & Transcode" button.
+        // Note: Do NOT call TempData.Keep() here — the value only needs to survive the redirect
+        // from CompletedController.Transcode into this GET.  The form includes filePath as a hidden
+        // field, so ImportFromSearch receives it from the model binder, not from TempData.
+        // Keeping it alive would leak import mode into normal "Search for Title" navigation from
+        // JobDetail, showing "Import & Transcode" instead of "Update Title".
         var importFilePath = TempData["ImportFilePath"] as string;
         if (!string.IsNullOrEmpty(importFilePath))
         {
             ViewBag.ImportFilePath = importFilePath;
-            // Persist for the POST that follows
-            TempData.Keep("ImportFilePath");
         }
 
         if (string.IsNullOrWhiteSpace(query))
