@@ -704,7 +704,12 @@ public sealed partial class IdentifyService(
 
             // Only set title if not already populated by an authoritative source (DiscDb/OVID)
             if (string.IsNullOrEmpty(job.TitleAuto))
+            {
                 job.Title = job.TitleAuto = title;
+                // BD-MT XML is studio-provided disc metadata — authoritative enough
+                // to treat as a "nice" title.
+                job.HasNiceTitle = true;
+            }
 
             if (string.IsNullOrEmpty(job.YearAuto))
                 job.Year = job.YearAuto = year;

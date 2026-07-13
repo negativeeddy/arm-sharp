@@ -321,6 +321,24 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
         return RedirectToAction("Index", "Home");
     }
 
+    [HttpPost("approve-title")]
+    public async Task<IActionResult> ApproveTitle(int jobId, string? returnUrl = null, CancellationToken ct = default)
+    {
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        if (job is null)
+            return NotFound();
+
+        job.HasNiceTitle = true;
+        await db.SaveChangesAsync(ct);
+
+        AppendToJobLog(job, "Title approved by user");
+
+        if (!string.IsNullOrEmpty(returnUrl))
+            return Redirect(returnUrl);
+
+        return RedirectToAction("JobDetail", new { jobId });
+    }
+
     [HttpPost("continue-wait")]
     public async Task<IActionResult> ContinueWait(int jobId, CancellationToken ct = default)
     {
