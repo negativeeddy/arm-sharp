@@ -20,12 +20,12 @@ ARM currently handles 1080p Blu-ray and DVD encoding with different presets. Thi
 ```yaml
 # arm.yaml settings for 4K
 USE_FFMPEG: true
-FFMPEG_POST_FILE_ARGS: "-fflags +genpts -c:v copy -c:a ac3 -b:a 640k -c:s copy -map 0"
+FFMPEG_POST_FILE_ARGS: "-fflags +genpts -map 0:v -map 0:a:m:eng -map 0:s -c:v copy -c:a copy -c:s copy"
 ```
 
 **Characteristics:**
 - Video: Lossless copy (zero generation loss)
-- Audio: AC3 5.1 640kbps (ffmpeg preserves AC3 as specified). For lossless passthrough, use `-c:a copy` instead
+- Audio: Lossless copy (TrueHD/Atmos, DTS-HD MA, AC3 fallback, AAC). English tracks only (`-map 0:a:m:eng`). All PGS subs preserved. Jellyfin transcodes to AAC when client cannot play original.
 - HDR: 100% preserved (HDR10, HDR10+, Dolby Vision)
 - File size: ~25-70 GB (matches source)
 - Time: ~5-10 minutes per disc
@@ -34,6 +34,7 @@ FFMPEG_POST_FILE_ARGS: "-fflags +genpts -c:v copy -c:a ac3 -b:a 640k -c:s copy -
 **Pros:**
 - Maximum quality
 - HDR metadata intact
+- English audio preserved (TrueHD/Atmos, DTS-HD MA, AC3, AAC) + all PGS subs
 - Fast processing
 - No GPU encoding required
 
@@ -111,6 +112,7 @@ DELRAWFILES: false
 - Xbox One X with Jellyfin app: Full 4K HDR/HEVC support (since v0.9.3)
 - Web players: Inconsistent HDR support, often force transcoding
 - Server-side tonemapping: Handles non-HDR clients automatically
+- AC3 has issues on Xbox (Jellyfin transcodes to AAC for HLS) — passthrough avoids this by keeping original codec
 
 ## Size Expectations
 
@@ -164,7 +166,7 @@ SDR_TONEMAP_4K: false
 - [ ] 4K disc → SDR tonemap → web player direct play
 - [ ] Duration match: output within 2% of source
 - [ ] HDR metadata preserved (MaxCLL/MaxFALL)
-- [ ] Audio tracks preserved (TrueHD/Atmos passthrough or AC3)
+- [ ] Audio tracks preserved (TrueHD/Atmos, DTS-HD MA, AC3, AAC)
 - [ ] Subtitle tracks preserved (PGS)
 - [ ] File size within expected range
 
