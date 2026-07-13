@@ -1,0 +1,88 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "command": "dotnet",
+            "type": "shell",
+            "args": [
+                "build",
+                "${workspaceFolder}/ArmRipper.slnx",
+                "-c",
+                "Debug"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$msCompile"
+        },
+        {
+            "label": "docker-debug-up",
+            "detail": "Builds & starts the debug container (app runs immediately). Then F5 → Attach to Docker.",
+            "command": "docker",
+            "type": "shell",
+            "args": [
+                "compose",
+                "-f", "docker-compose.yml",
+                "-f", "docker-compose.debug.yml",
+                "up",
+                "-d",
+                "--build"
+            ],
+            "isBackground": false,
+            "problemMatcher": []
+        },
+        {
+            "label": "docker-debug-down",
+            "detail": "Stops and removes the debug container.",
+            "command": "docker",
+            "type": "shell",
+            "args": [
+                "compose",
+                "-f", "docker-compose.yml",
+                "-f", "docker-compose.debug.yml",
+                "down"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "docker-prod-up",
+            "detail": "Starts the production container. Port 8080 stays open even after closing VS Code.",
+            "command": "docker",
+            "type": "shell",
+            "args": [
+                "compose",
+                "up",
+                "-d",
+                "--build"
+            ],
+            "isBackground": false,
+            "problemMatcher": []
+        },
+        {
+            "label": "docker-prod-down",
+            "command": "docker",
+            "type": "shell",
+            "args": [
+                "compose",
+                "down"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "watch",
+            "command": "dotnet",
+            "type": "shell",
+            "args": [
+                "watch",
+                "run",
+                "--project",
+                "${workspaceFolder}/src/ArmRipper.WebUi",
+                "--no-hot-reload"
+            ],
+            "isBackground": true,
+            "problemMatcher": "$msCompile"
+        }
+    ]
+}

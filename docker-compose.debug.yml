@@ -1,0 +1,37 @@
+# arm-sharp — Debug Docker Compose override
+#
+# Extends docker-compose.yml for F5 debugging.
+# The debug container has the .NET SDK + vsdbg and mounts the
+# workspace so you can attach VS Code's debugger.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d
+#   docker compose -f docker-compose.yml -f docker-compose.debug.yml down
+#
+# Then in VS Code: Run → "Web UI (Docker Attach)"
+
+services:
+  arm-sharp:
+    build:
+      target: debug
+      args:
+        CONFIG: Debug
+        DEBUG_TOOLS: "true"
+    container_name: arm-sharp-debug
+    command: dev
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount workspace for dotnet run + live source access
+      - .:/src
+      # Keep config / media dirs from production compose
+      - /dev/sr0:/dev/sr0
+      - /opt/arm/media:/home/arm/media
+      - /opt/arm/logs:/home/arm/logs
+      - /etc/arm/config:/etc/arm/config
+    environment:
+      TZ: America/Chicago
+      ARM_UID: "1001"
+      ARM_GID: "1001"
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080

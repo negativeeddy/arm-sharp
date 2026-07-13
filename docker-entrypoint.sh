@@ -28,6 +28,16 @@ case "${1:-}" in
     webui)
         exec /app/webui/ArmRipper.WebUi
         ;;
+    dev)
+        # Debug mode: restore, build, and run with dotnet run so
+        # vsdbg can attach.  Workspace is mounted at /src.
+        echo "==> Restoring packages..."
+        dotnet restore /src/ArmRipper.slnx
+        echo "==> Building (Debug)..."
+        dotnet build /src/ArmRipper.slnx -c Debug --no-restore
+        echo "==> Starting Web UI (dotnet run)..."
+        exec dotnet run --project /src/src/ArmRipper.WebUi --no-launch-profile --no-build
+        ;;
     *)
         exec /app/webui/ArmRipper.WebUi
         ;;

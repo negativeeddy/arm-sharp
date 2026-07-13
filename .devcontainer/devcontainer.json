@@ -4,6 +4,12 @@
     "features": {
         "ghcr.io/devcontainers/features/docker-in-docker:2": {}
     },
+    // Mount the host's Docker socket so containers started from inside
+    // the devcontainer (via docker compose) bind ports directly on the
+    // host.  This keeps port 8080 accessible even when VS Code is detached.
+    "mounts": [
+        "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+    ],
     "forwardPorts": [
         8080
     ],
