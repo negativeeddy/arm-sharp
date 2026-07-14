@@ -5,8 +5,9 @@
 ARM currently handles 1080p Blu-ray and DVD encoding with different presets. This plan defines 4K UHD Blu-ray support, including HDR handling and client compatibility.
 
 ## Hardware Context
+- **Jellyfin Server GPU:** AMD Radeon 780M (RDNA 3, integrated) — hardware transcoding via VCN, HDR→SDR tone mapping supported
 
-- **GPU:** GTX 1060 6GB (Pascal, CC 6.1)
+- **ARM Encoding GPU:** GTX 1060 6GB (Pascal, CC 6.1)
 - **NVENC:** HEVC 8-bit only, no 10-bit, no B-frames
 - **NVDEC:** Hardware decode for all formats including 4K HEVC 10-bit
 - **Constraint:** Cannot encode 10-bit HDR natively with NVENC
