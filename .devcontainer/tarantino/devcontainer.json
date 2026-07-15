@@ -7,6 +7,7 @@
     "runArgs": [
         "--privileged",
         "--gpus", "all",
+        "-p", "8081:8080",
         "--cpuset-cpus", "1-5",
         "--cpu-shares", "128",
         "-v", "/mnt/docker/arm-sharp/home:/home/arm",
