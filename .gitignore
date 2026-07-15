@@ -488,3 +488,4 @@ src/ArmRipper.WebUi/data/
 coverage/
 coverage-report/
 samples/
+run.sh
