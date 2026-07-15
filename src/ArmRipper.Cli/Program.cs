@@ -116,6 +116,12 @@ builder.Services.AddLogging(logging => logging.AddConsole());
 
 var host = builder.Build();
 
+// Non-job-scoped logs (BackgroundRipService, DiscPollingService, etc.)
+// are written to a general ARM log file instead of being silently discarded.
+var armSettings = host.Services.GetRequiredService<IOptions<ArmSettings>>().Value;
+fileLogProvider.FallbackFilePath = Path.Combine(
+    armSettings.LogPath ?? ArmPaths.DefaultLogPath, "arm.log");
+
 var dbPath = connectionString;
 var dbFile = dbPath.Replace("Data Source=", "").Split(';')[0];
 var dbDir = Path.GetDirectoryName(dbFile);

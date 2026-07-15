@@ -1,0 +1,1 @@
+dotnet run --project src/ArmRipper.WebUi/ArmRipper.WebUi.csproj 

@@ -27,6 +27,13 @@ public sealed class JobFileLoggerProvider : ILoggerProvider, ISupportExternalSco
     /// <summary>Scope key used to pass the log file path. Use with logger.BeginScope().</summary>
     public const string LogFilePathKey = "LogFilePath";
 
+    /// <summary>
+    /// Optional fallback log file path for messages logged outside of any job scope.
+    /// When set, non-job-scoped logs (e.g. from BackgroundRipService, DiscPollingService)
+    /// are written here instead of being silently discarded.
+    /// </summary>
+    public string? FallbackFilePath { get; set; }
+
     internal StreamWriter GetWriter(string filePath)
     {
         return _writers.GetOrAdd(filePath, p =>
@@ -99,6 +106,8 @@ internal sealed class JobFileLogger : ILogger
             }
         }, null);
 
+        // No per-job scope found — fall back to the general ARM log file if configured
+        filePath ??= _provider.FallbackFilePath;
         if (filePath is null) return;
 
         var writer = _provider.GetWriter(filePath);

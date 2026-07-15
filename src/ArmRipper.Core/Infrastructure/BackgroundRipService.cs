@@ -17,10 +17,8 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
     private readonly IOptions<ArmSettings> _settings = settings;
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeRips = new();
     private readonly ConcurrentDictionary<string, DateTime> _ejectCooldowns = new();
-    private readonly SemaphoreSlim _operationLock = new(1, 1);
-    private int _activeOperationCount = 0;
 
-    public void StartRip(string devPath, CancellationToken ct = default)
+    public StartRipResult StartRip(string devPath, CancellationToken ct = default)
     {
         // ── Eject cooldown: don't start a new rip on a device that just finished ──
         // The eject command runs after the rip completes and can take 15–30 s.
@@ -31,10 +29,9 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
         {
             if (DateTime.UtcNow < cooledUntil)
             {
-                logger.LogInformation(
-                    "Skipping rip for {DevPath} — still in eject cooldown ({Remaining:F0}s remaining)",
-                    devPath, (cooledUntil - DateTime.UtcNow).TotalSeconds);
-                return;
+                var cooldownMsg = $"Skipping rip for {devPath} — still in eject cooldown ({(cooledUntil - DateTime.UtcNow).TotalSeconds:F0}s remaining)";
+                logger.LogInformation("{Message}", cooldownMsg);
+                return StartRipResult.Rejected(cooldownMsg);
             }
             _ejectCooldowns.TryRemove(devPath, out _);
         }
@@ -48,15 +45,18 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
             if (!IsAnyJobRippingOnDevPath(devPath))
             {
                 logger.LogInformation(
-                    "Existing pipeline for {DevPath} is in transcode or other non-ripping state; " +
-                    "replacing entry to allow a new rip", devPath);
+                    "Existing pipeline for {DevPath} is past the rip phase (e.g. transcoding); " +
+                    "the drive is available — replacing entry to allow a new rip on this drive", devPath);
                 _activeRips.TryRemove(devPath, out _);
                 if (_activeRips.TryAdd(devPath, cts))
                     goto start;
             }
 
-            logger.LogWarning("Rip already in progress for {DevPath}", devPath);
-            return;
+            logger.LogError(
+                "Cannot start rip on {DevPath} — the drive is currently busy ripping another disc. " +
+                "Only one rip per drive is allowed. The new rip request has been rejected (not queued). " +
+                "Wait for the current rip to finish before starting a new one on this drive.", devPath);
+            return StartRipResult.DriveBusy(devPath);
         }
 
     start:
@@ -94,12 +94,7 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
                     return;
                 }
 
-                // ── Acquire concurrency slot ──────────────────────
-                // The slot is released in the finally block below so
-                // it's guaranteed to be freed even if the conductor or
-                // its dependency resolution throws.
                 var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-                await WaitForOperationSlotAsync(effectiveSettings.MaxConcurrentRips, cts.Token);
 
                 var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
                 await conductor.RunAsync(devPath, cts.Token);
@@ -115,7 +110,6 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
             }
             finally
             {
-                ReleaseOperationSlot();
                 _activeRips.TryRemove(devPath, out _);
 
                 // Enter eject cooldown so the monitor doesn't re-trigger a rip
@@ -128,6 +122,8 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
                 cts.Dispose();
             }
         }, cts.Token);
+
+        return StartRipResult.Accepted;
     }
 
     public void StartForkedJob(int originalJobId, string rawFilePath, CancellationToken ct = default)
@@ -148,9 +144,6 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
                 var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
                 var effectiveSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, _settings.Value, cts.Token);
 
-                // ── Acquire concurrency slot ──────────────────────
-                await WaitForOperationSlotAsync(effectiveSettings.MaxConcurrentRips, cts.Token);
-
                 var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
                 await conductor.RunForkedTranscodeAsync(originalJobId, rawFilePath, cts.Token);
                 logger.LogInformation("Forked transcode completed for job {OriginalJobId}, raw path {RawPath}",
@@ -166,7 +159,6 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
             }
             finally
             {
-                ReleaseOperationSlot();
                 _activeRips.TryRemove(key, out _);
                 cts.Dispose();
             }
@@ -211,9 +203,6 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
                 var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
                 var effectiveSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, _settings.Value, cts.Token);
 
-                // ── Acquire concurrency slot ──────────────────────
-                await WaitForOperationSlotAsync(effectiveSettings.MaxConcurrentRips, cts.Token);
-
                 var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
                 await conductor.RunImportTranscodeForJobAsync(capturedJobId, cts.Token);
                 logger.LogInformation("Import transcode completed for job {JobId} (\"{Title}\")",
@@ -229,7 +218,6 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
             }
             finally
             {
-                ReleaseOperationSlot();
                 _activeRips.TryRemove(key, out _);
                 cts.Dispose();
             }
@@ -323,50 +311,5 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
         }
     }
 
-    /// <summary>
-    /// Waits until the number of active operations is below <paramref name="maxConcurrent"/>,
-    /// then increments the counter and returns. Uses the effective MaxConcurrentRips
-    /// setting read from the DB at runtime so that user changes via the UI are respected
-    /// immediately without requiring an app restart.
-    /// </summary>
-    private async Task WaitForOperationSlotAsync(int maxConcurrent, CancellationToken ct)
-    {
-        while (true)
-        {
-            ct.ThrowIfCancellationRequested();
 
-            await _operationLock.WaitAsync(ct);
-            try
-            {
-                if (_activeOperationCount < maxConcurrent)
-                {
-                    _activeOperationCount++;
-                    return;
-                }
-            }
-            finally
-            {
-                _operationLock.Release();
-            }
-
-            // All slots are busy — wait a short moment before retrying
-            await Task.Delay(250, ct);
-        }
-    }
-
-    /// <summary>
-    /// Decrements the active operation counter.  Safe to call even if no slot
-    /// was acquired (the counter is clamped to never go negative).
-    /// </summary>
-    private void ReleaseOperationSlot()
-    {
-        var newCount = Interlocked.Decrement(ref _activeOperationCount);
-        if (newCount < 0)
-        {
-            // Defensive: clamp to 0.  This can happen if the finally
-            // block fires after an early return that never acquired a slot
-            // (e.g. IsMediaPresent check).
-            Interlocked.Exchange(ref _activeOperationCount, 0);
-        }
-    }
 }

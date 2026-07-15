@@ -5,6 +5,16 @@
 
 <h1>Log Files</h1>
 
+<div class="card mb-4 border-info">
+    <div class="card-body py-2">
+        <strong>System Log:</strong>
+        <a href="/logs/view?file=arm.log&mode=tail" class="btn btn-sm btn-outline-info ml-2">tail</a>
+        <a href="/logs/view?file=arm.log&mode=full" class="btn btn-sm btn-outline-secondary">full</a>
+        <a href="/logs/download?file=arm.log" class="btn btn-sm btn-outline-success">download</a>
+        <span class="text-muted small ml-2">(general ARM system logs — BackgroundRipService, DiscPollingService, etc.)</span>
+    </div>
+</div>
+
 @if (!Model.Any())
 {
     <div class="alert alert-info">No log files found in the log directory.</div>

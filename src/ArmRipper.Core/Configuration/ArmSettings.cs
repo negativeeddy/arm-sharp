@@ -77,8 +77,12 @@ public class ArmSettings
     public int? EmbyPort { get; set; }
     public string? EmbyApiKey { get; set; }
 
-    public int MaxConcurrentRips { get; set; } = 1;
-    public int MaxConcurrentTranscodes { get; set; }
+    /// <summary>
+    /// Maximum number of simultaneous transcode processes.
+    /// Default: 1 (serialized) — parallel transcodes rarely gain time and
+    /// serializing makes logs easier to debug.
+    /// </summary>
+    public int MaxConcurrentTranscodes { get; set; } = 1;
     public int MaxConcurrentMakemkvInfo { get; set; }
 
     public string? MakeMkvPermaKey { get; set; }

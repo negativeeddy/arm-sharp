@@ -133,7 +133,7 @@ public class SettingsController(
     [HttpPost("save-ripper")]
     public async Task<IActionResult> SaveRipper(
         string? RipMethod, string? MkvArgs, int? MinLength, int? MaxLength,
-        int? MaxConcurrentRips, int? EjectCooldownSeconds,
+        int? EjectCooldownSeconds,
         CancellationToken ct = default)
     {
         // Read checkboxes from raw form values — the hidden-false trick sends
@@ -150,7 +150,6 @@ public class SettingsController(
             ["MkvArgs"] = MkvArgs is not null ? JsonSerialize(MkvArgs) : null,
             ["MinLength"] = JsonSerialize(MinLength ?? 300),
             ["MaxLength"] = JsonSerialize(MaxLength ?? 99999),
-            ["MaxConcurrentRips"] = JsonSerialize(MaxConcurrentRips ?? 1),
             ["EjectCooldownSeconds"] = JsonSerialize(EjectCooldownSeconds ?? 15),
             ["MainFeature"] = JsonSerialize(MainFeature),
             ["AutoEject"] = JsonSerialize(AutoEject),
@@ -364,7 +363,13 @@ public class SettingsController(
         // Record the max existing job ID before starting, so we can find the new one
         var maxIdBefore = await db.Jobs.MaxAsync(j => (int?)j.Id, ct) ?? 0;
 
-        backgroundRip.StartRip(devPath);
+        var result = backgroundRip.StartRip(devPath);
+
+        if (result.IsRejected)
+        {
+            SetError(result.RejectionReason!);
+            return fallback;
+        }
 
         // Poll for the new job to appear in DB (up to 5 seconds)
         for (var i = 0; i < 20; i++)

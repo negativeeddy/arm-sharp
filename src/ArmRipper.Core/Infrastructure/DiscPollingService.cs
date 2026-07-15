@@ -385,8 +385,28 @@ public sealed class DiscPollingService(
 
             // ── Start the rip ──
             var ripService = scope.ServiceProvider.GetRequiredService<IBackgroundRipService>();
-            ripService.StartRip(devPath);
-            _logger.LogInformation("Rip initiated for {DevPath}", devPath);
+            var ripResult = ripService.StartRip(devPath);
+            if (ripResult.IsRejected)
+            {
+                _logger.LogWarning("Rip rejected for {DevPath}: {Reason}", devPath, ripResult.RejectionReason);
+                try
+                {
+                    await broadcaster.BroadcastAsync(new Notification
+                    {
+                        EventType = "rip_rejected",
+                        Message = ripResult.RejectionReason!,
+                        Timestamp = DateTime.UtcNow,
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to broadcast rip-rejected notification");
+                }
+            }
+            else
+            {
+                _logger.LogInformation("Rip initiated for {DevPath}", devPath);
+            }
         }
         catch (Exception ex)
         {
