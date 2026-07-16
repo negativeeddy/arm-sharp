@@ -10,6 +10,7 @@ public record OvidSubmitResult
     public bool Success { get; init; }
     public string? Message { get; init; }
     public int? JobId { get; init; }
+    public string? Title { get; init; }
 
     /// <summary>
     /// Categorises the result for UI display:

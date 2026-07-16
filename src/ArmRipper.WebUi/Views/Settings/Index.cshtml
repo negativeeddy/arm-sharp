@@ -693,9 +693,9 @@
                                 : r.status === "already_exists" ? "Already in the database"
                                 : r.status === "skipped" ? "Already submitted locally"
                                 : r.message || "Submission failed";
-                            html += "<div class='d-inline-block mr-2 mb-1' title=''>" +
+                            html += "<div class='mb-1'>" +
                                 "<span class='" + color + "' data-toggle='tooltip' title='" + escHtml(tipTitle) + "'>" + icon + "</span>" +
-                                " Job #" + r.jobId + "</div>";
+                                " Job #" + r.jobId + " — " + escHtml(r.title) + "</div>";
                         });
                         results.innerHTML = html;
                         $('[data-toggle="tooltip"]').tooltip();
@@ -773,9 +773,9 @@
                                 : r.status === "already_exists" ? "Already in the OVID database"
                                 : r.status === "skipped" ? "Already submitted locally"
                                 : r.message || "Submission failed";
-                            html += "<div class='d-inline-block mr-2 mb-1' title=''>" +
+                            html += "<div class='mb-1'>" +
                                 "<span class='" + color + "' data-toggle='tooltip' title='" + escHtml(tipTitle) + "'>" + icon + "</span>" +
-                                " Job #" + r.jobId + "</div>";
+                                " Job #" + r.jobId + " — " + escHtml(r.title) + "</div>";
                         });
                         results.innerHTML = html;
                         $('[data-toggle="tooltip"]').tooltip();
