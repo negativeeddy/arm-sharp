@@ -307,7 +307,8 @@ public partial class ApiController(
                 r.Success,
                 r.Message,
                 r.Status,
-                r.JobId
+                r.JobId,
+                r.Title
             })
         });
     }
@@ -353,7 +354,8 @@ public partial class ApiController(
                 r.Success,
                 r.Message,
                 r.Status,
-                r.JobId
+                r.JobId,
+                r.Title
             })
         });
     }

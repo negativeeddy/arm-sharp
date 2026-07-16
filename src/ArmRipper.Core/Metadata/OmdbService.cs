@@ -7,8 +7,11 @@ namespace ArmRipper.Core.Metadata;
 public sealed class OmdbService(ILoggerFactory loggerFactory, HttpClient httpClient)
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("OmdbService");
-    public async Task<OmdbSearchResult?> SearchAsync(string apiKey, string title, string? year = null, string? plot = "short", CancellationToken ct = default)
+    public async Task<OmdbSearchResult?> SearchAsync(string apiKey, string title, string? year = null, string? plot = "short", bool exact = false, CancellationToken ct = default)
     {
+        if (exact)
+            return await SearchExactAsync(apiKey, title, year, plot, ct);
+
         var url = $"https://www.omdbapi.com/?s={Uri.EscapeDataString(title)}&plot={plot}&r=json&apikey={apiKey}";
         if (!string.IsNullOrEmpty(year))
             url = $"https://www.omdbapi.com/?s={Uri.EscapeDataString(title)}&y={Uri.EscapeDataString(year)}&plot={plot}&r=json&apikey={apiKey}";
@@ -19,13 +22,55 @@ public sealed class OmdbService(ILoggerFactory loggerFactory, HttpClient httpCli
             if (result is not null && result.Response == "True")
                 return result;
 
-            return null;
+            // Return the result even on error so callers can read the Error property
+            return result;
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "OMDB API call failed for title={Title}", title);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Looks up a single title using the OMDB exact-title endpoint (t=).
+    /// Returns the result wrapped as an <see cref="OmdbSearchResult"/> with a single item,
+    /// or null if the lookup fails.
+    /// </summary>
+    private async Task<OmdbSearchResult?> SearchExactAsync(string apiKey, string title, string? year, string? plot, CancellationToken ct)
+    {
+        var exactUrl = $"https://www.omdbapi.com/?t={Uri.EscapeDataString(title)}&plot={plot}&r=json&apikey={apiKey}";
+        if (!string.IsNullOrEmpty(year))
+            exactUrl += $"&y={Uri.EscapeDataString(year)}";
+
+        try
+        {
+            var exact = await httpClient.GetFromJsonAsync<OmdbTitleResult>(exactUrl, ct);
+            if (exact is not null && exact.Response == "True")
+            {
+                return new OmdbSearchResult
+                {
+                    Response = "True",
+                    Search =
+                    [
+                        new OmdbSearchItem
+                        {
+                            Title = exact.Title,
+                            Year = exact.Year,
+                            ImdbID = exact.ImdbID,
+                            Type = exact.Type,
+                            Poster = exact.Poster
+                        }
+                    ]
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "OMDB exact title lookup failed for title={Title}", title);
+        }
+
+        return null;
     }
 
     public async Task<OmdbTitleResult?> LookupByImdbAsync(string imdbId, string apiKey, string? plot = "short", CancellationToken ct = default)
@@ -53,7 +98,7 @@ public sealed class OmdbService(ILoggerFactory loggerFactory, HttpClient httpCli
 
         if (!string.IsNullOrEmpty(title))
         {
-            var searchResult = await SearchAsync(apiKey, title, year, plot, ct);
+            var searchResult = await SearchAsync(apiKey, title, year, plot, ct: ct);
             if (searchResult?.Search is { Count: > 0 })
             {
                 var first = searchResult.Search[0];

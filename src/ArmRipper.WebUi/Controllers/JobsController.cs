@@ -208,13 +208,14 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
     }
 
     [HttpGet("titlesearch")]
-    public async Task<IActionResult> TitleSearch(string query, int? jobId, CancellationToken ct = default)
+    public async Task<IActionResult> TitleSearch(string query, int? jobId, bool exact = false, CancellationToken ct = default)
     {
         ViewBag.Jobs = await db.Jobs
             .OrderByDescending(j => j.StartTime)
             .Take(20)
             .ToListAsync(ct);
         ViewBag.SelectedJobId = jobId;
+        ViewBag.ExactMatch = exact;
 
         // If redirected from the Completed page with an import file path, pass it to the view
         // so search results display an "Import & Transcode" button.
@@ -235,9 +236,12 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
         var apiKey = settings.Value.OmdbApiKey;
         if (!string.IsNullOrEmpty(apiKey))
         {
-            var result = await omdb.SearchAsync(apiKey, query);
+            var result = await omdb.SearchAsync(apiKey, query, exact: exact, ct: ct);
             if (result?.Search is { Count: > 0 })
                 return View(result.Search);
+
+            if (!string.IsNullOrEmpty(result?.Error))
+                ViewBag.ApiError = result.Error;
         }
 
         return View(Array.Empty<OmdbSearchItem>());

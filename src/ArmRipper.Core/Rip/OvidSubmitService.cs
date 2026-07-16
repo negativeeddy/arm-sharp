@@ -23,7 +23,7 @@ public sealed class OvidSubmitService(
         if (job.OvidSubmitted)
         {
             logger.LogInformation("Job {JobId} already submitted to OVID, skipping", job.Id);
-            return new OvidSubmitResult { Success = true, JobId = job.Id, Message = "Already submitted", Status = "skipped" };
+            return new OvidSubmitResult { Success = true, JobId = job.Id, Title = job.Title, Message = "Already submitted", Status = "skipped" };
         }
 
         // Validate we have what we need
@@ -31,7 +31,7 @@ public sealed class OvidSubmitService(
         {
             var msg = $"Job {job.Id} has no OVID fingerprint, cannot submit";
             logger.LogWarning(msg);
-            return new OvidSubmitResult { Success = false, JobId = job.Id, Message = msg, Status = "failed" };
+            return new OvidSubmitResult { Success = false, JobId = job.Id, Title = job.Title, Message = msg, Status = "failed" };
         }
 
         var format = job.DiscType switch
@@ -71,6 +71,7 @@ public sealed class OvidSubmitService(
                 {
                     Success = true,
                     JobId = job.Id,
+                    Title = job.Title,
                     Message = status switch
                     {
                         "registered" => "Fingerprint registered",
@@ -82,12 +83,12 @@ public sealed class OvidSubmitService(
             }
 
             logger.LogWarning("OVID submission failed for job {JobId}: {Message}", job.Id, message);
-            return new OvidSubmitResult { Success = false, JobId = job.Id, Message = message, Status = "failed" };
+            return new OvidSubmitResult { Success = false, JobId = job.Id, Title = job.Title, Message = message, Status = "failed" };
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error submitting OVID fingerprint for job {JobId}", job.Id);
-            return new OvidSubmitResult { Success = false, JobId = job.Id, Message = ex.Message, Status = "failed" };
+            return new OvidSubmitResult { Success = false, JobId = job.Id, Title = job.Title, Message = ex.Message, Status = "failed" };
         }
     }
 
