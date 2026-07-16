@@ -577,6 +577,19 @@ public sealed class Conductor(
         await db.SaveChangesAsync(ct);
         await identifyService.IdentifyAsync(job, ct);
 
+        // ── Identification determined this job should not proceed? ──
+        // DetectTrack99Async may have set job.Status = Failure (e.g. track 99
+        // detected with PREVENT_99 enabled).  Check *now* before the manual
+        // wait block (which defaults to true) overwrites the status.
+        if (job.Status == JobState.Failure)
+        {
+            job.MarkStageComplete(RipStage.Identify);
+            await db.SaveChangesAsync(ct);
+            await BroadcastJobUpdateAsync(job);
+            logger.LogError("Job {JobId} failed during identification: {Errors}", job.Id, job.Errors);
+            return 1;
+        }
+
         job.MarkStageComplete(RipStage.Identify);
         await db.SaveChangesAsync(ct);
         await BroadcastJobUpdateAsync(job);
@@ -588,8 +601,30 @@ public sealed class Conductor(
         var haveDupes = await JobDupeCheckAsync(job, ct);
         logger.LogDebug("Value of have_dupes: {HaveDupes}", haveDupes);
 
-        // Manual wait for title identification
+        // ── Duplicate disc: skip the rip entirely ──
+        // If this disc (identified by Label) has already been successfully ripped
+        // and AllowDuplicates is false, cleanly skip re-ripping to prevent the
+        // auto-detect loop: disc finishes → ejects → tray closes → disc detected
+        // → would start ripping again.
         var cfg = job.Config ?? db.ConfigSnapshots.FirstOrDefault(c => c.JobId == job.Id);
+        var allowDupes = cfg?.AllowDuplicates ?? settings.Value.AllowDuplicates;
+        if (haveDupes && !allowDupes)
+        {
+            logger.LogInformation(
+                "Disc '{Label}' (job {JobId}) has already been ripped successfully. " +
+                "AllowDuplicates is disabled — marking job as completed without re-ripping.",
+                job.Label, job.Id);
+            job.Status = JobState.Success;
+            job.StopTime = DateTime.UtcNow;
+            job.ProgressMessage = $"Duplicate disc skipped — previously ripped as \"{job.Title}\"";
+            job.Path = job.Label;
+            await db.SaveChangesAsync(ct);
+            await BroadcastJobUpdateAsync(job);
+            fileLogProvider.RemoveWriter(job.GetLogFilePath());
+            return 0;
+        }
+
+        // Manual wait for title identification
         if (cfg is { ManualWait: true } && string.IsNullOrEmpty(job.TitleManual) && !string.IsNullOrEmpty(job.Label))
         {
             var waitTime = cfg.ManualWaitTime > 0 ? cfg.ManualWaitTime : 60;

@@ -143,6 +143,7 @@ public class SettingsController(
         bool AutoEject = Request.Form["AutoEject"].Contains("true");
         bool DiscPollingEnabled = Request.Form["DiscPollingEnabled"].Contains("true");
         bool FileBotNonStrict = Request.Form["FileBotNonStrict"].Contains("true");
+        bool AllowDuplicates = Request.Form["AllowDuplicates"].Contains("true");
 
         var fields = new Dictionary<string, string?>
         {
@@ -155,6 +156,7 @@ public class SettingsController(
             ["AutoEject"] = JsonSerialize(AutoEject),
             ["DiscPollingEnabled"] = JsonSerialize(DiscPollingEnabled),
             ["FileBotNonStrict"] = JsonSerialize(FileBotNonStrict),
+            ["AllowDuplicates"] = JsonSerialize(AllowDuplicates),
         };
 
         await SettingsHelper.MergeIntoDbAsync(db, fields, ct);
