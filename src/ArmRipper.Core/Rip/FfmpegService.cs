@@ -16,7 +16,7 @@ public sealed partial class FfmpegService(
     IOptions<ArmSettings> settings,
     ITranscodeSlotLimiter transcodeSlotLimiter) : IFfmpegService
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("FfmpegService");
+    private readonly ILogger logger = loggerFactory.CreateLogger(nameof(FfmpegService));
 
     public async Task<string> GetVersionAsync(CancellationToken ct = default)
     {

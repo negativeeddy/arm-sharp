@@ -16,7 +16,7 @@ public sealed partial class MusicBrainzService(
     IOptions<ArmSettings> settings,
     HttpClient httpClient) : IMusicBrainzService
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("MusicBrainzService");
+    private readonly ILogger logger = loggerFactory.CreateLogger(nameof(MusicBrainzService));
     public async Task<string> IdentifyAsync(Job job, CancellationToken ct = default)
     {
         var discId = await GetDiscIdAsync(job.DevPath!, ct);

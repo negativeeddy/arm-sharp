@@ -15,7 +15,7 @@ public sealed partial class HandBrakeService(
     IOptions<ArmSettings> settings,
     ITranscodeSlotLimiter transcodeSlotLimiter) : IHandBrakeService
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("HandBrakeService");
+    private readonly ILogger logger = loggerFactory.CreateLogger(nameof(HandBrakeService));
     public async Task<CliResult> TranscodeMkvAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         logger.LogInformation("Starting HandBrake for MKV files");

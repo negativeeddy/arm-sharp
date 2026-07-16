@@ -14,7 +14,7 @@ public sealed class OvidSubmitService(
     ArmDbContext db,
     OvidApiClient ovidApiClient,
     ILoggerFactory loggerFactory)
-    : SubmitServiceBase(db, loggerFactory.CreateLogger("OvidSubmitService")), IOvidSubmitService
+    : SubmitServiceBase(db, loggerFactory.CreateLogger(nameof(OvidSubmitService))), IOvidSubmitService
 {
     public override async Task<SubmitResult> SubmitJobAsync(Job job, CancellationToken ct = default)
     {

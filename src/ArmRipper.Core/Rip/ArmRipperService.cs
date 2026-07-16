@@ -27,7 +27,7 @@ public sealed class ArmRipperService(
     ITrackMapperService trackMapperService,
     IEpisodeIdentificationOrchestrator? episodeOrchestrator = null) : IArmRipperService
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("ArmRipperService");
+    private readonly ILogger logger = loggerFactory.CreateLogger(nameof(ArmRipperService));
     private static readonly TimeSpan ProgressBroadcastInterval = TimeSpan.FromMilliseconds(200);
     private readonly ConcurrentDictionary<string, (int Percent, DateTime LastBroadcastUtc)> progressBroadcastState = new();
     public async Task<string> RipVisualMediaAsync(Job job, string logFile, bool hasDupes, bool protection, CancellationToken ct = default)

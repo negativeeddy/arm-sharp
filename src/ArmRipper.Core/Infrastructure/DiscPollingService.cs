@@ -28,7 +28,7 @@ public sealed class DiscPollingService(
     IBackgroundRipService backgroundRipService)
     : BackgroundService, IDiscPollingNotifier
 {
-    private readonly ILogger _logger = loggerFactory.CreateLogger("DiscPollingService");
+    private readonly ILogger _logger = loggerFactory.CreateLogger(nameof(DiscPollingService));
     private readonly IOptions<ArmSettings> _settings = settings;
 
     /// <summary>Seconds to wait after a uevent before reading sysfs.</summary>

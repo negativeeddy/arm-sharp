@@ -26,7 +26,7 @@ public sealed partial class IdentifyService(
     OvidApiClient ovidApiClient,
     IOptions<OvidProviderOptions> ovidOptions) : IIdentifyService
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("IdentifyService");
+    private readonly ILogger logger = loggerFactory.CreateLogger(nameof(IdentifyService));
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

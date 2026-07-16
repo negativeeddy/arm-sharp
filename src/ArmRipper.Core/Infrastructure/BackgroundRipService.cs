@@ -13,7 +13,7 @@ namespace ArmRipper.Core.Infrastructure;
 public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILoggerFactory loggerFactory, IOptions<ArmSettings> settings)
     : IBackgroundRipService
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("BackgroundRipService");
+    private readonly ILogger logger = loggerFactory.CreateLogger(nameof(BackgroundRipService));
     private readonly IOptions<ArmSettings> _settings = settings;
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeRips = new();
     private readonly ConcurrentDictionary<string, DateTime> _ejectCooldowns = new();

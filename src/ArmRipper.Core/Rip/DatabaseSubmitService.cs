@@ -13,7 +13,7 @@ public sealed class DatabaseSubmitService(
     IHttpClientFactory httpClientFactory,
     IOptions<ArmSettings> settings,
     ILoggerFactory loggerFactory)
-    : SubmitServiceBase(db, loggerFactory.CreateLogger("DatabaseSubmitService")), IDatabaseSubmitService
+    : SubmitServiceBase(db, loggerFactory.CreateLogger(nameof(DatabaseSubmitService))), IDatabaseSubmitService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

@@ -15,7 +15,7 @@ public sealed class NotificationService(
     IHttpClientFactory httpClientFactory,
     IEnumerable<INotificationBroadcaster> broadcasters)
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("NotificationService");
+    private readonly ILogger logger = loggerFactory.CreateLogger(nameof(NotificationService));
     public const string NotifyTitle = "ARM notification";
 
     public async Task NotifyAsync(Job? job, string title, string body, CancellationToken ct = default)

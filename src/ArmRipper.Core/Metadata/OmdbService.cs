@@ -6,7 +6,7 @@ namespace ArmRipper.Core.Metadata;
 
 public sealed class OmdbService(ILoggerFactory loggerFactory, HttpClient httpClient)
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("OmdbService");
+    private readonly ILogger logger = loggerFactory.CreateLogger(nameof(OmdbService));
     public async Task<OmdbSearchResult?> SearchAsync(string apiKey, string title, string? year = null, string? plot = "short", bool exact = false, CancellationToken ct = default)
     {
         if (exact)

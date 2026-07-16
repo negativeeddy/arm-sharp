@@ -6,7 +6,7 @@ namespace ArmRipper.Core.Metadata;
 
 public sealed partial class TmdbService(ILoggerFactory loggerFactory, HttpClient httpClient)
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("TmdbService");
+    private readonly ILogger logger = loggerFactory.CreateLogger(nameof(TmdbService));
     private const string PosterBase = "https://image.tmdb.org/t/p/original";
 
     public async Task<TmdbProcessedResult?> SearchMovieAsync(string apiKey, string query, string? year = null, CancellationToken ct = default)

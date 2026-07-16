@@ -21,7 +21,7 @@ public sealed class Conductor(
     IEnumerable<INotificationBroadcaster> broadcasters,
     JobFileLoggerProvider fileLogProvider) : IConductor
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("Conductor");
+    private readonly ILogger logger = loggerFactory.CreateLogger(nameof(Conductor));
     /// <summary>Broadcast job state to all connected UI clients with error handling.</summary>
     private async Task BroadcastJobUpdateAsync(Job job)
     {

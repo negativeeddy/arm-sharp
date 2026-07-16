@@ -28,7 +28,7 @@ public partial class MakeMkvService : IMakeMkvService
     public MakeMkvService(ICliProcessRunner runner, ILoggerFactory loggerFactory, IOptions<ArmSettings> settings, ArmDbContext db, IHttpClientFactory httpClientFactory)
     {
         _runner = runner;
-        _logger = loggerFactory.CreateLogger("MakeMkvService");
+        _logger = loggerFactory.CreateLogger(nameof(MakeMkvService));
         _settings = settings;
         _db = db;
         _httpClientFactory = httpClientFactory;
