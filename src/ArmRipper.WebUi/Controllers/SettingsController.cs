@@ -144,6 +144,7 @@ public class SettingsController(
         bool DiscPollingEnabled = Request.Form["DiscPollingEnabled"].Contains("true");
         bool FileBotNonStrict = Request.Form["FileBotNonStrict"].Contains("true");
         bool AllowDuplicates = Request.Form["AllowDuplicates"].Contains("true");
+        bool PreferWidescreen = Request.Form["PreferWidescreen"].Contains("true");
 
         var fields = new Dictionary<string, string?>
         {
@@ -157,6 +158,7 @@ public class SettingsController(
             ["DiscPollingEnabled"] = JsonSerialize(DiscPollingEnabled),
             ["FileBotNonStrict"] = JsonSerialize(FileBotNonStrict),
             ["AllowDuplicates"] = JsonSerialize(AllowDuplicates),
+            ["PreferWidescreen"] = JsonSerialize(PreferWidescreen),
         };
 
         await SettingsHelper.MergeIntoDbAsync(db, fields, ct);
