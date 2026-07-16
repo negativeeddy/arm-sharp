@@ -12,10 +12,9 @@ public sealed class DatabaseSubmitService(
     ArmDbContext db,
     IHttpClientFactory httpClientFactory,
     IOptions<ArmSettings> settings,
-    ILoggerFactory loggerFactory) : IDatabaseSubmitService
+    ILoggerFactory loggerFactory)
+    : SubmitServiceBase(db, loggerFactory.CreateLogger("DatabaseSubmitService")), IDatabaseSubmitService
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("DatabaseSubmitService");
-
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -23,36 +22,36 @@ public sealed class DatabaseSubmitService(
 
     private const string ApiBaseUrl = "https://1337server.pythonanywhere.com";
 
-    public async Task<DatabaseSubmitResult> SubmitJobAsync(Job job, CancellationToken ct = default)
+    public override async Task<SubmitResult> SubmitJobAsync(Job job, CancellationToken ct = default)
     {
         // Skip if already submitted
         if (job.IsStageComplete(RipStage.CrcSubmitted))
         {
-            logger.LogInformation("Job {JobId} already submitted, skipping", job.Id);
-            return new DatabaseSubmitResult { Success = true, JobId = job.Id, Title = job.Title, Message = "Already submitted", Status = "skipped" };
+            Logger.LogInformation("Job {JobId} already submitted, skipping", job.Id);
+            return new SubmitResult { Success = true, JobId = job.Id, Title = job.Title, Message = "Already submitted", Status = "skipped" };
         }
 
         // Validate we have what we need
         if (string.IsNullOrWhiteSpace(job.CrcId))
         {
             var msg = $"Job {job.Id} has no CRC64 hash, cannot submit";
-            logger.LogWarning(msg);
-            return new DatabaseSubmitResult { Success = false, JobId = job.Id, Title = job.Title, Message = msg, Status = "failed" };
+            Logger.LogWarning(msg);
+            return new SubmitResult { Success = false, JobId = job.Id, Title = job.Title, Message = msg, Status = "failed" };
         }
 
         if (!job.HasNiceTitle && string.IsNullOrWhiteSpace(job.Title) && string.IsNullOrWhiteSpace(job.TitleManual))
         {
             var msg = $"Job {job.Id} has no nice title, cannot submit";
-            logger.LogWarning(msg);
-            return new DatabaseSubmitResult { Success = false, JobId = job.Id, Title = job.Title, Message = msg, Status = "failed" };
+            Logger.LogWarning(msg);
+            return new SubmitResult { Success = false, JobId = job.Id, Title = job.Title, Message = msg, Status = "failed" };
         }
 
         var apiKey = job.Config?.ArmApiKey ?? settings.Value.ArmApiKey;
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             var msg = "No ARM API key configured. Set ArmApiKey in settings.";
-            logger.LogWarning(msg);
-            return new DatabaseSubmitResult { Success = false, JobId = job.Id, Title = job.Title, Message = msg, Status = "failed" };
+            Logger.LogWarning(msg);
+            return new SubmitResult { Success = false, JobId = job.Id, Title = job.Title, Message = msg, Status = "failed" };
         }
 
         try
@@ -70,7 +69,7 @@ public sealed class DatabaseSubmitService(
             var httpClient = httpClientFactory.CreateClient("DatabaseSubmitService");
             var responseBody = await httpClient.GetStringAsync(url, ct);
 
-            logger.LogDebug("Raw API response for job {JobId}: {Response}", job.Id, responseBody);
+            Logger.LogDebug("Raw API response for job {JobId}: {Response}", job.Id, responseBody);
 
             // Parse the response. The API has two shapes:
             //   Success: {"mode":"post", "results":{"crc_id":"...","date_added":"...",...}}
@@ -82,8 +81,8 @@ public sealed class DatabaseSubmitService(
             }
             catch (JsonException ex)
             {
-                logger.LogWarning(ex, "Failed to parse API response for job {JobId}: {Response}", job.Id, responseBody);
-                return new DatabaseSubmitResult
+                Logger.LogWarning(ex, "Failed to parse API response for job {JobId}: {Response}", job.Id, responseBody);
+                return new SubmitResult
                 {
                     Success = false, JobId = job.Id, Title = job.Title,
                     Message = $"Unparseable response: {responseBody}",
@@ -93,7 +92,7 @@ public sealed class DatabaseSubmitService(
 
             if (parsed is null)
             {
-                return new DatabaseSubmitResult
+                return new SubmitResult
                 {
                     Success = false, JobId = job.Id, Title = job.Title,
                     Message = $"Null response from API",
@@ -105,11 +104,11 @@ public sealed class DatabaseSubmitService(
             if (parsed.Results is not null)
             {
                 job.MarkStageComplete(RipStage.CrcSubmitted);
-                await db.SaveChangesAsync(ct);
-                logger.LogInformation(
+                await Db.SaveChangesAsync(ct);
+                Logger.LogInformation(
                     "Successfully submitted CRC64 for job {JobId} ({Title}) — crc_id={CrcId}",
                     job.Id, job.Title, parsed.Results.CrcId);
-                return new DatabaseSubmitResult { Success = true, JobId = job.Id, Title = job.Title, Message = "Submitted", Status = "added" };
+                return new SubmitResult { Success = true, JobId = job.Id, Title = job.Title, Message = "Submitted", Status = "added" };
             }
 
             // ── Failure: error field is present ──
@@ -122,26 +121,24 @@ public sealed class DatabaseSubmitService(
                 errorMsg.Contains("duplicate", StringComparison.OrdinalIgnoreCase))
             {
                 job.MarkStageComplete(RipStage.CrcSubmitted);
-                await db.SaveChangesAsync(ct);
-                logger.LogInformation("CRC64 for job {JobId} already exists remotely, marking as submitted", job.Id);
-                return new DatabaseSubmitResult { Success = true, JobId = job.Id, Title = job.Title, Message = "Already exists remotely", Status = "already_exists" };
+                await Db.SaveChangesAsync(ct);
+                Logger.LogInformation("CRC64 for job {JobId} already exists remotely, marking as submitted", job.Id);
+                return new SubmitResult { Success = true, JobId = job.Id, Title = job.Title, Message = "Already exists remotely", Status = "already_exists" };
             }
 
-            logger.LogWarning("Failed to submit CRC64 for job {JobId}: {Error}", job.Id, errorMsg);
-            return new DatabaseSubmitResult { Success = false, JobId = job.Id, Title = job.Title, Message = errorMsg, Status = "failed" };
+            Logger.LogWarning("Failed to submit CRC64 for job {JobId}: {Error}", job.Id, errorMsg);
+            return new SubmitResult { Success = false, JobId = job.Id, Title = job.Title, Message = errorMsg, Status = "failed" };
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error submitting CRC64 for job {JobId}", job.Id);
-            return new DatabaseSubmitResult { Success = false, JobId = job.Id, Title = job.Title, Message = ex.Message, Status = "failed" };
+            Logger.LogError(ex, "Error submitting CRC64 for job {JobId}", job.Id);
+            return new SubmitResult { Success = false, JobId = job.Id, Title = job.Title, Message = ex.Message, Status = "failed" };
         }
     }
 
-    public async Task<List<DatabaseSubmitResult>> SubmitPendingAsync(CancellationToken ct = default)
+    protected override async Task<List<Job>> GetPendingJobsAsync(CancellationToken ct)
     {
-        var results = new List<DatabaseSubmitResult>();
-
-        var pendingJobs = await db.Jobs
+        var pendingJobs = await Db.Jobs
             .Include(j => j.Config)
             .Where(j => j.DiscType == DiscType.Dvd &&
                         !string.IsNullOrEmpty(j.CrcId) &&
@@ -149,22 +146,12 @@ public sealed class DatabaseSubmitService(
             .ToListAsync(ct);
 
         // Filter out already-submitted in memory (since CompletedStages is not queryable via EF)
-        var toSubmit = pendingJobs
+        return pendingJobs
             .Where(j => !j.IsStageComplete(RipStage.CrcSubmitted))
             .ToList();
-
-        logger.LogInformation("Found {Total} DVD jobs with CRC64, {Pending} pending submission",
-            pendingJobs.Count, toSubmit.Count);
-
-        foreach (var job in toSubmit)
-        {
-            ct.ThrowIfCancellationRequested();
-            var result = await SubmitJobAsync(job, ct);
-            results.Add(result);
-        }
-
-        return results;
     }
+
+    protected override string GetServiceName() => "DatabaseSubmitService";
 
     /// <summary>
     /// Models the JSON response from the ARM online database API.
