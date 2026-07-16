@@ -876,14 +876,48 @@ public sealed class Conductor(
 
     private async Task<bool> JobDupeCheckAsync(Job job, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(job.Label))
+        // ── Determine which identity fields we can match on ──
+        // Strong identifiers (CrcId, DiscDbHash) prove the exact same disc content.
+        // Weak identifier (Label) matches the volume name but may cover multiple
+        // pressings/regions of the same movie, so we only use it as a fallback
+        // when no strong identifier is available.
+        var hasCrc = !string.IsNullOrEmpty(job.CrcId);
+        var hasDiscDb = !string.IsNullOrEmpty(job.DiscDbHash);
+        var hasLabel = !string.IsNullOrEmpty(job.Label);
+
+        if (!hasCrc && !hasDiscDb && !hasLabel)
         {
-            logger.LogInformation("Disc title 'None' not searched in database");
+            logger.LogInformation("Disc has no Label, CrcId, or DiscDbHash — cannot check for duplicates");
             return false;
         }
 
-        var previousRips = await db.Jobs
-            .Where(j => j.Label == job.Label && j.Status == JobState.Success)
+        // Build the match query: prefer strong identifiers, fall back to Label
+        IQueryable<Job> query = db.Jobs.Where(j => j.Status == JobState.Success);
+
+        if (hasCrc || hasDiscDb)
+        {
+            // Exact disc match via content hashes
+            if (hasCrc)
+                query = query.Where(j => j.CrcId == job.CrcId);
+            else
+                query = query.Where(j => j.DiscDbHash == job.DiscDbHash);
+
+            logger.LogInformation(
+                "Checking duplicates by {Field} = '{Value}'",
+                hasCrc ? "CrcId" : "DiscDbHash",
+                hasCrc ? job.CrcId : job.DiscDbHash);
+        }
+        else
+        {
+            // Fall back to volume-label match when no hash identity is available
+            query = query.Where(j => j.Label == job.Label);
+
+            logger.LogInformation(
+                "Checking duplicates by Label = '{Label}' (no CrcId or DiscDbHash available)",
+                job.Label);
+        }
+
+        var previousRips = await query
             .OrderByDescending(j => j.StopTime)
             .Select(j => new { j.Title, j.Year, j.HasNiceTitle, j.VideoType, j.PosterUrl })
             .Take(2)
