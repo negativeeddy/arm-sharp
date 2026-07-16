@@ -65,7 +65,6 @@ public class ConfigSnapshot
     public int? EmbyPort { get; set; }
     public string? EmbyApiKey { get; set; }
 
-    public int? MaxConcurrentRips { get; set; }
     public int? MaxConcurrentTranscodes { get; set; }
     public int? MaxConcurrentMakemkvInfo { get; set; }
 

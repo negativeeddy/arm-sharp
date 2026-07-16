@@ -2,7 +2,12 @@ namespace ArmRipper.Core.Infrastructure;
 
 public interface IBackgroundRipService
 {
-    void StartRip(string devPath, CancellationToken ct = default);
+    /// <summary>
+    /// Attempts to start a rip on the given optical drive.
+    /// Returns <see cref="StartRipResult"/> indicating whether the rip was accepted
+    /// (a pipeline was started) or rejected (with a reason).
+    /// </summary>
+    StartRipResult StartRip(string devPath, CancellationToken ct = default);
     void StartForkedJob(int originalJobId, string rawFilePath, CancellationToken ct = default);
 
     /// <summary>

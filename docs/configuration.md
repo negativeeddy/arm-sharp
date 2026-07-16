@@ -95,8 +95,10 @@ Configuration is read from two sources, merged in order (later wins):
 
 | Property | YAML Key | Default | Description |
 |----------|----------|---------|-------------|
-| `MaxConcurrentTranscodes` | `MAX_CONCURRENT_TRANSCODES` | `2` | Max parallel transcodes |
+| `MaxConcurrentTranscodes` | `MAX_CONCURRENT_TRANSCODES` | `1` | Max parallel transcodes (default 1 = serialized) |
 | `MaxConcurrentMakemkvInfo` | `MAX_CONCURRENT_MAKEMKVINFO` | `1` | Max parallel MakeMKV info scans |
+
+> **Note:** The old `MaxConcurrentRips` setting has been removed. Rips are now gated per-drive — only one rip per optical drive at a time, but rips on different drives run in parallel. The `MaxConcurrentTranscodes` default changed from 2 to 1 because parallel transcodes rarely improve throughput and serializing makes debugging easier.
 
 ### Disc Polling (ARM-Sharp)
 

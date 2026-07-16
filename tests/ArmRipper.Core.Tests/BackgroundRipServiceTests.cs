@@ -13,9 +13,9 @@ namespace ArmRipper.Core.Tests;
 
 public sealed class BackgroundRipServiceTests
 {
-    private static IOptions<ArmSettings> CreateSettings(int maxConcurrentRips = 1)
+    private static IOptions<ArmSettings> CreateSettings()
     {
-        return Options.Create(new ArmSettings { MaxConcurrentRips = maxConcurrentRips });
+        return Options.Create(new ArmSettings());
     }
 
     private static async Task WaitForBackgroundTaskAsync(Func<bool> condition, int timeoutMs = 5000)
@@ -104,9 +104,10 @@ public sealed class BackgroundRipServiceTests
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
         var service = new BackgroundRipService(scopeFactory.Object, NullLoggerFactory.Instance, CreateSettings());
-        service.StartRip("/dev/sr0");
+        var result = service.StartRip("/dev/sr0");
         await WaitForBackgroundTaskAsync(() => conductorRun);
 
+        Assert.True(result.IsAccepted);
         Assert.True(conductorRun);
         conductorMock.Verify(c => c.RunAsync("/dev/sr0", It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -134,8 +135,10 @@ public sealed class BackgroundRipServiceTests
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
         var service = new BackgroundRipService(scopeFactory.Object, NullLoggerFactory.Instance, CreateSettings());
-        service.StartRip("/dev/sr0");
+        var result = service.StartRip("/dev/sr0");
         await WaitForBackgroundTaskAsync(() => true);
+
+        Assert.True(result.IsAccepted);
     }
 
     [Fact]
@@ -164,8 +167,10 @@ public sealed class BackgroundRipServiceTests
 
         using var cts = new CancellationTokenSource();
         cts.Cancel();
-        service.StartRip("/dev/sr0", cts.Token);
+        var result = service.StartRip("/dev/sr0", cts.Token);
         await WaitForBackgroundTaskAsync(() => true);
+
+        Assert.True(result.IsAccepted);
 
         // If we reach here without crash, OperationCanceledException was handled
         Assert.True(true);
@@ -207,17 +212,19 @@ public sealed class BackgroundRipServiceTests
         // ── 2. Conductor: 1st call blocks, 2nd call recorded ──
         var fix = CreateBlockingConductor(db);
 
-        var service = new BackgroundRipService(fix.ScopeFactoryMock.Object, NullLoggerFactory.Instance, CreateSettings(2));
+        var service = new BackgroundRipService(fix.ScopeFactoryMock.Object, NullLoggerFactory.Instance, CreateSettings());
 
         // ── 3. First StartRip — adds to _activeRips, starts first pipeline ──
-        service.StartRip("/dev/sr0");
+        var result1 = service.StartRip("/dev/sr0");
+        Assert.True(result1.IsAccepted);
         await WaitForBackgroundTaskAsync(() => fix.ConductorCallCount >= 1);
         Assert.Equal(1, fix.ConductorCallCount);
 
         // ── 4. Second StartRip — TryAdd fails, checks DB (finds TranscodeActive
         //       which is NOT a ripping state), replaces _activeRips entry,
         //       and starts a second pipeline ──
-        service.StartRip("/dev/sr0");
+        var result2 = service.StartRip("/dev/sr0");
+        Assert.True(result2.IsAccepted);
         await WaitForBackgroundTaskAsync(() => fix.SecondCallRecorded.Task.IsCompleted, 10000);
 
         Assert.Equal(2, fix.ConductorCallCount);
@@ -239,16 +246,18 @@ public sealed class BackgroundRipServiceTests
         // ── 2. Conductor: 1st call blocks, 2nd call should never happen ──
         var fix = CreateBlockingConductor(db);
 
-        var service = new BackgroundRipService(fix.ScopeFactoryMock.Object, NullLoggerFactory.Instance, CreateSettings(2));
+        var service = new BackgroundRipService(fix.ScopeFactoryMock.Object, NullLoggerFactory.Instance, CreateSettings());
 
         // ── 3. First StartRip — adds to _activeRips ──
-        service.StartRip("/dev/sr0");
+        var result1 = service.StartRip("/dev/sr0");
+        Assert.True(result1.IsAccepted);
         await WaitForBackgroundTaskAsync(() => fix.ConductorCallCount >= 1);
         Assert.Equal(1, fix.ConductorCallCount);
 
         // ── 4. Second StartRip — TryAdd fails, checks DB (finds VideoRipping
-        //       which IS a ripping state), logs warning and returns ──
-        service.StartRip("/dev/sr0");
+        //       which IS a ripping state), logs error and returns (no queuing) ──
+        var result2 = service.StartRip("/dev/sr0");
+        Assert.True(result2.IsRejected);
 
         // Give the service time to potentially start a second pipeline (it shouldn't)
         await Task.Delay(2000);
@@ -270,16 +279,18 @@ public sealed class BackgroundRipServiceTests
         // ── 2. Conductor: 1st call blocks, 2nd call recorded ──
         var fix = CreateBlockingConductor(db);
 
-        var service = new BackgroundRipService(fix.ScopeFactoryMock.Object, NullLoggerFactory.Instance, CreateSettings(2));
+        var service = new BackgroundRipService(fix.ScopeFactoryMock.Object, NullLoggerFactory.Instance, CreateSettings());
 
         // ── 3. First StartRip ──
-        service.StartRip("/dev/sr0");
+        var result1 = service.StartRip("/dev/sr0");
+        Assert.True(result1.IsAccepted);
         await WaitForBackgroundTaskAsync(() => fix.ConductorCallCount >= 1);
         Assert.Equal(1, fix.ConductorCallCount);
 
         // ── 4. Second StartRip — no entry in DB at all → IsAnyJobRippingOnDevPath
         //       returns false (no job found) → replaces entry → starts pipeline ──
-        service.StartRip("/dev/sr0");
+        var result2 = service.StartRip("/dev/sr0");
+        Assert.True(result2.IsAccepted);
         await WaitForBackgroundTaskAsync(() => fix.SecondCallRecorded.Task.IsCompleted, 10000);
 
         Assert.Equal(2, fix.ConductorCallCount);
@@ -301,16 +312,18 @@ public sealed class BackgroundRipServiceTests
         // ── 2. Conductor: 1st call blocks, 2nd call recorded ──
         var fix = CreateBlockingConductor(db);
 
-        var service = new BackgroundRipService(fix.ScopeFactoryMock.Object, NullLoggerFactory.Instance, CreateSettings(2));
+        var service = new BackgroundRipService(fix.ScopeFactoryMock.Object, NullLoggerFactory.Instance, CreateSettings());
 
         // ── 3. First StartRip ──
-        service.StartRip("/dev/sr0");
+        var result1 = service.StartRip("/dev/sr0");
+        Assert.True(result1.IsAccepted);
         await WaitForBackgroundTaskAsync(() => fix.ConductorCallCount >= 1);
         Assert.Equal(1, fix.ConductorCallCount);
 
         // ── 4. Second StartRip — terminal job is excluded from the DB query,
         //       so IsAnyJobRippingOnDevPath returns false → allows new rip ──
-        service.StartRip("/dev/sr0");
+        var result2 = service.StartRip("/dev/sr0");
+        Assert.True(result2.IsAccepted);
         await WaitForBackgroundTaskAsync(() => fix.SecondCallRecorded.Task.IsCompleted, 10000);
 
         Assert.Equal(2, fix.ConductorCallCount);

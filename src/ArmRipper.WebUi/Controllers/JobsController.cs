@@ -194,7 +194,14 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
 
         // Kick off a new background rip — the Conductor will skip completed stages
         var devPath = job.DevPath ?? $"resume-{jobId}";
-        backgroundRip.StartRip(devPath);
+        var result = backgroundRip.StartRip(devPath);
+
+        if (result.IsRejected)
+        {
+            TempData["ToastMessage"] = $"Could not resume job {jobId}: {result.RejectionReason}";
+            TempData["ToastType"] = "danger";
+            return RedirectToAction("JobDetail", new { jobId });
+        }
 
         TempData["Message"] = $"Job {jobId} resumed — picking up from completed stages: {job.CompletedStages}";
         return RedirectToAction("JobDetail", new { jobId });
