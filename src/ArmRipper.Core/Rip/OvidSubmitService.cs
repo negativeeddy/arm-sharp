@@ -13,16 +13,15 @@ namespace ArmRipper.Core.Rip;
 public sealed class OvidSubmitService(
     ArmDbContext db,
     OvidApiClient ovidApiClient,
-    ILoggerFactory loggerFactory) : IOvidSubmitService
+    ILoggerFactory loggerFactory)
+    : SubmitServiceBase(db, loggerFactory.CreateLogger("OvidSubmitService")), IOvidSubmitService
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("OvidSubmitService");
-
-    public async Task<SubmitResult> SubmitJobAsync(Job job, CancellationToken ct = default)
+    public override async Task<SubmitResult> SubmitJobAsync(Job job, CancellationToken ct = default)
     {
         // Skip if already submitted
         if (job.OvidSubmitted)
         {
-            logger.LogInformation("Job {JobId} already submitted to OVID, skipping", job.Id);
+            Logger.LogInformation("Job {JobId} already submitted to OVID, skipping", job.Id);
             return new SubmitResult { Success = true, JobId = job.Id, Title = job.Title, Message = "Already submitted", Status = "skipped" };
         }
 
@@ -30,7 +29,7 @@ public sealed class OvidSubmitService(
         if (string.IsNullOrWhiteSpace(job.OvidFingerprint))
         {
             var msg = $"Job {job.Id} has no OVID fingerprint, cannot submit";
-            logger.LogWarning(msg);
+            Logger.LogWarning(msg);
             return new SubmitResult { Success = false, JobId = job.Id, Title = job.Title, Message = msg, Status = "failed" };
         }
 
@@ -54,7 +53,7 @@ public sealed class OvidSubmitService(
             if (success)
             {
                 job.OvidSubmitted = true;
-                await db.SaveChangesAsync(ct);
+                await Db.SaveChangesAsync(ct);
 
                 var status = statusCode switch
                 {
@@ -63,7 +62,7 @@ public sealed class OvidSubmitService(
                     _ => "submitted"
                 };
 
-                logger.LogInformation(
+                Logger.LogInformation(
                     "OVID submission for job {JobId} ({Fingerprint}): {Status}",
                     job.Id, job.OvidFingerprint, status);
 
@@ -82,35 +81,24 @@ public sealed class OvidSubmitService(
                 };
             }
 
-            logger.LogWarning("OVID submission failed for job {JobId}: {Message}", job.Id, message);
+            Logger.LogWarning("OVID submission failed for job {JobId}: {Message}", job.Id, message);
             return new SubmitResult { Success = false, JobId = job.Id, Title = job.Title, Message = message, Status = "failed" };
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error submitting OVID fingerprint for job {JobId}", job.Id);
+            Logger.LogError(ex, "Error submitting OVID fingerprint for job {JobId}", job.Id);
             return new SubmitResult { Success = false, JobId = job.Id, Title = job.Title, Message = ex.Message, Status = "failed" };
         }
     }
 
-    public async Task<List<SubmitResult>> SubmitPendingAsync(CancellationToken ct = default)
+    protected override async Task<List<Job>> GetPendingJobsAsync(CancellationToken ct)
     {
-        var results = new List<SubmitResult>();
-
-        var pendingJobs = await db.Jobs
+        return await Db.Jobs
             .Where(j => !string.IsNullOrEmpty(j.OvidFingerprint) &&
                         (j.HasNiceTitle || !string.IsNullOrEmpty(j.TitleManual)) &&
                         !j.OvidSubmitted)
             .ToListAsync(ct);
-
-        logger.LogInformation("Found {Count} jobs with OVID fingerprints pending submission", pendingJobs.Count);
-
-        foreach (var job in pendingJobs)
-        {
-            ct.ThrowIfCancellationRequested();
-            var result = await SubmitJobAsync(job, ct);
-            results.Add(result);
-        }
-
-        return results;
     }
+
+    protected override string GetServiceName() => "OvidSubmitService";
 }
