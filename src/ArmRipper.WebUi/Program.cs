@@ -7,10 +7,14 @@ using ArmRipper.Core.Metadata;
 using ArmRipper.Core.Notifications;
 using ArmRipper.Core.Rip;
 using ArmRipper.WebUi.Services;
+using ArmRipper.WebUi.Services.Mcp;
 using ArmRipper.WebUi.Hubs;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using ModelContextProtocol.AspNetCore;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -122,6 +126,24 @@ builder.Services.AddHttpClient("MakeMkv", client =>
     client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 });
 
+// ── MCP (Model Context Protocol) server ──
+builder.Services
+    .AddMcpServer(options =>
+    {
+        options.ServerInfo = new Implementation { Name = "arm-sharp", Version = "1.0.0" };
+        options.Capabilities = new ServerCapabilities
+        {
+            Tools = new ToolsCapability(),
+        };
+    })
+    .WithHttpTransport(options =>
+    {
+        // Stateless mode: no session management needed for diagnostic tools.
+        // Each request is independent — no session ID required.
+        options.Stateless = true;
+    })
+    .WithTools<ArmRipperTools>();
+
 // Per-job file logging
 var fileLogProvider = new JobFileLoggerProvider();
 builder.Services.AddSingleton(fileLogProvider);
@@ -197,6 +219,7 @@ app.UseAuthorization();
 app.MapRazorPages();
 app.MapControllers();
 app.MapHub<NotificationHub>("/hubs/notifications");
+app.MapMcp("/mcp");
 
 var port = builder.Configuration.GetValue<int?>("WebServer:Port") ?? 8080;
 app.Run($"http://0.0.0.0:{port}");

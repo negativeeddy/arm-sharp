@@ -1,0 +1,13 @@
+{
+	"servers": {
+		"arm-sharp": {
+			"type": "http",
+			"url": "http://localhost:8080/mcp"
+		},
+		"Tarantino Arm Sharp": {
+			"url": "http://tarantino:8081/mcp",
+			"type": "http"
+		}
+	},
+	"inputs": []
+}

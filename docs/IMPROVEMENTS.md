@@ -45,8 +45,12 @@ Track usability, DX, and architecture improvements. Focus: user-friendliness, ea
 - `LogsController.Reader` uses `Path.GetFileName` for sanitization but could use `Path.GetFullPath` + prefix validation as defense-in-depth.
 
 ## MCP (Model Context Protocol)
-- Add MCP integration so the project can be queried/supervised by AI agents during development and debugging. MCP tools could expose log streaming, config editing, job management, and disc identification — making the system observable and controllable through AI assistants.
-- MCP server could expose: `get_jobs`, `get_logs`, `update_config`, `eject_drive`, `trigger_identify` as tools.
+- ✅ **MCP server implemented** using the C# SDK (`ModelContextProtocol.AspNetCore` v1.4.1) with HTTP (Streamable HTTP) transport at `/mcp`.
+- Exposed tools:
+  - `get_jobs` — list jobs with optional status filter, `offset`, and `limit` pagination.
+  - `get_logs` — read job log files with `offset` (line number) and `pageSize` for efficient browsing of long logs.
+  - `get_config` — returns current ARM Sharp configuration (API key presence is shown as booleans, values are never exposed).
+- 🔲 Future tools: `update_config`, `eject_drive`, `trigger_identify`, log streaming via SSE.
 
 ## Container / Deployment
 - Docker image is ~2GB with full .NET SDK. Switch to self-contained publish with runtime-only image to reduce size.
