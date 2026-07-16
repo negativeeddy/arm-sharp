@@ -17,7 +17,7 @@ public abstract class SubmitServiceBase(ArmDbContext db, ILogger logger) : ISubm
     protected ArmDbContext Db { get; } = db;
 
     /// <summary>
-    /// Logger for the derived service.
+    /// Logger accessible to derived services.
     /// </summary>
     protected ILogger Logger { get; } = logger;
 
