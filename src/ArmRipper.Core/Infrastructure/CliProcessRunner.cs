@@ -84,7 +84,7 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
         return lines;
     }
 
-    public async IAsyncEnumerable<string> RunStreamingAsync(
+    public async IAsyncEnumerable<(string? Line, int? ExitCode)> RunStreamingAsync(
         string fileName,
         string arguments,
         string? workingDirectory = null,
@@ -125,7 +125,7 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
             while (await process.StandardOutput.ReadLineAsync(ct) is { } line)
             {
                 logger.LogDebug("{Name}: {Line}", fileName, line);
-                yield return line;
+                yield return (line, null);
             }
         }
         finally
@@ -144,13 +144,7 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
         process.WaitForExit();
 
         logger.LogInformation("Process exited ({Name}) code={Code}", fileName, process.ExitCode);
-
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidOperationException(
-                $"Process '{fileName}' exited with code {process.ExitCode}. " +
-                $"Arguments: {arguments}");
-        }
+        yield return (null, process.ExitCode);
     }
 
     public async IAsyncEnumerable<(string? Line, bool IsStdErr, int? ExitCode)> RunStreamingAllAsync(

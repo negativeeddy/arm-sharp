@@ -117,8 +117,15 @@ public partial class MakeMkvService : IMakeMkvService
 
         var cmd = new[] { "makemkvcon", "--robot", "--messages=-stdout" }.Concat(options).ToArray();
 
-        await foreach (var line in _runner.RunStreamingAsync(cmd[0], string.Join(" ", cmd[1..]), ct: ct))
+        await foreach (var (line, exitCode) in _runner.RunStreamingAsync(cmd[0], string.Join(" ", cmd[1..]), ct: ct))
         {
+            if (exitCode.HasValue)
+            {
+                if (exitCode.Value != 0)
+                    _logger.LogWarning("makemkvcon exited with code {ExitCode}", exitCode.Value);
+                yield break;
+            }
+
             if (string.IsNullOrWhiteSpace(line)) continue;
 
             var parsed = ParseLine(line);
@@ -425,8 +432,17 @@ public partial class MakeMkvService : IMakeMkvService
             if (!string.IsNullOrEmpty(mkvArgs))
                 args = $"--robot --messages=-stdout --progress=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
 
-            await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
+            await foreach (var (line, exitCode) in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
+            {
+                if (exitCode.HasValue)
+                {
+                    if (exitCode.Value != 0)
+                        _logger.LogWarning("makemkvcon rip exited with code {ExitCode}", exitCode.Value);
+                    break;
+                }
+                if (line is null) continue;
                 ParseAndReportProgress(line, progress);
+            }
 
             // Rip completed successfully — report 100%
             if (progress is not null)
@@ -460,8 +476,17 @@ public partial class MakeMkvService : IMakeMkvService
             if (!string.IsNullOrEmpty(mkvArgs))
                 args = $"--robot --messages=-stdout --progress=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
 
-            await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
+            await foreach (var (line, exitCode) in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
+            {
+                if (exitCode.HasValue)
+                {
+                    if (exitCode.Value != 0)
+                        _logger.LogWarning("makemkvcon rip-all exited with code {ExitCode}", exitCode.Value);
+                    break;
+                }
+                if (line is null) continue;
                 ParseAndReportProgress(line, progress);
+            }
 
             // Rip completed successfully — report 100%
             if (progress is not null)
