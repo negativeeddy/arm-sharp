@@ -3,11 +3,13 @@
     ViewData["Title"] = "Search Movies - ARM";
     var jobs = ViewBag.Jobs as IEnumerable<ArmRipper.Core.Models.Job>;
     var selectedJobId = ViewBag.SelectedJobId as int?;
+    var exact = ViewBag.ExactMatch as bool? ?? false;
     var query = Context.Request.Query["query"];
     bool Selected(int jobId) => selectedJobId.HasValue && selectedJobId.Value == jobId;
     var jobIdValue = selectedJobId.GetValueOrDefault();
     var importFilePath = ViewBag.ImportFilePath as string;
     var isImportMode = !string.IsNullOrEmpty(importFilePath);
+    var apiError = ViewBag.ApiError as string;
 }
 
 <h1>Search Movies</h1>
@@ -34,6 +36,14 @@
                     }
                 </select>
             </div>
+            <div class="form-group mr-2">
+                <div class="form-check">
+                    <input type="checkbox" id="exactCheck" name="exact" value="true" class="form-check-input" @(exact ? "checked" : "")
+                           onchange="document.getElementById('exactHidden').disabled = this.checked;" />
+                    <label class="form-check-label font-weight-bold" for="exactCheck">Exact match</label>
+                    <input type="hidden" id="exactHidden" name="exact" value="false" @(exact ? "disabled" : "") />
+                </div>
+            </div>
             <button type="submit" class="btn btn-primary">Search</button>
             @if (!string.IsNullOrEmpty(query))
             {
@@ -53,13 +63,19 @@
         the appropriate encoding preset.
     </div>
 }
+
+@if (!string.IsNullOrEmpty(apiError))
+{
+    <div class="alert alert-danger">
+        <strong>API Error:</strong> @apiError
+    </div>
 }
 
 @if (string.IsNullOrEmpty(query))
 {
     <div class="alert alert-info">Enter a movie title above to search online databases (OMDB/TMDB).</div>
 }
-else if (!Model.Any())
+else if (!Model.Any() && string.IsNullOrEmpty(apiError))
 {
     <div class="alert alert-warning">No results found for &quot;@query&quot;. Try a different title or check your API keys in Settings.</div>
 }
