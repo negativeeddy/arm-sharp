@@ -891,6 +891,7 @@ public sealed class Conductor(
             return false;
         }
 
+        // ── Phase 1: Check for fully-completed (Success) duplicates ──
         // Build the match query: prefer strong identifiers, fall back to Label
         IQueryable<Job> query = db.Jobs.Where(j => j.Status == JobState.Success);
 
@@ -939,6 +940,48 @@ public sealed class Conductor(
         {
             logger.LogDebug("Skipping - There are too many results [{Count}]", previousRips.Count);
             return false;
+        }
+
+        // ── Phase 2: Check for in-flight duplicates (strong identity only) ──
+        // When a disc finishes ripping, the drive is ejected mid-pipeline (before transcode).
+        // If the tray auto-closes and the same disc is reinserted, a new job starts while the
+        // previous job is still processing (e.g. transcoding).  In that window the previous job
+        // hasn't reached Success yet, so Phase 1 above won't catch it.
+        //
+        // We detect this by looking for any non-terminal job that:
+        //   - Shares the same strong identifier (CrcId or DiscDbHash)
+        //   - Has already completed the Rip stage (disc content was read)
+        //   - Is not this same job
+        //
+        // The Label fallback intentionally excluded here — weak identity isn't reliable enough
+        // to make assumptions about in-flight jobs.
+        if (hasCrc || hasDiscDb)
+        {
+            var inFlightDupe = await db.Jobs
+                .Where(j => j.Id != job.Id)
+                .Where(j => j.Status != JobState.Failure && j.Status != JobState.Cancelled)
+                .Where(j => !string.IsNullOrEmpty(j.CompletedStages) && j.CompletedStages.Contains("Rip"))
+                .Where(j => hasCrc ? j.CrcId == job.CrcId : j.DiscDbHash == job.DiscDbHash)
+                .Select(j => new { j.Title, j.Year, j.HasNiceTitle, j.VideoType, j.PosterUrl })
+                .FirstOrDefaultAsync(ct);
+
+            if (inFlightDupe is not null)
+            {
+                logger.LogInformation(
+                    "Disc '{Label}' (job {JobId}) is already being processed by job (same {Field}). " +
+                    "That job has completed the Rip stage — marking this job as duplicate without re-ripping.",
+                    job.Label, job.Id,
+                    hasCrc ? "CrcId" : "DiscDbHash");
+
+                // Copy metadata from the in-flight job so the skip path uses correct naming
+                job.Title = job.TitleAuto = inFlightDupe.Title ?? job.Label;
+                job.Year = job.YearAuto = inFlightDupe.Year;
+                job.HasNiceTitle = inFlightDupe.HasNiceTitle;
+                job.VideoType = job.VideoTypeAuto = inFlightDupe.VideoType;
+                job.PosterUrl = job.PosterUrlAuto = inFlightDupe.PosterUrl;
+                await db.SaveChangesAsync(ct);
+                return true;
+            }
         }
 
         logger.LogInformation("We have no previous rips/jobs matching this label");
