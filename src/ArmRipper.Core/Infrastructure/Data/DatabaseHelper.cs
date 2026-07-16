@@ -15,6 +15,17 @@ public static class DatabaseHelper
     /// </summary>
     public static void EnsureMigrated(ArmDbContext db)
     {
+        // ── Idempotent schema patches for columns that may have been added by
+        // incomplete migration runs (e.g. when a migration ID changed after a
+        // previous attempt partially succeeded). ──
+        // Check if PreferWidescreen was already added (by a prior migration attempt
+        // with a different ID). If so, mark the current migration as applied so
+        // Migrate() won't try to re-add it.
+        if (ColumnExists(db, "config", "PreferWidescreen"))
+        {
+            TryInsertMigration(db, "20260716025640_AddPreferWidescreen");
+        }
+
         try
         {
             db.Database.Migrate();
@@ -36,6 +47,9 @@ public static class DatabaseHelper
         TryAlterColumn(db, "jobs", "OriginalJobId", "INTEGER");
         // MaxConcurrentRips removed — per-drive gating supersedes the global slot.
 
+        // ── ConfigSnapshot columns added after the Initial migration ──
+        TryAlterColumn(db, "config", "PreferWidescreen", "INTEGER");
+
         // ── Seed migration history always ──
         db.Database.ExecuteSql($"INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('20260610044322_Initial', '10.0.0');");
         TryInsertMigration(db, "20260610053400_AddProgressMessage");
@@ -45,8 +59,33 @@ public static class DatabaseHelper
         TryInsertMigration(db, "20260613200029_AddManualWaitResume");
         TryInsertMigration(db, "20260614174913_AddCompletedStages");
         TryInsertMigration(db, "20260626033421_AddOriginalJobId");
+        TryInsertMigration(db, "20260716025640_AddPreferWidescreen");
 
         db.Database.ExecuteSql($"PRAGMA busy_timeout = 5000;");
+    }
+
+    private static bool ColumnExists(ArmDbContext db, string table, string column)
+    {
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            var needClose = conn.State != System.Data.ConnectionState.Open;
+            if (needClose) conn.Open();
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{column}'";
+                return (long)(cmd.ExecuteScalar() ?? 0) > 0;
+            }
+            finally
+            {
+                if (needClose) conn.Close();
+            }
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static void TryAlterColumn(ArmDbContext db, string table, string column, string? type = null)
