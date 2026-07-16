@@ -17,6 +17,7 @@ public class ArmSettings
     public bool ManualWait { get; set; } = true;
     public int ManualWaitTime { get; set; } = 60;
     public bool AllowDuplicates { get; set; } = true;
+    public bool PreferWidescreen { get; set; } = true;
     public bool Prevent99 { get; set; } = true;
     public bool GetVideoTitle { get; set; } = true;
     public string? GetAudioTitle { get; set; } = "musicbrainz";

@@ -262,7 +262,60 @@ public sealed class ArmRipperService(
         }
 
         if (longestTrack is not null)
+        {
             longestTrack.MainFeature = true;
+
+            // ── Prefer widescreen over fullscreen when tracks are similarly sized ──
+            var preferWidescreen = config?.PreferWidescreen ?? settings.Value.PreferWidescreen;
+            if (preferWidescreen)
+            {
+                var eligible = tracks.Where(t => t.Process).ToList();
+                if (eligible.Count >= 2)
+                {
+                    // Sort descending by file size (or duration as a fallback)
+                    var sorted = eligible
+                        .OrderByDescending(t => t.FileSize ?? (long)(t.Length ?? 0) * 1024)
+                        .ToList();
+
+                    var first = sorted[0];
+                    var second = sorted[1];
+
+                    var firstSize = first.FileSize ?? (long)(first.Length ?? 0) * 1024;
+                    var secondSize = second.FileSize ?? (long)(second.Length ?? 0) * 1024;
+
+                    // Only apply when both tracks have meaningful sizes and are within 15%
+                    if (firstSize > 0 && secondSize > 0)
+                    {
+                        var ratio = (double)Math.Min(firstSize, secondSize) / Math.Max(firstSize, secondSize);
+                        if (ratio >= 0.85)
+                        {
+                            var firstIsWide = first.AspectRatio?.Contains("16:9") == true;
+                            var secondIsWide = second.AspectRatio?.Contains("16:9") == true;
+
+                            Track? widescreenPick = null;
+                            if (firstIsWide && !secondIsWide)
+                                widescreenPick = first;
+                            else if (!firstIsWide && secondIsWide)
+                                widescreenPick = second;
+
+                            if (widescreenPick is not null && widescreenPick != longestTrack)
+                            {
+                                var oldTrack = longestTrack;
+                                longestTrack.MainFeature = false;
+                                widescreenPick.MainFeature = true;
+                                longestTrack = widescreenPick;
+                                logger.LogInformation(
+                                    "PreferWidescreen: swapped MainFeature from track {OldTrack} (aspect {OldAspect}, size {OldSize}) " +
+                                    "to track {NewTrack} (aspect {NewAspect}, size {NewSize}) — ratio was {Ratio:P1}",
+                                    oldTrack.TrackNumber, oldTrack.AspectRatio ?? "(unknown)", oldTrack.FileSize ?? 0,
+                                    widescreenPick.TrackNumber, widescreenPick.AspectRatio ?? "(unknown)", widescreenPick.FileSize ?? 0,
+                                    ratio);
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         foreach (var track in tracks)
             db.Tracks.Add(track);

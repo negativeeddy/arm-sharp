@@ -13,6 +13,7 @@ public class ConfigSnapshot
     public bool ManualWait { get; set; }
     public int ManualWaitTime { get; set; } = 60;
     public bool AllowDuplicates { get; set; }
+    public bool PreferWidescreen { get; set; }
     public bool Prevent99 { get; set; }
     public bool GetVideoTitle { get; set; }
     public string? GetAudioTitle { get; set; }
