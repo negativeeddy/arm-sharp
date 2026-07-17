@@ -198,7 +198,7 @@ public sealed class ArmRipperService(
                 Directory.CreateDirectory(makeMkvOutPath);
 
             var mkvArgs = job.Config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
-            await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, job.Config?.MinLength ?? settings.Value.MinLength, MkvProgress(job, "Ripping track 0", ct), null, ct);
+            await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping track 0", ct), ct);
             logger.LogInformation("Ripped track 0 in test mode");
             return makeMkvOutPath;
         }
@@ -413,9 +413,9 @@ public sealed class ArmRipperService(
             {
                 var firstTrack = eligibleTracks.FirstOrDefault();
                 if (firstTrack is not null)
-                    await makeMkv.RipTrackAsync(job, firstTrack.TrackNumber!, makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, "Ripping track 0", ct), firstTrack.SourceTitleId?.ToString(), ct);
+                    await makeMkv.RipTrackAsync(job, firstTrack.TrackNumber!, makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping track 0", ct), ct);
                 else
-                    await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, "Ripping track 0", ct), null, ct);
+                    await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping track 0", ct), ct);
             }
             else if (config?.MainFeature ?? settings.Value.MainFeature)
             {
@@ -425,7 +425,9 @@ public sealed class ArmRipperService(
                 var main = tracks.FirstOrDefault(t => t.MainFeature);
                 if (main is not null)
                 {
-                    await makeMkv.RipTrackAsync(job, main.TrackNumber!, makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, "Ripping main feature", ct), main.SourceTitleId?.ToString(), ct);
+                    // We already identified the exact track (the longest one), so pass
+                    // minLength=0 to prevent MakeMKV from filtering it out with --minlength.
+                    await makeMkv.RipTrackAsync(job, main.TrackNumber!, makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping main feature", ct), ct);
                     ripCount = 1;
                 }
             }
@@ -447,7 +449,7 @@ public sealed class ArmRipperService(
                     // configured minLength — we already decided to rip them, so tell MakeMKV
                     // not to filter them out by passing minLength=0.
                     var trackMinLength = !string.IsNullOrEmpty(track.EpisodeTitle) ? 0 : minLengthCfg;
-                    await makeMkv.RipTrackAsync(job, track.TrackNumber!, makeMkvOutPath, mkvArgs, trackMinLength, MkvProgress(job, $"Ripping track {trackNum} of {eligibleTracks.Count}", ct), track.SourceTitleId?.ToString(), ct);
+                    await makeMkv.RipTrackAsync(job, track.TrackNumber!, makeMkvOutPath, mkvArgs, trackMinLength, MkvProgress(job, $"Ripping track {trackNum} of {eligibleTracks.Count}", ct), ct);
                     ripCount++;
                 }
             }

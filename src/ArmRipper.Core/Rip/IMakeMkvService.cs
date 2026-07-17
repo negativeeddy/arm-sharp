@@ -12,6 +12,6 @@ public interface IMakeMkvService
     /// (used when DiscDb is enabled so short extras can be discovered and promoted).</param>
     Task<List<Track>> GetTrackInfoAsync(Job job, string baseName, int? infoMinLength = null, CancellationToken ct = default);
     Task<List<Track>> GetTrackInfoWithCacheAsync(Job job, string baseName, int? infoMinLength = null, CancellationToken ct = default);
-    Task RipTrackAsync(Job job, string trackNumber, string outputPath, string mkvArgs, int minLength, IProgress<int>? progress = null, string? sourceTitleId = null, CancellationToken ct = default);
+    Task RipTrackAsync(Job job, string trackNumber, string outputPath, string mkvArgs, int minLength, IProgress<int>? progress = null, CancellationToken ct = default);
     Task RipAllTitlesAsync(Job job, string outputPath, string mkvArgs, int minLength, IProgress<int>? progress = null, CancellationToken ct = default);
 }
