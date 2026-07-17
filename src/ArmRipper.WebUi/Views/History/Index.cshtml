@@ -85,7 +85,14 @@ else
             {
                 <tr>
                     <td>@job.Id</td>
-                    <td>@(job.TitleManual ?? job.Title ?? "Untitled")</td>
+                    <td>
+                        <span class="history-title" id="title-@job.Id">@(job.TitleManual ?? job.Title ?? "Untitled")</span>
+                        <button type="button" class="btn btn-outline-secondary btn-sm ml-1 edit-title-btn"
+                                style="padding:0 0.3rem; font-size:0.7rem;"
+                                data-jobid="@job.Id"
+                                data-title="@(job.TitleManual ?? job.Title ?? "")"
+                                title="Edit title">✏️</button>
+                    </td>
                     <td>
                         @if (job.HasNiceTitle)
                         {
@@ -143,6 +150,36 @@ else
         $('.tablesorter').tablesorter({
             sortList: [[0,1]],
             headers: { 0: { sorter: 'digit' } }
+        });
+
+        // Inline title editing
+        $('.edit-title-btn').on('click', function () {
+            var btn = $(this);
+            var jobId = btn.data('jobid');
+            var currentTitle = btn.data('title');
+            var cell = btn.closest('td');
+            var displaySpan = cell.find('.history-title');
+
+            // Replace with inline form
+            var form = $('<form method="post" action="/jobs/set-title" style="display:inline-flex;gap:4px;">' +
+                '<input type="hidden" name="jobId" value="' + jobId + '" />' +
+                '<input type="hidden" name="returnUrl" value="' + window.location.pathname + window.location.search + '" />' +
+                '<input type="text" name="title" class="form-control form-control-sm" value="' + $('<span/>').text(currentTitle).html() + '" style="width:200px;" />' +
+                '<button type="submit" class="btn btn-success btn-sm" style="padding:0 0.4rem;">✓</button>' +
+                '<button type="button" class="btn btn-outline-secondary btn-sm cancel-edit-btn" style="padding:0 0.4rem;">✗</button>' +
+                '</form>');
+
+            displaySpan.hide();
+            btn.hide();
+            form.insertAfter(displaySpan);
+
+            form.find('input[name="title"]').focus().select();
+
+            form.find('.cancel-edit-btn').on('click', function () {
+                form.remove();
+                displaySpan.show();
+                btn.show();
+            });
         });
     });
 </script>

@@ -210,17 +210,22 @@
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span>Identification</span>
                 <span class="d-flex gap-2">
-                    @if (!Model.HasNiceTitle)
+                    @if (!Model.HasNiceTitle && !string.IsNullOrEmpty(Model.Title))
                     {
-                        @if (!string.IsNullOrEmpty(Model.Title))
-                        {
-                            <form method="post" action="/jobs/approve-title" style="display:inline">
-                                <input type="hidden" name="jobId" value="@Model.Id" />
-                                <button type="submit" class="btn btn-success btn-sm">✓ Approve Title</button>
-                            </form>
-                        }
-                        <a href="/jobs/titlesearch?jobId=@Model.Id" class="btn btn-outline-primary btn-sm">Search for Title</a>
+                        <form method="post" action="/jobs/approve-title" style="display:inline">
+                            <input type="hidden" name="jobId" value="@Model.Id" />
+                            <button type="submit" class="btn btn-success btn-sm">✓ Approve Title</button>
+                        </form>
                     }
+                    else if (Model.HasNiceTitle)
+                    {
+                        <form method="post" action="/jobs/unapprove-title" style="display:inline"
+                              onsubmit="return confirm('Clear the approved status for this title? It won\'t be uploaded to DiscDb until re-approved.');">
+                            <input type="hidden" name="jobId" value="@Model.Id" />
+                            <button type="submit" class="btn btn-outline-warning btn-sm">✗ Clear Approval</button>
+                        </form>
+                    }
+                    <a href="/jobs/titlesearch?jobId=@Model.Id" class="btn btn-outline-primary btn-sm">Search for Title</a>
                 </span>
             </div>
             <div class="card-body">
