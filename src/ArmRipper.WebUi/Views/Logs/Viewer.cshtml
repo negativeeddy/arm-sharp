@@ -15,8 +15,10 @@
 @section Scripts {
 <script>
     const output = document.getElementById('log-content');
-    const logFile = '@file';
-    const logMode = '@mode';
+    const connection = new signalR.HubConnectionBuilder()
+        .withUrl('/hubs/notifications')
+        .withAutomaticReconnect()
+        .build();
 
     // Auto-scroll tracking: stay pinned to bottom unless user scrolls up
     var autoScroll = true;
@@ -24,51 +26,25 @@
         autoScroll = (output.scrollTop + output.clientHeight >= output.scrollHeight - 20);
     });
 
-    // ── "full" mode: load entire file via HTTP first, then stream updates ──
-    if (logMode === 'full') {
-        output.textContent = 'Loading log\u2026';
-        fetch('/logs/reader?file=' + encodeURIComponent(logFile))
-            .then(function (r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.text();
-            })
-            .then(function (text) {
-                output.textContent = text;
-                startSignalRStream();
-            })
-            .catch(function (err) {
-                output.textContent = 'Error loading log: ' + err.message;
-            });
-    } else {
-        // ── "tail" mode: SignalR stream (starts from last ~4 KB) ──
-        startSignalRStream();
-    }
-
-    function startSignalRStream() {
-        const connection = new signalR.HubConnectionBuilder()
-            .withUrl('/hubs/notifications')
-            .withAutomaticReconnect()
-            .build();
-
-        connection.start()
-            .then(function () {
-                connection.stream('StreamLog', logFile, logMode)
-                    .subscribe({
-                        next: function (data) {
-                            output.textContent += data;
-                            if (logMode === 'tail' && autoScroll) {
-                                output.scrollTop = output.scrollHeight;
-                            }
-                        },
-                        complete: function () {},
-                        error: function (err) {
-                            output.textContent = 'Error streaming log: ' + err.message;
+    connection.start()
+        .then(() => {
+            connection.stream('StreamLog', '@file', '@mode')
+                .subscribe({
+                    next: (data) => {
+                        output.textContent += data;
+                        @if (mode == "tail")
+                        {
+                            <text>if (autoScroll) output.scrollTop = output.scrollHeight;</text>
                         }
-                    });
-            })
-            .catch(function (err) {
-                output.textContent = 'Connection error: ' + err.message;
-            });
-    }
+                    },
+                    complete: () => {},
+                    error: (err) => {
+                        output.textContent = 'Error loading log: ' + err.message;
+                    }
+                });
+        })
+        .catch(err => {
+            output.textContent = 'Connection error: ' + err.message;
+        });
 </script>
 }

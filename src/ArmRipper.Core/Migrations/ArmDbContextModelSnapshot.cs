@@ -321,9 +321,6 @@ namespace ArmRipper.Core.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("TEXT");
 
-                    b.Property<int?>("SourceTitleId")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("TrackNumber")
                         .IsRequired()
                         .HasMaxLength(4)
@@ -775,9 +772,6 @@ namespace ArmRipper.Core.Migrations
                     b.Property<string>("Source")
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
-
-                    b.Property<int?>("SourceTitleId")
-                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Status")
                         .HasMaxLength(32)
