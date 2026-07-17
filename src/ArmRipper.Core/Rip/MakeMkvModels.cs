@@ -12,6 +12,7 @@ public enum TrackId
     Chapters = 8,
     Duration = 9,
     Filesize = 11,
+    SourceTitleId = 24,
     Filename = 27
 }
 
