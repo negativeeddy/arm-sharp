@@ -421,9 +421,13 @@ public partial class MakeMkvService : IMakeMkvService
 
         try
         {
-            var args = $"--robot --messages=-stdout --progress=-stdout mkv --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
+            var args = minLength > 0
+                ? $"--robot --messages=-stdout --progress=-stdout mkv --minlength={minLength} dev:{job.DevPath} {trackNumber} \\\"{outputPath}\\\""
+                : $"--robot --messages=-stdout --progress=-stdout mkv dev:{job.DevPath} {trackNumber} \\\"{outputPath}\\\"";
             if (!string.IsNullOrEmpty(mkvArgs))
-                args = $"--robot --messages=-stdout --progress=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
+                args = minLength > 0
+                    ? $"--robot --messages=-stdout --progress=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {trackNumber} \\\"{outputPath}\\\""
+                    : $"--robot --messages=-stdout --progress=-stdout mkv {mkvArgs} dev:{job.DevPath} {trackNumber} \\\"{outputPath}\\\"";
 
             await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
                 ParseAndReportProgress(line, progress);
