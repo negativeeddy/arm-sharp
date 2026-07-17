@@ -5,9 +5,6 @@ public class DiscTrack
     public int Id { get; init; }
     public int DiscMetadataId { get; set; }
     public string TrackNumber { get; set; } = "";
-
-    /// <summary>Actual 1-based disc title number (TINFO field 24).</summary>
-    public int? SourceTitleId { get; set; }
     public string? FileName { get; set; }
     public int? Length { get; set; }
     public int? Chapters { get; set; }
