@@ -9,6 +9,15 @@ public class NotificationHub(IOptions<ArmSettings> settings) : Hub
 {
     private string LogPath => ArmPaths.GetLogPath(settings.Value);
 
+    /// <summary>
+    /// Streams log file content over SignalR.  Yields in ~16 KB chunks so large
+    /// files don't exceed the default SignalR message size limit (32 KB).
+    /// </summary>
+    /// <param name="fileName">Log file name (e.g. "arm.log", "42.log").</param>
+    /// <param name="mode">
+    /// "full" — send the entire file from the start, then stream new lines.
+    /// "tail" — send only the last ~4 KB, then stream new lines.
+    /// </param>
     public async IAsyncEnumerable<string> StreamLog(
         string fileName,
         string mode,
@@ -22,21 +31,29 @@ public class NotificationHub(IOptions<ArmSettings> settings) : Hub
         if (!System.IO.File.Exists(fullPath))
             yield break;
 
-        long lastPos = 0;
+        // Determine starting position based on mode
+        var fi = new FileInfo(fullPath);
+        long lastPos = mode == "tail"
+            ? Math.Max(0, fi.Length - 4096)  // last ~4 KB for "tail"
+            : 0;                              // entire file for "full"
+
         while (!cancellationToken.IsCancellationRequested)
         {
-            var fi = new FileInfo(fullPath);
+            fi.Refresh();
             if (fi.Exists && fi.Length > lastPos)
             {
                 await using var fs = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 fs.Seek(lastPos, SeekOrigin.Begin);
                 using var reader = new StreamReader(fs);
-                var newText = await reader.ReadToEndAsync(cancellationToken);
 
-                if (newText.Length > 0)
+                // Yield in ~16 KB chunks to stay well within SignalR's 32 KB limit
+                var buffer = new char[16 * 1024];
+                int bytesRead;
+                while ((bytesRead = await reader.ReadAsync(buffer, 0, buffer.Length)) > 0)
                 {
-                    yield return newText;
+                    yield return new string(buffer, 0, bytesRead);
                 }
+
                 lastPos = fi.Length;
             }
 
