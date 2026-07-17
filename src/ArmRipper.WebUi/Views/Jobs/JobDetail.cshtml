@@ -394,15 +394,11 @@ else
 {
     <div class="table-responsive">
         <table class="table table-striped table-hover table-sm">
-            <thead><tr><th>#</th><th>MKV #</th><th>Title</th><th>Length</th><th>Chapters</th><th>Size</th><th>FPS</th><th>Aspect</th><th>Source</th><th>Type</th><th>Ripped</th><th>Main</th><th>Status</th></tr></thead>
+            <thead><tr><th>#</th><th>Title</th><th>Length</th><th>Chapters</th><th>Size</th><th>FPS</th><th>Aspect</th><th>Source</th><th>Type</th><th>Ripped</th><th>Main</th><th>Status</th></tr></thead>
             <tbody>
-                @{
-                    var orderedTracks = Model.Tracks.OrderBy(t => t.TrackNumber).ToList();
-                    for (var idx = 0; idx < orderedTracks.Count; idx++)
-                    {
-                        var track = orderedTracks[idx];
+                @foreach (var track in Model.Tracks.OrderBy(t => t.TrackNumber))
+                {
                     <tr class="@(track.MainFeature ? "table-primary" : "")">
-                        <td>@(idx + 1)</td>
                         <td>@track.TrackNumber</td>
                         <td>
                             @if (!string.IsNullOrEmpty(track.EpisodeTitle))
@@ -449,7 +445,6 @@ else
                         <td>@(track.MainFeature ? "Yes" : "")</td>
                         <td>@(track.Status ?? "—")</td>
                     </tr>
-                    }
                 }
             </tbody>
         </table>
