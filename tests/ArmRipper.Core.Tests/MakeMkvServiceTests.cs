@@ -28,7 +28,7 @@ public sealed class MakeMkvServiceTests : IDisposable
         _runnerMock
             .Setup(r => r.RunStreamingAsync(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .Returns(AsyncEnumerable.Empty<string>());
+            .Returns(AsyncEnumerable.Empty<(string?, int?)>());
 
         _service = new MakeMkvService(
             _runnerMock.Object,
@@ -43,13 +43,14 @@ public sealed class MakeMkvServiceTests : IDisposable
         _db.Dispose();
     }
 
-    private static async IAsyncEnumerable<string> ToAsyncStream(params string[] lines)
+    private static async IAsyncEnumerable<(string? Line, int? ExitCode)> ToAsyncStream(params string[] lines)
     {
         foreach (var line in lines)
         {
-            yield return line;
+            yield return (line, null);
             await Task.CompletedTask;
         }
+        yield return (null, 0);
     }
 
 

@@ -9,7 +9,7 @@ public interface ICliProcessRunner
         int timeoutMs = 120_000,
         CancellationToken ct = default);
 
-    IAsyncEnumerable<string> RunStreamingAsync(
+    IAsyncEnumerable<(string? Line, int? ExitCode)> RunStreamingAsync(
         string fileName,
         string arguments,
         string? workingDirectory = null,
