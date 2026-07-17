@@ -414,12 +414,12 @@ public partial class MakeMkvService : IMakeMkvService
         public bool Forced { get; set; }
     }
 
-    public async Task RipTrackAsync(Job job, string trackNumber, string outputPath, string mkvArgs, int minLength, IProgress<int>? progress = null, CancellationToken ct = default)
+    public async Task RipTrackAsync(Job job, string trackNumber, string outputPath, string mkvArgs, int minLength, IProgress<int>? progress = null, string? sourceTitleId = null, CancellationToken ct = default)
     {
-        // Estimate expected file size from track info for progress monitoring
-        var expectedSize = job.Tracks
-            .Where(t => t.TrackNumber == trackNumber)
-            .Sum(t => t.FileSize ?? 0);
+        // Estimate expected file size from the track for progress monitoring.
+        // job.Tracks may not be populated at this point (tracks are returned as a separate list from
+        // GetTrackInfoWithCacheAsync), so we check safely with ?.FirstOrDefault().
+        var expectedSize = job.Tracks?.FirstOrDefault(t => t.TrackNumber == trackNumber)?.FileSize ?? 0;
 
         var monitorCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var monitorTask = expectedSize > 0 && progress is not null
@@ -430,13 +430,12 @@ public partial class MakeMkvService : IMakeMkvService
         {
             // Use SourceTitleId (field 24 from MakeMKV info) when available — the mkv command
             // expects the source title ID, not the sequential TINFO index (TrackNumber).
-            var titleId = job.Tracks
-                .Where(t => t.TrackNumber == trackNumber)
-                .Select(t => t.SourceTitleId?.ToString())
-                .FirstOrDefault();
-            var args = $"--robot --messages=-stdout --progress=-stdout mkv --minlength={minLength} dev:{job.DevPath} {titleId ?? trackNumber} \\\"{outputPath}\\\"";
+            // The caller resolves this from the in-memory tracks list since job.Tracks is not
+            // guaranteed to be populated at this point.
+            var titleId = sourceTitleId ?? trackNumber;
+            var args = $"--robot --messages=-stdout --progress=-stdout mkv --minlength={minLength} dev:{job.DevPath} {titleId} \"{outputPath}\"";
             if (!string.IsNullOrEmpty(mkvArgs))
-                args = $"--robot --messages=-stdout --progress=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {titleId ?? trackNumber} \\\"{outputPath}\\\"";
+                args = $"--robot --messages=-stdout --progress=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {titleId} \"{outputPath}\"";
 
             await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
                 ParseAndReportProgress(line, progress);
