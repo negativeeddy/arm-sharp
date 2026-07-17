@@ -36,6 +36,9 @@ public class Track
     /// <summary>Content type from TheDiscDb: "movie", "episode", "extra", "trailer", "commentary", etc.</summary>
     public string? ContentType { get; set; }
 
+    /// <summary>MakeMKV source title ID (field 24 of TINFO). Used in the mkv command instead of the sequential TrackNumber.</summary>
+    public int? SourceTitleId { get; set; }
+
     /// <summary>Season number for this specific track (may differ from Job.SeasonNumber for multi-season discs).</summary>
     public int? TrackSeasonNumber { get; set; }
 
