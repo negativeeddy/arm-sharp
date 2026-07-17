@@ -11,6 +11,11 @@ public class Track
     /// <summary>Pre-parsed track number for efficient numeric access.</summary>
     [NotMapped]
     public int? TrackNumberInt => int.TryParse(TrackNumber, out var n) ? n : null;
+
+    /// <summary>The actual 1-based title number on the disc (TINFO field 24).
+    /// Used when calling makemkvcon mkv to specify a single title, since
+    /// MakeMKV interprets 0 as 'all titles' and TrackNumber is 0-based.</summary>
+    public int? SourceTitleId { get; set; }
     public int? Length { get; set; }
     public string? AspectRatio { get; set; }
     public double? Fps { get; set; }
