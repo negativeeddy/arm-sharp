@@ -149,7 +149,6 @@ public partial class MakeMkvService : IMakeMkvService
         var filesize = 0L;
         var streamType = 0;
         var resolution = "";
-        var sourceTitleId = 0;
         var streamAccums = new Dictionary<int, StreamAccum>();
 
         var lineCount = 0;
@@ -216,7 +215,7 @@ public partial class MakeMkvService : IMakeMkvService
 
                     case TInfo tinfo:
                         if (currentTid >= 0 && tinfo.Tid != currentTid)
-                            FinalizeTrack(job, baseName, tracks, discTracks, currentTid, ref seconds, ref aspect, ref fps, ref filename, ref chapters, ref filesize, ref streamType, ref resolution, streamAccums, ref sourceTitleId);
+                            FinalizeTrack(job, baseName, tracks, discTracks, currentTid, ref seconds, ref aspect, ref fps, ref filename, ref chapters, ref filesize, ref streamType, ref resolution, streamAccums);
                         currentTid = tinfo.Tid;
                         switch ((TrackId)tinfo.Id)
                         {
@@ -231,9 +230,6 @@ public partial class MakeMkvService : IMakeMkvService
                                 break;
                             case TrackId.Filesize:
                                 long.TryParse(tinfo.Value, out filesize);
-                                break;
-                            case TrackId.SourceTitleId:
-                                int.TryParse(tinfo.Value.Trim(), out sourceTitleId);
                                 break;
                         }
                         break;
@@ -251,7 +247,7 @@ public partial class MakeMkvService : IMakeMkvService
         }
 
         if (currentTid >= 0)
-            FinalizeTrack(job, baseName, tracks, discTracks, currentTid, ref seconds, ref aspect, ref fps, ref filename, ref chapters, ref filesize, ref streamType, ref resolution, streamAccums, ref sourceTitleId);
+            FinalizeTrack(job, baseName, tracks, discTracks, currentTid, ref seconds, ref aspect, ref fps, ref filename, ref chapters, ref filesize, ref streamType, ref resolution, streamAccums);
 
         _logger.LogInformation("GetTrackInfo: {Lines} lines, {Tracks} tracks, lastTid={Tid}", lineCount, tracks.Count, currentTid);
 
@@ -315,14 +311,13 @@ public partial class MakeMkvService : IMakeMkvService
     private static void FinalizeTrack(Job job, string baseName, List<Track> tracks, List<DiscTrack> discTracks,
         int currentTid, ref int seconds, ref string aspect, ref double fps, ref string filename,
         ref int chapters, ref long filesize, ref int streamType, ref string resolution,
-        Dictionary<int, StreamAccum> streamAccums, ref int sourceTitleId)
+        Dictionary<int, StreamAccum> streamAccums)
     {
-        tracks.Add(CreateTrackObj(job, currentTid, baseName, seconds, aspect, fps, filename, chapters, filesize, sourceTitleId));
+        tracks.Add(CreateTrackObj(job, currentTid, baseName, seconds, aspect, fps, filename, chapters, filesize));
 
         var discTrack = new DiscTrack
         {
             TrackNumber = currentTid.ToString(),
-            SourceTitleId = sourceTitleId > 0 ? sourceTitleId : null,
             FileName = string.IsNullOrEmpty(filename) ? null : filename,
             Length = seconds > 0 ? seconds : null,
             Chapters = chapters > 0 ? chapters : null,
@@ -414,21 +409,10 @@ public partial class MakeMkvService : IMakeMkvService
 
     public async Task RipTrackAsync(Job job, string trackNumber, string outputPath, string mkvArgs, int minLength, IProgress<int>? progress = null, CancellationToken ct = default)
     {
-        // Look up the SourceTitleId (actual 1-based disc title number) from the track,
-        // so we pass the correct title to MakeMKV's mkv command. MakeMKV interprets 0
-        // as "all titles", so the 0-based TINFO index from the info scan won't work.
-        var sourceTitleId = job.Tracks
-            ?.FirstOrDefault(t => t.TrackNumber == trackNumber)
-            ?.SourceTitleId;
-
-        // Use SourceTitleId if available, otherwise fall back to trackNumber
-        // (which is the 0-based TINFO index — only correct when info was scanned
-        // with --minlength=0 so all titles are present).
-        var mkvTitleNum = sourceTitleId?.ToString() ?? trackNumber;
         // Estimate expected file size from the track for progress monitoring.
-        // job.Tracks may not be populated at this point (tracks are returned as a separate list from
-        // GetTrackInfoWithCacheAsync), so we check safely with ?.FirstOrDefault().
-        var expectedSize = job.Tracks?.FirstOrDefault(t => t.TrackNumber == trackNumber)?.FileSize ?? 0;
+        var expectedSize = job.Tracks
+            ?.FirstOrDefault(t => t.TrackNumber == trackNumber)
+            ?.FileSize ?? 0;
 
         var monitorCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var monitorTask = expectedSize > 0 && progress is not null
@@ -437,13 +421,14 @@ public partial class MakeMkvService : IMakeMkvService
 
         try
         {
-            // Use the actual 1-based title number (SourceTitleId) instead of the
-            // 0-based TINFO index, because MakeMKV's mkv command interprets 0 as
-            // "all titles" — which would rip every eligible title instead of just
-            // the one we selected.
-            var args = $"--robot --messages=-stdout --progress=-stdout mkv --minlength={minLength} dev:{job.DevPath} {mkvTitleNum} \"{outputPath}\"";
+            // trackNumber is the 0-based TINFO index from MakeMKV's info scan.
+            // MakeMKV's mkv command uses TINFO indices: 0 = "all titles",
+            // 1 = first title, etc. SourceTitleId (field 24) is a different
+            // numbering scheme and must NOT be used here — it would select the
+            // wrong title on almost every disc.
+            var args = $"--robot --messages=-stdout --progress=-stdout mkv --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
             if (!string.IsNullOrEmpty(mkvArgs))
-                args = $"--robot --messages=-stdout --progress=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {mkvTitleNum} \"{outputPath}\"";
+                args = $"--robot --messages=-stdout --progress=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
 
             await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
                 ParseAndReportProgress(line, progress);
@@ -575,13 +560,12 @@ public partial class MakeMkvService : IMakeMkvService
         }
     }
 
-    private static Track CreateTrackObj(Job job, int tid, string baseName, int seconds, string aspect, double fps, string filename, int chapters, long filesize, int sourceTitleId)
+    private static Track CreateTrackObj(Job job, int tid, string baseName, int seconds, string aspect, double fps, string filename, int chapters, long filesize)
     {
         return new Track
         {
             JobId = job.Id,
             TrackNumber = tid.ToString(),
-            SourceTitleId = sourceTitleId > 0 ? sourceTitleId : null,
             Length = seconds,
             AspectRatio = string.IsNullOrEmpty(aspect) ? null : aspect,
             Fps = fps > 0 ? fps : null,
