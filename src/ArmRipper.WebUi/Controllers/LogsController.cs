@@ -11,14 +11,16 @@ public class LogsController(IOptions<ArmSettings> settings) : Controller
 {
     private string LogPath => ArmPaths.GetLogPath(settings.Value);
 
+    private const int PageSize = 25;
+
     [HttpGet("")]
-    public IActionResult Index()
+    public IActionResult Index(int page = 1)
     {
         var dir = new DirectoryInfo(LogPath);
         if (!dir.Exists)
             return View(Array.Empty<LogFileEntry>());
 
-        var files = dir.GetFiles()
+        var allFiles = dir.GetFiles()
             .OrderByDescending(f => f.LastWriteTime)
             .Select(f => new LogFileEntry
             {
@@ -27,6 +29,19 @@ public class LogsController(IOptions<ArmSettings> settings) : Controller
                 SizeKb = $"{Math.Round(f.Length / 1024.0, 1):N1}"
             })
             .ToList();
+
+        var totalFiles = allFiles.Count;
+        var totalPages = Math.Max(1, (int)Math.Ceiling(totalFiles / (double)PageSize));
+        page = Math.Clamp(page, 1, totalPages);
+
+        var files = allFiles
+            .Skip((page - 1) * PageSize)
+            .Take(PageSize)
+            .ToList();
+
+        ViewBag.CurrentPage = page;
+        ViewBag.TotalPages = totalPages;
+        ViewBag.TotalFiles = totalFiles;
 
         return View(files);
     }
