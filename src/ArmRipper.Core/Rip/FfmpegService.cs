@@ -249,7 +249,8 @@ public sealed partial class FfmpegService(
 
     private async Task RunTranscodeAsync(string inputFile, string outputFile, Job job, int? totalSeconds, List<string> stdOut, List<string> stdErr, IProgress<int>? progress, CancellationToken ct)
     {
-        await using var slot = await transcodeSlotLimiter.AcquireAsync(ct);
+        var effectiveMax = job.Config?.MaxConcurrentTranscodes ?? settings.Value.MaxConcurrentTranscodes;
+        await using var slot = await transcodeSlotLimiter.AcquireAsync(effectiveMax, ct);
 
         var (ffPreArgs, ffPostArgs) = GetFfSettings(job);
 
