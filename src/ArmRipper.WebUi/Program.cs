@@ -90,6 +90,7 @@ builder.Services.AddSingleton<DiscPollingService>();
 builder.Services.AddHostedService<DiscPollingService>(sp => sp.GetRequiredService<DiscPollingService>());
 builder.Services.AddSingleton<IDiscPollingNotifier>(sp => sp.GetRequiredService<DiscPollingService>());
 builder.Services.AddHostedService<ShutdownJobCancellationService>();
+builder.Services.AddHostedService<MakemkvIoWatchdog>();
 
 // ── ArmMedia TV series identification pipeline ──
 builder.Services.AddHttpClient("Tmdb", client =>

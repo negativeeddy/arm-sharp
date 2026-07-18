@@ -68,6 +68,9 @@ public static class ArmYamlConfigLoader
         // ── Disc polling (ARM-Sharp specific) ──
         ["DISC_POLLING_ENABLED"] = "Arm:DiscPollingEnabled",
         ["DISC_POLL_INTERVAL"] = "Arm:DiscPollIntervalSeconds",
+        // ── MakeMKV I/O watchdog (ARM-Sharp specific) ──
+        ["MAKEMKV_MAX_READ_BYTES"] = "Arm:MakemkvMaxReadBytes",
+        ["MAKEMKV_IO_WATCHDOG_INTERVAL"] = "Arm:MakemkvIoWatchdogIntervalSeconds",
     };
 
     public static Dictionary<string, string?> LoadYamlValues(string yamlPath)
