@@ -59,16 +59,16 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
         var stdOutStr = string.Join("\n", stdOutList);
         var stdErrStr = string.Join("\n", stdErrList);
 
-        // Write command output to log file via Debug level
+        // Write command output to log file via Trace level (disabled by default to avoid I/O overhead)
         foreach (var line in stdOutList)
         {
             if (!string.IsNullOrWhiteSpace(line))
-                logger.LogDebug("{FileName}: {Line}", fileName, line);
+                logger.LogTrace("{FileName}: {Line}", fileName, line);
         }
         foreach (var line in stdErrList)
         {
             if (!string.IsNullOrWhiteSpace(line))
-                logger.LogDebug("STDERR {FileName}: {Line}", fileName, line);
+                logger.LogTrace("STDERR {FileName}: {Line}", fileName, line);
         }
 
         var result = new CliResult(process.ExitCode, stdOutStr, stdErrStr, false);
@@ -124,7 +124,7 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
         {
             while (await process.StandardOutput.ReadLineAsync(ct) is { } line)
             {
-                logger.LogDebug("{Name}: {Line}", fileName, line);
+                logger.LogTrace("{Name}: {Line}", fileName, line);
                 yield return line;
             }
         }
@@ -139,7 +139,7 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
         // Drain stderr before checking exit code — process may have been killed or exited.
         var stderr = await stderrTask;
         foreach (var errLine in stderr)
-            logger.LogDebug("STDERR {FileName}: {Line}", fileName, errLine);
+            logger.LogTrace("STDERR {FileName}: {Line}", fileName, errLine);
 
         process.WaitForExit();
 
