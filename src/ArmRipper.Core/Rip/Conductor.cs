@@ -221,7 +221,14 @@ public sealed class Conductor(
         logger.LogInformation("Forked job {JobId} created from original job {OriginalJobId} for raw directory {RawDir}",
             job.Id, originalJob.Id, rawDir);
 
-        // ── 4. Set up file logger and run ──
+        // ── 4. Notify that a forked transcode has started ──
+        if (config.NotifyTranscode)
+        {
+            await notificationService.NotifyAsync(job, NotificationService.NotifyTitle,
+                $"Forked transcode started for {job.Title} — job #{job.Id} (forked from #{originalJob.Id}, {job.DiscType}, {job.VideoType})", ct);
+        }
+
+        // ── 5. Set up file logger and run ──
         using var _ = logger.BeginScope(new Dictionary<string, object>
         {
             [JobFileLoggerProvider.LogFilePathKey] = job.GetLogFilePath()
@@ -404,6 +411,13 @@ public sealed class Conductor(
             logger.LogInformation("************* Starting imported transcode *************");
             logger.LogInformation("Title: {Title} ({Year}) — {DiscType}", title, year, discType);
             logger.LogInformation("Raw directory: {DevPath}", job.DevPath);
+
+            // Notify that an import transcode has started
+            if (job.Config?.NotifyTranscode ?? settings.Value.NotifyTranscode)
+            {
+                await notificationService.NotifyAsync(job, NotificationService.NotifyTitle,
+                    $"Import transcode started for {job.Title} — job #{job.Id} ({job.DiscType}, {job.VideoType})", ct);
+            }
 
             var directory = await armRipperService.RipVisualMediaAsync(job, job.LogFile ?? "", false, false, ct);
             job.Path = directory;
