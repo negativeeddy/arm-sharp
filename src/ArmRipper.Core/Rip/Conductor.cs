@@ -91,7 +91,9 @@ public sealed class Conductor(
     /// </summary>
     /// <param name="originalJobId">The ID of the original job to fork from.</param>
     /// <param name="rawFilePath">Path to the raw .mkv file (or its parent directory) to transcode.</param>
-    public async Task<int> RunForkedTranscodeAsync(int originalJobId, string rawFilePath, CancellationToken ct = default)
+    /// <param name="discType">Optional override for the disc type (e.g. "dvd", "bluray").</param>
+    /// <param name="videoType">Optional override for the video type (e.g. "movie", "series").</param>
+    public async Task<int> RunForkedTranscodeAsync(int originalJobId, string rawFilePath, CancellationToken ct = default, DiscType? discType = null, VideoContentType? videoType = null)
     {
         // ── 1. Load the original job ──
         var originalJob = await db.Jobs
@@ -115,6 +117,9 @@ public sealed class Conductor(
             return 1;
         }
 
+        // ── 1b. Resolve disc type override ──
+        var resolvedDiscType = discType ?? originalJob.DiscType;
+
         // ── 2. Create the forked job ──
         var job = new Job
         {
@@ -126,9 +131,9 @@ public sealed class Conductor(
             TitleAuto = originalJob.TitleAuto,
             Year = originalJob.Year,
             YearAuto = originalJob.YearAuto,
-            VideoType = originalJob.VideoType,
+            VideoType = videoType?.ToString()?.ToLowerInvariant() ?? originalJob.VideoType,
             VideoTypeAuto = originalJob.VideoTypeAuto,
-            DiscType = originalJob.DiscType,
+            DiscType = resolvedDiscType,
             ImdbId = originalJob.ImdbId,
             ImdbIdAuto = originalJob.ImdbIdAuto,
             PosterUrl = originalJob.PosterUrl,
@@ -216,7 +221,14 @@ public sealed class Conductor(
         logger.LogInformation("Forked job {JobId} created from original job {OriginalJobId} for raw directory {RawDir}",
             job.Id, originalJob.Id, rawDir);
 
-        // ── 4. Set up file logger and run ──
+        // ── 4. Notify that a forked transcode has started ──
+        if (config.NotifyTranscode)
+        {
+            await notificationService.NotifyAsync(job, NotificationService.NotifyTitle,
+                $"Forked transcode started for {job.Title} — job #{job.Id} (forked from #{originalJob.Id}, {job.DiscType}, {job.VideoType})", ct);
+        }
+
+        // ── 5. Set up file logger and run ──
         using var _ = logger.BeginScope(new Dictionary<string, object>
         {
             [JobFileLoggerProvider.LogFilePathKey] = job.GetLogFilePath()
@@ -263,7 +275,7 @@ public sealed class Conductor(
     /// Creates a new standalone job from raw MKV files that were ripped elsewhere,
     /// skipping identify and rip stages — jumps straight to transcoding.
     /// </summary>
-    public async Task<Job> CreateImportJobAsync(string rawFilePath, string title, string? year, string? videoType, string? discType, CancellationToken ct = default)
+    public async Task<Job> CreateImportJobAsync(string rawFilePath, string title, string? year, VideoContentType? videoType, DiscType? discType, CancellationToken ct = default)
     {
         // ── 1. Determine the raw directory ──
         var rawDir = File.Exists(rawFilePath)
@@ -276,13 +288,7 @@ public sealed class Conductor(
         }
 
         // ── 2. Parse disc type ──
-        var parsedDiscType = (discType ?? "").ToLowerInvariant() switch
-        {
-            "dvd" => DiscType.Dvd,
-            "bluray" or "bd" or "blu-ray" => DiscType.Bluray,
-            "uhd" or "4k" => DiscType.Uhd,
-            _ => DiscType.Bluray // safest default for imported MKVs
-        };
+        var parsedDiscType = discType ?? DiscType.Bluray; // safest default for imported MKVs
 
         // ── 3. Create the job with user-provided metadata ──
         var armSettings = settings.Value;
@@ -295,8 +301,8 @@ public sealed class Conductor(
             TitleAuto = title,
             Year = year ?? "0000",
             YearAuto = year ?? "0000",
-            VideoType = videoType ?? "movie",
-            VideoTypeAuto = videoType ?? "movie",
+            VideoType = videoType?.ToString()?.ToLowerInvariant() ?? "movie",
+            VideoTypeAuto = videoType?.ToString()?.ToLowerInvariant() ?? "movie",
             DiscType = parsedDiscType,
             Label = title,
             ManualStart = true
@@ -406,6 +412,13 @@ public sealed class Conductor(
             logger.LogInformation("Title: {Title} ({Year}) — {DiscType}", title, year, discType);
             logger.LogInformation("Raw directory: {DevPath}", job.DevPath);
 
+            // Notify that an import transcode has started
+            if (job.Config?.NotifyTranscode ?? settings.Value.NotifyTranscode)
+            {
+                await notificationService.NotifyAsync(job, NotificationService.NotifyTitle,
+                    $"Import transcode started for {job.Title} — job #{job.Id} ({job.DiscType}, {job.VideoType})", ct);
+            }
+
             var directory = await armRipperService.RipVisualMediaAsync(job, job.LogFile ?? "", false, false, ct);
             job.Path = directory;
 
@@ -435,7 +448,7 @@ public sealed class Conductor(
         }
     }
 
-    public async Task<int> RunImportTranscodeAsync(string rawFilePath, string title, string? year, string? videoType, string? discType, CancellationToken ct = default)
+    public async Task<int> RunImportTranscodeAsync(string rawFilePath, string title, string? year, VideoContentType? videoType, DiscType? discType, CancellationToken ct = default)
     {
         var job = await CreateImportJobAsync(rawFilePath, title, year, videoType, discType, ct);
         return await RunImportTranscodeForJobAsync(job.Id, ct);

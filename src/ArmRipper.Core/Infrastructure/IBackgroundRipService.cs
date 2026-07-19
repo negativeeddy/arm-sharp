@@ -1,3 +1,5 @@
+using ArmRipper.Core.Models;
+
 namespace ArmRipper.Core.Infrastructure;
 
 public interface IBackgroundRipService
@@ -8,7 +10,7 @@ public interface IBackgroundRipService
     /// (a pipeline was started) or rejected (with a reason).
     /// </summary>
     StartRipResult StartRip(string devPath, CancellationToken ct = default);
-    void StartForkedJob(int originalJobId, string rawFilePath, CancellationToken ct = default);
+    void StartForkedJob(int originalJobId, string rawFilePath, CancellationToken ct = default, DiscType? discType = null, VideoContentType? videoType = null);
 
     /// <summary>
     /// Starts a standalone import transcode job for raw MKV files that came from another machine.
@@ -17,7 +19,7 @@ public interface IBackgroundRipService
     /// Creates the job in the DB synchronously and returns its ID so the caller can redirect
     /// to the job detail page. The actual transcode runs in the background.
     /// </summary>
-    int StartImportJob(string rawFilePath, string title, string? year, string? videoType, string? discType, CancellationToken ct = default);
+    int StartImportJob(string rawFilePath, string title, string? year, VideoContentType? videoType, DiscType? discType, CancellationToken ct = default);
 
     void CancelRip(string devPath);
 

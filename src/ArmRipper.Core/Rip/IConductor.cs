@@ -5,14 +5,14 @@ namespace ArmRipper.Core.Rip;
 public interface IConductor
 {
     Task<int> RunAsync(string devicePath, CancellationToken ct = default);
-    Task<int> RunForkedTranscodeAsync(int originalJobId, string rawFilePath, CancellationToken ct = default);
+    Task<int> RunForkedTranscodeAsync(int originalJobId, string rawFilePath, CancellationToken ct = default, DiscType? discType = null, VideoContentType? videoType = null);
 
     /// <summary>
     /// Creates a new import job in the database — sets up the Job entity, config snapshot,
     /// and marks Setup/Identify/Rip stages complete. Does NOT run the transcode.
     /// Call <see cref="RunImportTranscodeForJobAsync"/> separately to actually transcode.
     /// </summary>
-    Task<Job> CreateImportJobAsync(string rawFilePath, string title, string? year, string? videoType, string? discType, CancellationToken ct = default);
+    Task<Job> CreateImportJobAsync(string rawFilePath, string title, string? year, VideoContentType? videoType, DiscType? discType, CancellationToken ct = default);
 
     /// <summary>
     /// Runs transcode for an import job that has already been created in the DB
@@ -27,5 +27,5 @@ public interface IConductor
     /// The caller provides the movie metadata (title, year, video type) since there is no
     /// original job record to copy from.
     /// </summary>
-    Task<int> RunImportTranscodeAsync(string rawFilePath, string title, string? year, string? videoType, string? discType, CancellationToken ct = default);
+    Task<int> RunImportTranscodeAsync(string rawFilePath, string title, string? year, VideoContentType? videoType, DiscType? discType, CancellationToken ct = default);
 }
