@@ -42,7 +42,8 @@ public sealed partial class HandBrakeService(
 
             logger.LogInformation("Transcoding {File} to {Output}", file, outputFile);
             var cmd = BuildCommand(file, outputFile, job, trackNumber: null, mainFeature: false);
-            lastResult = await RunHandBrakeCommandAsync(cmd, ct, progress);
+            var effectiveMax = job.Config?.MaxConcurrentTranscodes ?? settings.Value.MaxConcurrentTranscodes;
+            lastResult = await RunHandBrakeCommandAsync(cmd, effectiveMax, ct, progress);
 
             if (lastResult.ExitCode != 0)
             {
@@ -118,10 +119,11 @@ public sealed partial class HandBrakeService(
 
         logger.LogInformation("Ripping main feature to {Output}", outputFile);
         var cmd = BuildCommand(rawPath, outputFile, job, trackNumber: null, mainFeature: true);
+        var effectiveMax = job.Config?.MaxConcurrentTranscodes ?? settings.Value.MaxConcurrentTranscodes;
 
         try
         {
-            var result = await RunHandBrakeCommandAsync(cmd, ct, progress);
+            var result = await RunHandBrakeCommandAsync(cmd, effectiveMax, ct, progress);
             if (result.ExitCode != 0)
             {
                 var err = $"HandBrake main feature transcoding failed with code {result.ExitCode}: {result.StdErr}";
@@ -191,10 +193,11 @@ public sealed partial class HandBrakeService(
 
             logger.LogInformation("Transcoding title {TrackNo} to {Output}", trackNo, outputFile);
             var cmd = BuildCommand(rawPath, outputFile, job, trackNo, mainFeature: false);
+            var effectiveMax = job.Config?.MaxConcurrentTranscodes ?? settings.Value.MaxConcurrentTranscodes;
 
             try
             {
-                lastResult = await RunHandBrakeCommandAsync(cmd, ct, progress);
+                lastResult = await RunHandBrakeCommandAsync(cmd, effectiveMax, ct, progress);
                 if (lastResult.ExitCode != 0)
                 {
                     var err = $"HandBrake encoding of title {trackNo} failed with code {lastResult.ExitCode}: {lastResult.StdErr}";
@@ -277,9 +280,9 @@ public sealed partial class HandBrakeService(
         return (settings.Value.HbPresetDvd, settings.Value.HbArgsDvd);
     }
 
-    private async Task<CliResult> RunHandBrakeCommandAsync(string cmd, CancellationToken ct, IProgress<int>? progress = null)
+    private async Task<CliResult> RunHandBrakeCommandAsync(string cmd, int maxConcurrent, CancellationToken ct, IProgress<int>? progress = null)
     {
-        await using var slot = await transcodeSlotLimiter.AcquireAsync(ct);
+        await using var slot = await transcodeSlotLimiter.AcquireAsync(maxConcurrent, ct);
 
         logger.LogInformation("HandBrake command: {Command}", cmd);
 

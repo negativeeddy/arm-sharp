@@ -409,10 +409,10 @@ public partial class MakeMkvService : IMakeMkvService
 
     public async Task RipTrackAsync(Job job, string trackNumber, string outputPath, string mkvArgs, int minLength, IProgress<int>? progress = null, CancellationToken ct = default)
     {
-        // Estimate expected file size from track info for progress monitoring
+        // Estimate expected file size from the track for progress monitoring.
         var expectedSize = job.Tracks
-            .Where(t => t.TrackNumber == trackNumber)
-            .Sum(t => t.FileSize ?? 0);
+            ?.FirstOrDefault(t => t.TrackNumber == trackNumber)
+            ?.FileSize ?? 0;
 
         var monitorCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var monitorTask = expectedSize > 0 && progress is not null
@@ -421,6 +421,11 @@ public partial class MakeMkvService : IMakeMkvService
 
         try
         {
+            // trackNumber is the 0-based TINFO index from MakeMKV's info scan.
+            // MakeMKV's mkv command uses TINFO indices: 0 = "all titles",
+            // 1 = first title, etc. SourceTitleId (field 24) is a different
+            // numbering scheme and must NOT be used here — it would select the
+            // wrong title on almost every disc.
             var args = $"--robot --messages=-stdout --progress=-stdout mkv --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
             if (!string.IsNullOrEmpty(mkvArgs))
                 args = $"--robot --messages=-stdout --progress=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
