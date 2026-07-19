@@ -627,6 +627,10 @@ public sealed class Conductor(
                 "Disc '{Label}' (job {JobId}) has already been ripped successfully. " +
                 "AllowDuplicates is disabled — marking job as completed without re-ripping.",
                 job.Label, job.Id);
+            // Eject the disc so it doesn't get stuck in the drive
+            await identifyService.EjectAsync(job, ct);
+            job.Ejected = true;
+
             job.Status = JobState.Success;
             job.StopTime = DateTime.UtcNow;
             job.ProgressMessage = $"Duplicate disc skipped — previously ripped as \"{job.Title}\"";
