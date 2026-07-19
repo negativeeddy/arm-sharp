@@ -18,6 +18,7 @@
     const connection = new signalR.HubConnectionBuilder()
         .withUrl('/hubs/notifications')
         .withAutomaticReconnect()
+        .withHubOptions({ maximumReceiveMessageSize: null }) // no limit – we chunk on the server
         .build();
 
     // Auto-scroll tracking: stay pinned to bottom unless user scrolls up

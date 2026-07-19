@@ -426,8 +426,21 @@ public sealed class ArmRipperService(
                 var main = tracks.FirstOrDefault(t => t.MainFeature);
                 if (main is not null)
                 {
-                    await makeMkv.RipTrackAsync(job, main.TrackNumber!, makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, "Ripping main feature", ct), ct);
-                    ripCount = 1;
+                    try
+                    {
+                        await makeMkv.RipTrackAsync(job, main.TrackNumber!, makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, "Ripping main feature", ct), ct);
+                        ripCount = 1;
+                    }
+                    catch (InvalidOperationException ex) when (ex.Message.Contains("code 12"))
+                    {
+                        logger.LogWarning(ex,
+                            "MakeMKV track {Track} failed with exit code 12 (no titles matched the filter). " +
+                            "This can happen when the track number from the MakeMKV info scan doesn't match " +
+                            "the title numbering used during the rip phase. Falling back to 'rip all titles'.",
+                            main.TrackNumber);
+                        await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, "Ripping all titles (track 12 fallback)", ct), ct);
+                        ripCount = eligibleTracks.Count;
+                    }
                 }
             }
             else if (maxLength > 99998 && eligibleTracks.All(t => string.IsNullOrEmpty(t.EpisodeTitle)))
@@ -448,8 +461,21 @@ public sealed class ArmRipperService(
                     // configured minLength — we already decided to rip them, so tell MakeMKV
                     // not to filter them out by passing minLength=0.
                     var trackMinLength = !string.IsNullOrEmpty(track.EpisodeTitle) ? 0 : minLengthCfg;
-                    await makeMkv.RipTrackAsync(job, track.TrackNumber!, makeMkvOutPath, mkvArgs, trackMinLength, MkvProgress(job, $"Ripping track {trackNum} of {eligibleTracks.Count}", ct), ct);
-                    ripCount++;
+                    try
+                    {
+                        await makeMkv.RipTrackAsync(job, track.TrackNumber!, makeMkvOutPath, mkvArgs, trackMinLength, MkvProgress(job, $"Ripping track {trackNum} of {eligibleTracks.Count}", ct), ct);
+                        ripCount++;
+                    }
+                    catch (InvalidOperationException ex) when (ex.Message.Contains("code 12"))
+                    {
+                        logger.LogWarning(ex,
+                            "MakeMKV track {Track} failed with exit code 12 during individual track rip. " +
+                            "Falling back to rip all titles.",
+                            track.TrackNumber);
+                        await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, $"Ripping all titles (track 12 fallback)", ct), ct);
+                        ripCount = eligibleTracks.Count;
+                        break;
+                    }
                 }
             }
 
