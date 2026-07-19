@@ -3,6 +3,7 @@ using System.Text.Json;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
+using ArmRipper.Core.Models;
 using ArmRipper.WebUi.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -249,13 +250,17 @@ public class CompletedController(IOptions<ArmSettings> settings, ArmDbContext db
     }
 
     [HttpPost("transcode")]
-    public async Task<IActionResult> Transcode(string filePath, int? originalJobId, CancellationToken ct)
+    public async Task<IActionResult> Transcode(string filePath, int? originalJobId, DiscType? discType, VideoContentType? videoType, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath))
         {
             TempData["ErrorMessage"] = "Raw file not found.";
             return RedirectToAction("Index");
         }
+
+        // Normalise defaults
+        discType ??= DiscType.Bluray;
+        videoType ??= VideoContentType.Movie;
 
         // If no job ID was provided, try to find one by directory name
         var jobId = originalJobId;
@@ -311,13 +316,13 @@ public class CompletedController(IOptions<ArmSettings> settings, ArmDbContext db
                 ? System.Text.RegularExpressions.Regex.Match(dirName, @"^(.+?) \((\d{4})\)$")
                 : null;
             var importYear = importMatch?.Success == true ? importMatch.Groups[2].Value : null;
-            var newJobId = backgroundRip.StartImportJob(filePath, importTitle, importYear, "movie", "bluray", ct);
+            var newJobId = backgroundRip.StartImportJob(filePath, importTitle, importYear, videoType, discType, ct);
             return RedirectToAction("JobDetail", "Jobs", new { jobId = newJobId });
         }
 
-        backgroundRip.StartForkedJob(jobId.Value, filePath, ct);
+        backgroundRip.StartForkedJob(jobId.Value, filePath, ct, discType, videoType);
 
-        TempData["SuccessMessage"] = $"Forked transcode job started for {Path.GetFileName(filePath)} (original job #{jobId})";
+        TempData["SuccessMessage"] = $"Transcode job started for {Path.GetFileName(filePath)} (original job #{jobId})";
         return RedirectToAction("Index");
     }
 

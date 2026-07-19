@@ -237,17 +237,12 @@ else
                             }
                             @if (file.Source == FileSource.Raw)
                             {
-                                <form method="post" action="/completed/transcode" style="display:inline" class="mr-1">
-                                    <input type="hidden" name="filePath" value="@file.FilePath" />
-                                    @{
-                                        var transcodeJobId = file.OriginalJobId ?? file.JobId;
-                                    }
-                                    @if (transcodeJobId.HasValue)
-                                    {
-                                        <input type="hidden" name="originalJobId" value="@transcodeJobId.Value" />
-                                    }
-                                    <button type="submit" class="btn btn-outline-success btn-sm" title="Start transcoding this raw file" style="padding:0.1rem 0.4rem; font-size:0.75rem;">🔀</button>
-                                </form>
+                                var transcodeJobId = file.OriginalJobId ?? file.JobId;
+                                <button type="button" class="btn btn-outline-success btn-sm transcode-btn mr-1"
+                                        title="Start transcoding this raw file"
+                                        style="padding:0.1rem 0.4rem; font-size:0.75rem;"
+                                        data-filepath="@file.FilePath"
+                                        data-originaljobid="@(transcodeJobId?.ToString() ?? "")">🔀</button>
                             }
                             <form method="post" action="/completed/delete" onsubmit="return confirm('Delete @file.FileName? This cannot be undone.');" style="display:inline">
                                 <input type="hidden" name="filePath" value="@file.FilePath" />
@@ -390,6 +385,49 @@ else
         </div>
     </div>
 
+    <!-- Transcode Modal -->
+    <div class="modal fade" id="transcodeModal" tabindex="-1" role="dialog" aria-labelledby="transcodeModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <form method="post" action="/completed/transcode" id="transcodeForm">
+                    <input type="hidden" name="filePath" id="transcodeFilePath" />
+                    <input type="hidden" name="originalJobId" id="transcodeOriginalJobId" />
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="transcodeModalLabel">🔀 Start Transcode</h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-info mb-3 py-2 small">
+                            Configure the transcoding options for this raw file.
+                        </div>
+                        <div class="form-group">
+                            <label for="transcodeDiscType">Disc Type</label>
+                            <select class="form-control" id="transcodeDiscType" name="discType">
+                                <option value="bluray">Blu-ray</option>
+                                <option value="dvd">DVD</option>
+                            </select>
+                            <small class="form-text text-muted">Determines which HandBrake preset &amp; arguments are used.</small>
+                        </div>
+                        <div class="form-group mb-0">
+                            <label for="transcodeVideoType">Content Type</label>
+                            <select class="form-control" id="transcodeVideoType" name="videoType">
+                                <option value="movie">Movie</option>
+                                <option value="series">Series / TV</option>
+                            </select>
+                            <small class="form-text text-muted">Determines post-processing, naming, and episode detection.</small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-success">🔀 Start Transcode</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script>
         $(function () {
             // Rename modal plumbing
@@ -425,6 +463,25 @@ else
             $modal.on('shown.bs.modal', function () {
                 $input.trigger('focus');
                 selectNameWithoutExtension($input);
+            });
+
+            // ── Transcode modal ──
+            var $transcodeModal = $('#transcodeModal');
+            var $transcodeFilePath = $('#transcodeFilePath');
+            var $transcodeOriginalJobId = $('#transcodeOriginalJobId');
+            var $transcodeDiscType = $('#transcodeDiscType');
+            var $transcodeVideoType = $('#transcodeVideoType');
+
+            $(document).on('click', '.transcode-btn', function () {
+                var $btn = $(this);
+                var fp = $btn.data('filepath');
+                var jobId = $btn.data('originaljobid');
+                $transcodeFilePath.val(fp);
+                $transcodeOriginalJobId.val(jobId || '');
+                // Reset to defaults
+                $transcodeDiscType.val('bluray');
+                $transcodeVideoType.val('movie');
+                $transcodeModal.modal('show');
             });
 
             // ── Fix Movie Dir modal ──

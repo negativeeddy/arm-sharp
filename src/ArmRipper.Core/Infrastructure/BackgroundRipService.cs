@@ -126,7 +126,7 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
         return StartRipResult.Accepted;
     }
 
-    public void StartForkedJob(int originalJobId, string rawFilePath, CancellationToken ct = default)
+    public void StartForkedJob(int originalJobId, string rawFilePath, CancellationToken ct = default, DiscType? discType = null, VideoContentType? videoType = null)
     {
         var key = $"forked-{originalJobId}-{rawFilePath.GetHashCode()}";
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -145,7 +145,7 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
                 var effectiveSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, _settings.Value, cts.Token);
 
                 var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
-                await conductor.RunForkedTranscodeAsync(originalJobId, rawFilePath, cts.Token);
+                await conductor.RunForkedTranscodeAsync(originalJobId, rawFilePath, cts.Token, discType, videoType);
                 logger.LogInformation("Forked transcode completed for job {OriginalJobId}, raw path {RawPath}",
                     originalJobId, rawFilePath);
             }
@@ -165,7 +165,7 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
         }, cts.Token);
     }
 
-    public int StartImportJob(string rawFilePath, string title, string? year, string? videoType, string? discType, CancellationToken ct = default)
+    public int StartImportJob(string rawFilePath, string title, string? year, VideoContentType? videoType, DiscType? discType, CancellationToken ct = default)
     {
         // ── Create the job in the DB synchronously so we can return its ID ──
         int jobId;
