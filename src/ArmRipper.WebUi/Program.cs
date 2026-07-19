@@ -154,8 +154,9 @@ var app = builder.Build();
 // Non-job-scoped logs (BackgroundRipService, DiscPollingService, startup, etc.)
 // are written to a general ARM log file instead of being silently discarded.
 var initArmSettings = app.Services.GetRequiredService<IOptions<ArmSettings>>().Value;
-fileLogProvider.FallbackFilePath = Path.Combine(
-    initArmSettings.LogPath ?? ArmPaths.DefaultLogPath, "arm.log");
+// TEMPORARILY DISABLED to reduce I/O overhead during investigation
+// fileLogProvider.FallbackFilePath = Path.Combine(
+//     initArmSettings.LogPath ?? ArmPaths.DefaultLogPath, "arm.log");
 
 var dbFile = connectionString.Replace("Data Source=", "").Split(';')[0];
 var dbDir = Path.GetDirectoryName(dbFile);
