@@ -14,7 +14,7 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
         int timeoutMs = 120_000,
         CancellationToken ct = default)
     {
-        logger.LogDebug("Running: {FileName} {Arguments}", fileName, arguments);
+        logger.LogInformation("Running: {FileName} {Arguments}", fileName, arguments);
 
         using var process = new Process
         {
@@ -72,7 +72,7 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
         }
 
         var result = new CliResult(process.ExitCode, stdOutStr, stdErrStr, false);
-        logger.LogDebug("Exit code {Code}: {FileName}", result.ExitCode, fileName);
+        logger.LogInformation("Process exited ({FileName}) code={Code}", fileName, result.ExitCode);
         return result;
     }
 
