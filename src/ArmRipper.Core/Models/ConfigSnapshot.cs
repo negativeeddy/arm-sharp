@@ -33,6 +33,8 @@ public class ConfigSnapshot
     public int? MinLength { get; set; }
     public int? MaxLength { get; set; }
 
+    public int? GpuIndex { get; set; }
+
     public string? HbPresetDvd { get; set; }
     public string? HbPresetBd { get; set; }
     public string? HbArgsDvd { get; set; }
