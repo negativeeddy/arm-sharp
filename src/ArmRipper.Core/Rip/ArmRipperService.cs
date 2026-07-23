@@ -107,14 +107,26 @@ public sealed class ArmRipperService(
         // via WebUI during episode identification.
         await db.Entry(job).ReloadAsync(ct);
 
-        if (job.IsStageComplete(RipStage.Transcode))
+        // Track whether the transcode phase completed successfully so we can
+        // decide later whether it is safe to delete the raw source files.
+        var transcodeSucceeded = job.IsStageComplete(RipStage.Transcode);
+
+        if (transcodeSucceeded)
         {
             logger.LogInformation("Stage 'transcode' already completed — skipping transcode");
         }
         else
         {
             await StartTranscodeAsync(job, logFile, transcodeInPath!, transcodeOutPath, protection, ct);
-            job.MarkStageComplete(RipStage.Transcode);
+            transcodeSucceeded = job.Status != JobState.Failure;
+            if (transcodeSucceeded)
+            {
+                job.MarkStageComplete(RipStage.Transcode);
+            }
+            else
+            {
+                logger.LogWarning("Transcode phase failed — raw files will be retained for retry");
+            }
             await db.SaveChangesAsync(ct);
             await BroadcastJobUpdateAsync(job);
         }
@@ -161,7 +173,15 @@ public sealed class ArmRipperService(
         var delRaw = job.Config?.DelRawFiles ?? settings.Value.DelRawFiles;
         if (delRaw)
         {
-            DeleteRawFiles(new[] { transcodeInPath, transcodeOutPath, makeMkvOutPath }.OfType<string>().ToArray());
+            if (transcodeSucceeded)
+            {
+                DeleteRawFiles(new[] { transcodeInPath, transcodeOutPath, makeMkvOutPath }.OfType<string>().ToArray());
+            }
+            else
+            {
+                logger.LogWarning("Transcode phase had errors — keeping raw files at {Paths} so the job can be retried",
+                    string.Join(", ", new[] { transcodeInPath, transcodeOutPath, makeMkvOutPath }.OfType<string>()));
+            }
         }
         else
         {
