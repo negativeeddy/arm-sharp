@@ -245,15 +245,15 @@ public sealed partial class HandBrakeService(
 
     private string BuildCommand(string inputPath, string outputPath, Job job, int? trackNumber, bool mainFeature)
     {
-        var cmd = $"nice HandBrakeCLI -i \"{inputPath}\" -o \"{outputPath}\"";
+        // HandBrake CLI has no --gpu flag; use CUDA_VISIBLE_DEVICES env var
+        // to target a specific GPU for NVENC/NVDEC.
+        var gpuIndex = job.Config?.GpuIndex ?? settings.Value.GpuIndex;
+        var gpuPrefix = gpuIndex.HasValue ? $"CUDA_VISIBLE_DEVICES={gpuIndex.Value} " : "";
+
+        var cmd = $"{gpuPrefix}nice HandBrakeCLI -i \"{inputPath}\" -o \"{outputPath}\"";
 
         if (mainFeature)
             cmd += " --main-feature";
-
-        // Inject --gpu N to target a specific GPU for NVENC/NVDEC
-        var gpuIndex = job.Config?.GpuIndex ?? settings.Value.GpuIndex;
-        if (gpuIndex.HasValue)
-            cmd += $" --gpu {gpuIndex.Value}";
 
         var (hbPreset, hbArgs) = GetHbSettings(job);
         if (!string.IsNullOrEmpty(hbPreset))

@@ -15,11 +15,44 @@
 @section Scripts {
 <script>
     const output = document.getElementById('log-content');
-    const connection = new signalR.HubConnectionBuilder()
-        .withUrl('/hubs/notifications')
-        .withAutomaticReconnect()
-        .withHubOptions({ maximumReceiveMessageSize: null }) // no limit – we chunk on the server
-        .build();
+    const fileName = @Json.Serialize(file ?? "");
+    const mode = @Json.Serialize(mode);
+
+    async function loadFullLog() {
+        const url = '/logs/reader?file=' + encodeURIComponent(fileName) + '&mode=full';
+        const response = await fetch(url, { cache: 'no-store' });
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status);
+        }
+
+        output.textContent = await response.text();
+        output.scrollTop = 0;
+    }
+
+    async function connectTailStream() {
+        if (!window.signalR) {
+            throw new Error('SignalR library not loaded');
+        }
+
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl('/hubs/notifications')
+            .withAutomaticReconnect()
+            .withHubOptions({ maximumReceiveMessageSize: null }) // no limit - we chunk on the server
+            .build();
+
+        await connection.start();
+        connection.stream('StreamLog', fileName, 'tail')
+            .subscribe({
+                next: (data) => {
+                    output.textContent += data;
+                    if (autoScroll) output.scrollTop = output.scrollHeight;
+                },
+                complete: () => {},
+                error: (err) => {
+                    output.textContent += '\n\n[stream error] ' + (err && err.message ? err.message : err);
+                }
+            });
+    }
 
     // Auto-scroll tracking: stay pinned to bottom unless user scrolls up
     var autoScroll = true;
@@ -27,25 +60,27 @@
         autoScroll = (output.scrollTop + output.clientHeight >= output.scrollHeight - 20);
     });
 
-    connection.start()
-        .then(() => {
-            connection.stream('StreamLog', '@file', '@mode')
-                .subscribe({
-                    next: (data) => {
-                        output.textContent += data;
-                        @if (mode == "tail")
-                        {
-                            <text>if (autoScroll) output.scrollTop = output.scrollHeight;</text>
-                        }
-                    },
-                    complete: () => {},
-                    error: (err) => {
-                        output.textContent = 'Error loading log: ' + err.message;
-                    }
-                });
-        })
-        .catch(err => {
-            output.textContent = 'Connection error: ' + err.message;
-        });
+    (async function initLogViewer() {
+        try {
+            if (mode === 'full') {
+                await loadFullLog();
+                return;
+            }
+
+            await connectTailStream();
+        } catch (err) {
+            const message = err && err.message ? err.message : String(err);
+            output.textContent = 'Error loading log: ' + message;
+
+            // Fallback for blocked SignalR/CDN: still show current file snapshot.
+            if (mode === 'tail') {
+                try {
+                    await loadFullLog();
+                } catch {
+                    // Keep the original tail connection error visible.
+                }
+            }
+        }
+    })();
 </script>
 }
