@@ -74,6 +74,7 @@ public class SettingsController(
         };
 
         ViewBag.HardwareEncoders = await hardwareEncoderInfoService.GetHardwareEncoderInfoAsync(includeDetailedNvidiaStats: true);
+        ViewBag.GpuList = await hardwareEncoderInfoService.GetGpuListAsync();
 
         // Count pending CRC64 submissions for the Online DB tab (excludes already-submitted)
         var pendingCrcCount = await db.Jobs
@@ -178,6 +179,7 @@ public class SettingsController(
         string? HbPresetDvd, string? HbPresetBd,
         string? HbArgsDvd, string? HbArgsBd,
         string? FfmpegCli, string? FfmpegPreFileArgs, string? FfmpegPostFileArgs,
+        int? GpuIndex,
         CancellationToken ct = default)
     {
         // Read checkboxes from raw form values (same hidden-false trick issue)
@@ -192,6 +194,7 @@ public class SettingsController(
             ["DelRawFiles"] = JsonSerialize(DelRawFiles),
             ["DestExt"] = DestExt is not null ? JsonSerialize(DestExt) : null,
             ["MaxConcurrentTranscodes"] = JsonSerialize(MaxConcurrentTranscodes),
+            ["GpuIndex"] = JsonSerialize(GpuIndex),
             ["HbPresetDvd"] = HbPresetDvd is not null ? JsonSerialize(HbPresetDvd) : null,
             ["HbPresetBd"] = HbPresetBd is not null ? JsonSerialize(HbPresetBd) : null,
             ["HbArgsDvd"] = HbArgsDvd is not null ? JsonSerialize(HbArgsDvd) : null,

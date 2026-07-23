@@ -60,6 +60,7 @@ public static class ArmYamlConfigLoader
         ["EMBY_SERVER"] = "Arm:EmbyServer",
         ["EMBY_PORT"] = "Arm:EmbyPort",
         ["EMBY_API_KEY"] = "Arm:EmbyApiKey",
+        ["GPU_INDEX"] = "Arm:GpuIndex",
         ["MAX_CONCURRENT_TRANSCODES"] = "Arm:MaxConcurrentTranscodes",
         ["MAX_CONCURRENT_MAKEMKVINFO"] = "Arm:MaxConcurrentMakemkvInfo",
         ["MAKEMKV_PERMA_KEY"] = "Arm:MakeMkvPermaKey",

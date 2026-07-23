@@ -387,6 +387,7 @@
                 ["FfmpegPreFileArgs"] = "FFmpeg arguments before the input file",
                 ["FfmpegPostFileArgs"] = "FFmpeg arguments after the input file",
                 ["MaxConcurrentTranscodes"] = "Maximum simultaneous transcodes (0 = unlimited)",
+                ["GpuIndex"] = "Which GPU to use for NVENC/NVDEC hardware acceleration. 'Auto' uses the default GPU. Only applies to HandBrake; FFmpeg users should set -gpu in post-file args.",
             };
             static string transTip(string key, Dictionary<string, string> tips) =>
                 $"<span class=\"text-info ml-1\" data-toggle=\"tooltip\" title=\"{tips[key]}\" style=\"cursor:help\">&#9432;</span>";
@@ -416,6 +417,40 @@
                         <tr>
                             <td><label>Max Concurrent Transcodes:</label>@Html.Raw(transTip("MaxConcurrentTranscodes", transTips))</td>
                             <td><input type="number" name="MaxConcurrentTranscodes" value="@armSettings?.MaxConcurrentTranscodes" class="form-control" min="0" max="16" /></td>
+                        </tr>
+                        <tr>
+                            <td><label>Encoding GPU:</label>@Html.Raw(transTip("GpuIndex", transTips))</td>
+                            <td>
+                                @{
+                                    var gpuList = ViewBag.GpuList as IReadOnlyList<(int Index, string Name)> ?? [];
+                                    var currentGpu = armSettings?.GpuIndex;
+                                }
+                                <select name="GpuIndex" class="form-control">
+                                    @if (currentGpu is null)
+                                    {
+                                        <option value="" selected>Auto (default)</option>
+                                    }
+                                    else
+                                    {
+                                        <option value="">Auto (default)</option>
+                                    }
+                                    @foreach (var gpu in gpuList)
+                                    {
+                                        @if (currentGpu == gpu.Index)
+                                        {
+                                            <option value="@gpu.Index" selected>GPU @gpu.Index — @gpu.Name</option>
+                                        }
+                                        else
+                                        {
+                                            <option value="@gpu.Index">GPU @gpu.Index — @gpu.Name</option>
+                                        }
+                                    }
+                                </select>
+                                @if (!gpuList.Any())
+                                {
+                                    <small class="text-muted">No NVIDIA GPUs detected by nvidia-smi</small>
+                                }
+                            </td>
                         </tr>
                     </table>
                 </div>

@@ -250,6 +250,11 @@ public sealed partial class HandBrakeService(
         if (mainFeature)
             cmd += " --main-feature";
 
+        // Inject --gpu N to target a specific GPU for NVENC/NVDEC
+        var gpuIndex = job.Config?.GpuIndex ?? settings.Value.GpuIndex;
+        if (gpuIndex.HasValue)
+            cmd += $" --gpu {gpuIndex.Value}";
+
         var (hbPreset, hbArgs) = GetHbSettings(job);
         if (!string.IsNullOrEmpty(hbPreset))
             cmd += $" --preset \"{hbPreset}\"";

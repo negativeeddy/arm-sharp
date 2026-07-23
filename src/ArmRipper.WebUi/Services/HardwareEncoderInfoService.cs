@@ -7,6 +7,29 @@ namespace ArmRipper.WebUi.Services;
 
 public class HardwareEncoderInfoService(ICliProcessRunner runner) : IHardwareEncoderInfoService
 {
+    public async Task<IReadOnlyList<(int Index, string Name)>> GetGpuListAsync()
+    {
+        try
+        {
+            var result = await runner.RunAsync("nvidia-smi", "--query-gpu=index,name --format=csv,noheader", timeoutMs: 5000);
+            if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.StdOut))
+                return [];
+
+            var gpus = new List<(int, string)>();
+            foreach (var line in result.StdOut.Trim().Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var parts = line.Split(',');
+                if (parts.Length >= 2 && int.TryParse(parts[0].Trim(), out var idx))
+                    gpus.Add((idx, parts[1].Trim()));
+            }
+            return gpus;
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
     public async Task<IReadOnlyList<Dictionary<string, object>>> GetHardwareEncoderInfoAsync(bool includeDetailedNvidiaStats = false)
     {
         var encoders = new List<Dictionary<string, object>>();

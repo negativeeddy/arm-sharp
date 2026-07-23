@@ -35,6 +35,9 @@ public class ArmSettings
     public int MinLength { get; set; } = 300;
     public int MaxLength { get; set; } = 99999;
 
+    /// <summary>GPU index for NVENC/NVDEC hardware acceleration (null = HandBrake default, 0 = first GPU, etc.).</summary>
+    public int? GpuIndex { get; set; }
+
     public string? HbPresetDvd { get; set; } = "";
     public string? HbPresetBd { get; set; } = "";
     public string? HbArgsDvd { get; set; } = "-e nvenc_h264 --encoder-preset slower --quality 18 --enable-hw-decoding nvdec --encopts spatial-aq=1:aq-strength=10:bf=4:cabac=1:g=50:keyint-min=23 --comb-detect --decomb --all-audio --all-subtitles --subtitle-burned=none --aencoder aac --audio-fallback aac --mixdown none";
