@@ -41,7 +41,9 @@
                         <td rowspan="2" class="align-middle text-center" style="width:110px;">
                             @if (!string.IsNullOrEmpty(job.PosterUrl))
                             {
-                                <img src="@job.PosterUrl" alt="Poster" class="img-fluid rounded shadow-sm" style="max-height:140px;object-fit:contain;" />
+                                <a href="/jobs/jobdetail?jobId=@job.Id" class="d-inline-block">
+                                    <img src="@job.PosterUrl" alt="Poster" class="img-fluid rounded shadow-sm" style="max-height:140px;object-fit:contain;" />
+                                </a>
                             }
                         </td>
                         <td>@job.Id</td>

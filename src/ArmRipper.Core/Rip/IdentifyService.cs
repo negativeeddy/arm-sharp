@@ -279,25 +279,29 @@ public sealed partial class IdentifyService(
 
     private async Task<bool> CheckMountAsync(Job job, CancellationToken ct)
     {
-        var mountPoint = await FindMountAsync(job.DevPath!, ct);
-        if (mountPoint is not null)
-        {
-            logger.LogInformation("Found disc {DevPath} mounted at {MountPoint}", job.DevPath, mountPoint);
-            job.MountPoint = mountPoint;
-            await ExtractDiscLabelAsync(job, ct);
-            return true;
-        }
-
-        // Check whether media is actually present BEFORE attempting to
-        // mount.  The mount(2) syscall sends SCSI commands that physically
-        // close the tray — even an empty tray — so we must not call mount
-        // if no disc is in the drive.
+        // Check whether media is actually present BEFORE any device I/O.
+        // Reading sysfs (/sys/block/*/size) is purely in-kernel and can
+        // never block — unlike running external commands such as findmnt
+        // that may hang indefinitely when the USB bus is suspended (e.g.
+        // laptop lid closed, drive in autosuspend).
         if (!CheckMediaPresent(job.DevPath!))
         {
             logger.LogWarning(
                 "Skipping mount for {DevPath} — no media detected (sysfs returned 0 sectors)",
                 job.DevPath);
             return false;
+        }
+
+        // Check if the disc is already mounted by reading /proc/self/mountinfo
+        // directly.  This is a purely in-memory virtual file and cannot block,
+        // unlike the findmnt command which can hang on suspended USB devices.
+        var mountPoint = FindMountFromProc(job.DevPath!);
+        if (mountPoint is not null)
+        {
+            logger.LogInformation("Found disc {DevPath} mounted at {MountPoint}", job.DevPath, mountPoint);
+            job.MountPoint = mountPoint;
+            await ExtractDiscLabelAsync(job, ct);
+            return true;
         }
 
         // Try to mount the disc with simple retries.
@@ -313,7 +317,7 @@ public sealed partial class IdentifyService(
 
             if (mountResult.ExitCode == 0)
             {
-                mountPoint = await FindMountAsync(job.DevPath!, ct);
+                mountPoint = FindMountFromProc(job.DevPath!);
                 if (mountPoint is not null)
                 {
                     logger.LogInformation("Successfully mounted disc to {MountPoint}", mountPoint);
@@ -400,19 +404,79 @@ public sealed partial class IdentifyService(
         return DiscType.Unknown;
     }
 
-    private async Task<string?> FindMountAsync(string devPath, CancellationToken ct)
+    /// <summary>
+    /// Checks /proc/self/mountinfo for the mount point of the given device.
+    /// This is a purely in-memory virtual file and will never block on I/O,
+    /// unlike the findmnt command which can hang indefinitely when the USB
+    /// bus is suspended (e.g. laptop lid closed).
+    /// </summary>
+    private static string? FindMountFromProc(string devPath)
     {
-        var result = await runner.RunAsync("findmnt", $"--json {devPath}", timeoutMs: 10_000, ct: ct);
-        if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.StdOut))
+        // /proc/self/mountinfo format (see proc(5)):
+        // 36 35 98:0 / /mnt/point rw,noatime - ext3 /dev/sda rw
+        // ^1 ^2  ^3  ^4    ^5        ^6         ^7 ^8   ^9      ^10
+        // Fields (space-separated, after optional "-"):
+        //   1: mount ID
+        //   2: parent ID
+        //   3: major:minor
+        //   4: root
+        //   5: mount point
+        //   6: mount options
+        //   7: optional fields (terminated by "-")
+        //   8: filesystem type
+        //   9: mount source (device path)
+        //  10: super options
+        //
+        // We normalize the device path to resolve symlinks (e.g. /dev/sr0
+        // may appear as /dev/sr0 or /dev/sg2 in mountinfo).
+
+        // Resolve the real path of the device
+        string realDevPath;
+        try
+        {
+            realDevPath = System.IO.File.ResolveLinkTarget(devPath, false)?.FullName ?? devPath;
+        }
+        catch
+        {
+            realDevPath = devPath;
+        }
+
+        var mountInfoPath = "/proc/self/mountinfo";
+        if (!System.IO.File.Exists(mountInfoPath))
             return null;
 
-        using var doc = JsonDocument.Parse(result.StdOut);
-        var filesystems = doc.RootElement.GetProperty("filesystems");
-        foreach (var fs in filesystems.EnumerateArray())
+        try
         {
-            var target = fs.GetProperty("target").GetString();
-            if (target is not null && Directory.Exists(target))
-                return target;
+            var lines = System.IO.File.ReadAllLines(mountInfoPath);
+            foreach (var line in lines)
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                // Split on spaces; find the "-" separator that marks the end
+                // of the optional fields and start of the type/device fields.
+                var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var dashIndex = Array.IndexOf(parts, "-");
+                if (dashIndex < 0 || dashIndex + 3 >= parts.Length)
+                    continue;
+
+                // The mount source is 2 fields after the "-"
+                var mountSource = parts[dashIndex + 2];
+
+                // Compare with both the original and resolved device path
+                if (!string.Equals(mountSource, devPath, StringComparison.Ordinal) &&
+                    !string.Equals(mountSource, realDevPath, StringComparison.Ordinal))
+                    continue;
+
+                // The mount point is field index 4 (0-based) before the "-"
+                var mountPoint = parts[4];
+                if (!string.IsNullOrEmpty(mountPoint) && Directory.Exists(mountPoint))
+                    return mountPoint;
+            }
+        }
+        catch
+        {
+            // Ignore I/O errors on /proc (should never happen)
         }
 
         return null;

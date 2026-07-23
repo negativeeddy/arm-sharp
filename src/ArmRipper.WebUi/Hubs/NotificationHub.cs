@@ -23,7 +23,9 @@ public class NotificationHub(IOptions<ArmSettings> settings) : Hub
             yield break;
 
         long lastPos = 0;
-        while (!cancellationToken.IsCancellationRequested)
+        const int bufferSize = 8192; // 8 KB chunks – safe for SignalR message size limits
+
+        do
         {
             var fi = new FileInfo(fullPath);
             if (fi.Exists && fi.Length > lastPos)
@@ -31,17 +33,24 @@ public class NotificationHub(IOptions<ArmSettings> settings) : Hub
                 await using var fs = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 fs.Seek(lastPos, SeekOrigin.Begin);
                 using var reader = new StreamReader(fs);
-                var newText = await reader.ReadToEndAsync(cancellationToken);
 
-                if (newText.Length > 0)
+                var buffer = new char[bufferSize];
+                int charsRead;
+                while ((charsRead = await reader.ReadAsync(buffer, 0, bufferSize)) > 0)
                 {
-                    yield return newText;
+                    yield return new string(buffer, 0, charsRead);
                 }
                 lastPos = fi.Length;
             }
 
+            // "full" mode: send the entire file content once and stop
+            if (mode == "full")
+                break;
+
+            // "tail" mode: poll for new content every second
             await Task.Delay(1000, cancellationToken);
         }
+        while (!cancellationToken.IsCancellationRequested);
     }
 
     /// <summary>Ping the hub to verify connectivity.</summary>
