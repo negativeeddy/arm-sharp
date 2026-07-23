@@ -82,6 +82,11 @@ public class Job
     [NotMapped]
     public string? ProgressMessage { get; set; }
 
+    /// <summary>Transient — full path where the disc poster was saved during identification.
+    /// Used during finalization to relocate the poster to the correct final directory.</summary>
+    [NotMapped]
+    public string? PosterSavedPath { get; set; }
+
     /// <summary>When the current stage started (set when Stage transitions).</summary>
     public DateTime? StageStartTime { get; set; }
 

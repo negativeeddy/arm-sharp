@@ -670,6 +670,7 @@ public sealed partial class IdentifyService(
                     var posterDst = Path.Combine(finalDir, "poster.png");
                     logger.LogInformation("Converting {PosterSrc} to poster", posterSrc);
                     await runner.RunAsync("ffmpeg", $"-y -i \"{posterSrc}\" \"{posterDst}\"", timeoutMs: 30_000, ct: ct);
+                    job.PosterSavedPath = posterDst;
                     break;
                 }
             }
