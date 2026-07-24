@@ -166,6 +166,10 @@ public sealed class ArmRipperService(
 
         await MoveFilesPostAsync(transcodeOutPath, job, ct);
 
+        // Move the poster.png from the identification-time path to the correct
+        // final directory (fixes orphaned posters left in "unidentified/").
+        RelocatePoster(job, job.Path ?? finalDirectory);
+
         await ScanEmbyAsync(job, ct);
 
         await SetPermissionsAsync(job.Path ?? finalDirectory, job, ct);
@@ -842,6 +846,46 @@ public sealed class ArmRipperService(
             logger.LogWarning(ex,
                 "[ArmMedia] Episode identification failed for job {JobId}; falling back to positional naming.",
                 job.Id);
+        }
+    }
+
+    /// <summary>
+    /// Relocates the poster.png that was saved during identification to the
+    /// correct final directory. During identification the VideoType and Year
+    /// may not yet be known, so the poster can end up in "unidentified/" or
+    /// under a title without the year suffix. This method moves it to the
+    /// correct location and cleans up the empty stale directory.
+    /// </summary>
+    private void RelocatePoster(Job job, string finalDirectory)
+    {
+        var posterSavedPath = job.PosterSavedPath;
+        if (string.IsNullOrEmpty(posterSavedPath) || !File.Exists(posterSavedPath))
+            return;
+
+        var posterDst = Path.Combine(finalDirectory, "poster.png");
+
+        // Already in the right place — nothing to do.
+        if (string.Equals(posterSavedPath, posterDst, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        try
+        {
+            Directory.CreateDirectory(finalDirectory);
+            File.Move(posterSavedPath, posterDst);
+            logger.LogInformation("Relocated poster from {Old} to {New}", posterSavedPath, posterDst);
+
+            // Clean up the empty stale directory left behind.
+            var staleDir = Path.GetDirectoryName(posterSavedPath);
+            if (staleDir is not null && Directory.Exists(staleDir) &&
+                !Directory.EnumerateFileSystemEntries(staleDir).Any())
+            {
+                Directory.Delete(staleDir);
+                logger.LogInformation("Removed empty stale poster directory {Dir}", staleDir);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to relocate poster from {Old} to {New}", posterSavedPath, posterDst);
         }
     }
 
