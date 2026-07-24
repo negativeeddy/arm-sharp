@@ -430,19 +430,19 @@ else
                                     "extra" or "deleted_scene" or "trailer" or "featurette" or "behind_the_scenes" => track.Process ? "bg-primary" : "bg-info text-white",
                                     _ => "bg-secondary"
                                 };
-                                <span class="badge @badgeClass">@track.ContentType</span>
+                                <span class="badge @badgeClass track-type-badge">@track.ContentType</span>
                             }
                             else if (track.Process && !track.MainFeature)
                             {
-                                <span class="badge bg-primary">rip</span>
+                                <span class="badge bg-primary track-type-badge">rip</span>
                             }
                             else if (track.Process && track.MainFeature)
                             {
-                                <span class="badge bg-success">main</span>
+                                <span class="badge bg-success track-type-badge">main</span>
                             }
                             else
                             {
-                                <span class="badge bg-danger bg-opacity-25 text-danger">—</span>
+                                <span class="badge bg-danger bg-opacity-25 text-danger track-type-badge">—</span>
                             }
                         </td>
                         <td>@(track.Ripped ? "Yes" : "No")</td>
