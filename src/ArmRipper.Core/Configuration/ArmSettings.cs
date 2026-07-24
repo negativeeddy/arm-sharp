@@ -110,6 +110,21 @@ public class ArmSettings
     // public string? DiscDbApiBaseUrl { get; set; } = "https://api.thediscdb.com/graphql";
     public string? DiscDbApiBaseUrl { get; set; } = "https://thediscdb.com/graphql";
 
+    // ── MakeMKV I/O Watchdog ──
+    /// <summary>
+    /// Maximum bytes a <c>makemkvcon</c> process can read from disc before the I/O watchdog
+    /// cancels the job. This prevents runaway read retry storms on scratched/damaged discs.
+    /// Set to 0 to disable the watchdog entirely.
+    /// Default: 150 GiB (approximately 3× a BDXL disc, well above any legitimate single rip).
+    /// </summary>
+    public long MakemkvMaxReadBytes { get; set; } = 150L * 1024 * 1024 * 1024;
+
+    /// <summary>
+    /// Polling interval in seconds for the MakeMKV I/O watchdog. Default: 30.
+    /// Minimum effective value is 10 seconds.
+    /// </summary>
+    public int MakemkvIoWatchdogIntervalSeconds { get; set; } = 30;
+
     // ── OVID Integration ──
     /// <summary>Whether to submit OVID fingerprints to the community OVID database.</summary>
     public bool OvidSubmitEnabled { get; set; } = true;
