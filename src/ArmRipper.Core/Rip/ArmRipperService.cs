@@ -580,8 +580,8 @@ public sealed class ArmRipperService(
 
         GuardStage(job, "rip", "VideoRipping", () => job.Status is JobState.VideoRipping);
         job.TransitionToStage(RipStage.Transcode);
-        job.Status = JobState.TranscodeActive;
-        job.ProgressMessage = "Starting transcode...";
+        job.Status = JobState.TranscodeWaiting;
+        job.ProgressMessage = "Waiting for transcode slot...";
         await db.SaveChangesAsync(ct);
         await BroadcastJobUpdateAsync(job);
 
