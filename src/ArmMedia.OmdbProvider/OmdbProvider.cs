@@ -16,16 +16,19 @@ namespace ArmMedia.OmdbProvider;
 public sealed class OmdbProvider : IEpisodeIdentificationProvider
 {
     private readonly IOmdbApiKeySource       _apiKeySource;
+    private readonly ITitleNormalizer?       _titleNormalizer;
     private readonly ILogger<OmdbProvider>   _logger;
     private readonly IHttpClientFactory?     _httpClientFactory;
 
-    /// <summary>Initialises the provider with an API key source and logger.</summary>
+    /// <summary>Initialises the provider with an API key source, logger, and optional title normalizer.</summary>
     public OmdbProvider(
         IOmdbApiKeySource          apiKeySource,
         ILogger<OmdbProvider>      logger,
-        IHttpClientFactory?        httpClientFactory = null)
+        IHttpClientFactory?        httpClientFactory = null,
+        ITitleNormalizer?          titleNormalizer = null)
     {
         _apiKeySource      = apiKeySource;
+        _titleNormalizer   = titleNormalizer;
         _logger            = logger;
         _httpClientFactory = httpClientFactory;
     }
@@ -51,21 +54,50 @@ public sealed class OmdbProvider : IEpisodeIdentificationProvider
             return [];
         }
 
+        // ── Step 0: Normalize title for search ────────────────────────────────
+        var searchTitle = context.SeriesTitle;
+        int? seasonOverride = null;
+        if (_titleNormalizer is not null)
+        {
+            var norm = _titleNormalizer.Normalize(context.SeriesTitle);
+            _logger.LogDebug(
+                "[OmdbProvider] Title normalized: '{Raw}' \u2192 query='{Query}', season={Season}.",
+                context.SeriesTitle, norm.Query, norm.Season);
+
+            if (!string.IsNullOrWhiteSpace(norm.Query))
+                searchTitle = norm.Query;
+
+            if (norm.Season is int s && context.Season <= 1)
+                seasonOverride = s;
+        }
+
+        var effectiveSeason = seasonOverride ?? context.Season;
+
         // ── Step 1: Fetch the full season episode list ───────────────────────
         var episodes = await GetSeasonEpisodesAsync(
-            context.SeriesTitle, context.Season, apiKey, cancellationToken);
+            searchTitle, effectiveSeason, apiKey, cancellationToken);
+
+        // If normalized search returned nothing, retry with the original title
+        if ((episodes is null || episodes.Count == 0) && searchTitle != context.SeriesTitle)
+        {
+            _logger.LogDebug(
+                "[OmdbProvider] Normalized search returned no results; retrying with original title '{Title}'.",
+                context.SeriesTitle);
+            episodes = await GetSeasonEpisodesAsync(
+                context.SeriesTitle, effectiveSeason, apiKey, cancellationToken);
+        }
 
         if (episodes is null || episodes.Count == 0)
         {
             _logger.LogInformation(
                 "[OmdbProvider] No episodes found for '{Title}' S{Season}.",
-                context.SeriesTitle, context.Season);
+                context.SeriesTitle, effectiveSeason);
             return [];
         }
 
         _logger.LogInformation(
             "[OmdbProvider] Loaded {Count} episodes for '{Title}' S{Season}.",
-            episodes.Count, context.SeriesTitle, context.Season);
+            episodes.Count, context.SeriesTitle, effectiveSeason);
 
         // ── Step 2: Map tracks to episodes sequentially ──────────────────────
         // DvdCompare (which runs last in the ProviderOrder) handles per-disc
@@ -97,7 +129,7 @@ public sealed class OmdbProvider : IEpisodeIdentificationProvider
                 results.Add(new ProviderResult
                 {
                     TrackIndex   = track.TrackIndex,
-                    Season       = context.Season,
+                    Season       = effectiveSeason,
                     Episodes     = [ep.EpisodeNumber],
                     Title        = ep.Title,
                     IsExtra      = false,
@@ -107,7 +139,7 @@ public sealed class OmdbProvider : IEpisodeIdentificationProvider
 
                 _logger.LogDebug(
                     "[OmdbProvider] Track {TrackIdx} → S{Season}E{Ep} '{Title}'",
-                    track.TrackIndex, context.Season,
+                    track.TrackIndex, effectiveSeason,
                     ep.EpisodeNumber, ep.Title);
             }
             else
