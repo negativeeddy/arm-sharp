@@ -19,6 +19,7 @@ namespace ArmMedia.TvdbProvider;
 public sealed class TvdbProvider : IEpisodeIdentificationProvider
 {
     private readonly ITvdbApiKeySource          _apiKeySource;
+    private readonly ITitleNormalizer?          _titleNormalizer;
     private readonly TvdbProviderOptions        _options;
     private readonly ILogger<TvdbProvider>      _logger;
     private readonly IHttpClientFactory?        _httpClientFactory;
@@ -27,14 +28,16 @@ public sealed class TvdbProvider : IEpisodeIdentificationProvider
     private static string? _cachedToken;
     private static DateTime _tokenExpiryUtc = DateTime.MinValue;
 
-    /// <summary>Initialises the provider with an API key source, options, and logger.</summary>
+    /// <summary>Initialises the provider with an API key source, options, logger, and optional title normalizer.</summary>
     public TvdbProvider(
         ITvdbApiKeySource            apiKeySource,
         IOptions<TvdbProviderOptions> options,
         ILogger<TvdbProvider>        logger,
-        IHttpClientFactory?          httpClientFactory = null)
+        IHttpClientFactory?          httpClientFactory = null,
+        ITitleNormalizer?            titleNormalizer = null)
     {
         _apiKeySource       = apiKeySource;
+        _titleNormalizer    = titleNormalizer;
         _options            = options.Value;
         _logger             = logger;
         _httpClientFactory  = httpClientFactory;
@@ -69,9 +72,35 @@ public sealed class TvdbProvider : IEpisodeIdentificationProvider
             return [];
         }
 
+        // ── Step 0.5: Normalize title for search ──────────────────────────────
+        var searchTitle = context.SeriesTitle;
+        int? seasonOverride = null;
+        if (_titleNormalizer is not null)
+        {
+            var norm = _titleNormalizer.Normalize(context.SeriesTitle);
+            _logger.LogDebug(
+                "[TvdbProvider] Title normalized: '{Raw}' \u2192 query='{Query}', season={Season}.",
+                context.SeriesTitle, norm.Query, norm.Season);
+
+            if (!string.IsNullOrWhiteSpace(norm.Query))
+                searchTitle = norm.Query;
+
+            if (norm.Season is int s && context.Season <= 1)
+                seasonOverride = s;
+        }
+
+        var effectiveSeason = seasonOverride ?? context.Season;
+
         // ── Step 1: Search for the TV series ──────────────────────────────────
-        int? seriesId = await SearchSeriesAsync(
-            context.SeriesTitle, token, cancellationToken);
+        int? seriesId = await SearchSeriesAsync(searchTitle, token, cancellationToken);
+        if (seriesId is null && searchTitle != context.SeriesTitle)
+        {
+            _logger.LogDebug(
+                "[TvdbProvider] Normalized search returned no results; retrying with original title '{Title}'.",
+                context.SeriesTitle);
+            seriesId = await SearchSeriesAsync(context.SeriesTitle, token, cancellationToken);
+        }
+
         if (seriesId is null)
         {
             _logger.LogInformation(
@@ -86,29 +115,29 @@ public sealed class TvdbProvider : IEpisodeIdentificationProvider
 
         // ── Step 2: Get DVD-order episodes for the season ─────────────────────
         var seasonEpisodes = await GetDvdEpisodesAsync(
-            seriesId.Value, context.Season, token, cancellationToken);
+            seriesId.Value, effectiveSeason, token, cancellationToken);
 
         if (seasonEpisodes is null || seasonEpisodes.Count == 0)
         {
             // Fall back to default (aired) order if DVD order is empty
             _logger.LogInformation(
                 "[TvdbProvider] No DVD-order episodes for series {SeriesId} S{Season}; trying default order.",
-                seriesId, context.Season);
+                seriesId, effectiveSeason);
             seasonEpisodes = await GetDefaultEpisodesAsync(
-                seriesId.Value, context.Season, token, cancellationToken);
+                seriesId.Value, effectiveSeason, token, cancellationToken);
         }
 
         if (seasonEpisodes is null || seasonEpisodes.Count == 0)
         {
             _logger.LogInformation(
                 "[TvdbProvider] No episodes found for series {SeriesId}, season {Season}.",
-                seriesId, context.Season);
+                seriesId, effectiveSeason);
             return [];
         }
 
         _logger.LogInformation(
             "[TvdbProvider] Loaded {Count} episodes (DVD order) for series {SeriesId}, season {Season}.",
-            seasonEpisodes.Count, seriesId, context.Season);
+            seasonEpisodes.Count, seriesId, effectiveSeason);
 
         // ── Step 3: Map tracks to episodes by position ────────────────────────
         var orderedTracks = context.Tracks.OrderBy(t => t.TrackIndex).ToList();
@@ -132,7 +161,7 @@ public sealed class TvdbProvider : IEpisodeIdentificationProvider
                 results.Add(new ProviderResult
                 {
                     TrackIndex   = track.TrackIndex,
-                    Season       = isExtra ? 0 : context.Season,
+                    Season       = isExtra ? 0 : effectiveSeason,
                     Episodes     = [matchingEpisode.Number],
                     Title        = matchingEpisode.Name,
                     IsExtra      = isExtra,
@@ -142,7 +171,7 @@ public sealed class TvdbProvider : IEpisodeIdentificationProvider
 
                 _logger.LogDebug(
                     "[TvdbProvider] Track {TrackIdx} → S{Season}E{Ep} '{Title}'",
-                    track.TrackIndex, context.Season,
+                    track.TrackIndex, effectiveSeason,
                     matchingEpisode.Number, matchingEpisode.Name);
             }
             else
