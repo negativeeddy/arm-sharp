@@ -29,7 +29,7 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
     }
 
     [HttpPost("run")]
-    public async Task<IActionResult> Run(int jobId, bool save = false, bool renameFiles = false, int? startingEpisodeNumber = null, CancellationToken ct = default)
+    public async Task<IActionResult> Run(int jobId, bool save = false, bool renameFiles = false, int? startingEpisodeNumber = null, int? seasonOverride = null, CancellationToken ct = default)
     {
         var job = await db.Jobs
             .Include(j => j.Tracks)
@@ -88,7 +88,7 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
         {
             DiscId                = job.DiscDbHash ?? job.Label ?? job.DevPath ?? "unknown",
             SeriesTitle           = seriesTitle,
-            Season                = job.SeasonNumber ?? 1,
+            Season                = seasonOverride ?? job.SeasonNumber ?? 1,
             Tracks                = trackContexts,
             DiscNumber            = discNumber,
             StartingEpisodeNumber = startingEpisodeNumber
@@ -223,17 +223,19 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
 
         return Json(new
         {
-            jobId         = job.Id,
-            title         = job.Title,
-            season        = job.SeasonNumber,
-            discLabel     = job.Label,
-            videoType     = job.VideoType,
-            trackCount    = rippedTracks.Count,
+            jobId             = job.Id,
+            title             = job.Title,
+            season            = seasonOverride ?? job.SeasonNumber,
+            originalSeason    = job.SeasonNumber,
+            seasonOverridden  = seasonOverride.HasValue && seasonOverride != job.SeasonNumber,
+            discLabel         = job.Label,
+            videoType         = job.VideoType,
+            trackCount        = rippedTracks.Count,
             startingEpisodeNumber,
             comparison,
-            saved         = save,
-            renamed       = renameFiles && save,
-            renameResults = renameFiles && save ? renameResults : null
+            saved             = save,
+            renamed           = renameFiles && save,
+            renameResults     = renameFiles && save ? renameResults : null
         });
     }
 

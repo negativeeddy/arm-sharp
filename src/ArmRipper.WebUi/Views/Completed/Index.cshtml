@@ -16,6 +16,7 @@
     <h1 class="mb-0">Output Files</h1>
     <div>
         <span class="text-muted mr-2">@totalFiles file@(totalFiles != 1 ? "s" : "")</span>
+        <button type="button" id="collapseAllBtn" class="btn btn-outline-secondary btn-sm mr-1" title="Collapse all folders">📁 Collapse All</button>
         <a href="/completed?refresh=true" class="btn btn-outline-secondary btn-sm">🔄 Refresh</a>
     </div>
 </div>
@@ -51,16 +52,16 @@ else
     <div class="table-responsive" style="overflow-x: auto;">
         <table class="table table-hover table-sm mb-0 output-unified" style="table-layout:fixed;">
             <colgroup>
-                <col style="width:18%;">
-                <col style="width:8%;">
+                <col style="width:30%;">
                 <col style="width:6%;">
-                <col style="width:7%;">
-                <col style="width:7%;">
-                <col style="width:7%;">
-                <col style="width:11%;">
-                <col style="width:4%;">
-                <col style="width:10%;">
-                <col style="width:22%;">
+                <col style="width:5%;">
+                <col style="width:5%;">
+                <col style="width:5%;">
+                <col style="width:5%;">
+                <col style="width:8%;">
+                <col style="width:3%;">
+                <col style="width:8%;">
+                <col style="width:25%;">
             </colgroup>
             <thead class="thead-light">
                 <tr>
@@ -121,9 +122,9 @@ else
                         dirTotalSize = 0;
                         var displayDir = string.IsNullOrEmpty(file.RelativeDirectory) ? "—" : file.RelativeDirectory;
                         var fullDirPath = System.IO.Path.GetDirectoryName(file.FilePath);
-                        <tr class="table-divider-dir">
+                        <tr class="table-divider-dir dir-toggle" style="cursor:pointer;" data-dirpath="@file.RelativeDirectory" title="Click to collapse/expand">
                             <td colspan="9">
-                                <span class="text-muted mr-2">📂</span>@displayDir
+                                <span class="dir-toggle-icon">▼</span> <span class="text-muted mr-2">📂</span>@displayDir
                             </td>
                             <td class="text-right text-nowrap" style="padding-right: 0.5rem;">
                                 @if (!string.IsNullOrEmpty(fullDirPath))
@@ -144,7 +145,7 @@ else
                     lastDir = file.RelativeDirectory;
 
                     // ── File row ──
-                    <tr>
+                    <tr class="file-row" data-dirpath="@file.RelativeDirectory">
                         <td class="text-truncate" title="@file.FileName">
                             <a href="/completed/probe?filePath=@Uri.EscapeDataString(file.FilePath)" class="font-weight-bold">@file.FileName</a>
                             @if (file.SizeBytes < 2_000_000_000 && file.RelativeDirectory.StartsWith("movies", StringComparison.OrdinalIgnoreCase))
@@ -262,6 +263,10 @@ else
 
 @section Scripts {
     <style>
+        /* Make page wider to accommodate long filenames */
+        .container {
+            max-width: 95% !important;
+        }
         body {
             overflow-x: hidden;
         }
@@ -279,6 +284,21 @@ else
             color: #6c757d;
             border-bottom: 1px solid #dee2e6;
         }
+        .dir-toggle:hover td {
+            background: #e2e6ea !important;
+        }
+        .dir-toggle .dir-toggle-icon {
+            display: inline-block;
+            width: 14px;
+            font-size: 0.7rem;
+            transition: transform 0.15s ease;
+        }
+        .dir-toggle.collapsed .dir-toggle-icon {
+            transform: rotate(-90deg);
+        }
+        .file-row.collapsed {
+            display: none;
+        }
         /* Dark mode overrides injected by arm.initDarkMode() */
         body.dark-mode .table-divider-source td {
             background: #2d3238 !important;
@@ -287,6 +307,9 @@ else
         body.dark-mode .table-divider-dir td {
             background: #343a40 !important;
             border-bottom-color: #495057;
+        }
+        body.dark-mode .dir-toggle:hover td {
+            background: #3a4048 !important;
         }
     </style>
 
@@ -512,6 +535,49 @@ else
 
             $fixdirModal.on('shown.bs.modal', function () {
                 $fixdirInput.trigger('focus').select();
+            });
+
+            // ── Collapsible directory folders ──
+            $(document).on('click', '.dir-toggle', function (e) {
+                // Don't toggle when clicking a button inside the divider
+                if ($(e.target).is('button') || $(e.target).closest('button').length) return;
+                toggleDir($(this));
+            });
+
+            function toggleDir($divider) {
+                var dirPath = $divider.data('dirpath');
+                var wasCollapsed = $divider.hasClass('collapsed');
+                $divider.toggleClass('collapsed');
+                $('.file-row[data-dirpath="' + CSS.escape(dirPath) + '"]').toggleClass('collapsed');
+                updateCollapseAllButton();
+            }
+
+            // ── Collapse All / Expand All ──
+            function updateCollapseAllButton() {
+                var $btn = $('#collapseAllBtn');
+                var allCollapsed = $('.dir-toggle').length > 0 && $('.dir-toggle').length === $('.dir-toggle.collapsed').length;
+                if (allCollapsed) {
+                    $btn.html('📂 Expand All').attr('title', 'Expand all folders');
+                } else {
+                    $btn.html('📁 Collapse All').attr('title', 'Collapse all folders');
+                }
+            }
+
+            $('#collapseAllBtn').on('click', function () {
+                var allCollapsed = $('.dir-toggle').length > 0 && $('.dir-toggle').length === $('.dir-toggle.collapsed').length;
+                $('.dir-toggle').each(function () {
+                    var $divider = $(this);
+                    if (allCollapsed) {
+                        // Expand all
+                        $divider.removeClass('collapsed');
+                    } else {
+                        // Collapse all
+                        $divider.addClass('collapsed');
+                    }
+                    var dirPath = $divider.data('dirpath');
+                    $('.file-row[data-dirpath="' + CSS.escape(dirPath) + '"]').toggleClass('collapsed', !allCollapsed);
+                });
+                updateCollapseAllButton();
             });
 
             // ── Delete Folder modal ──

@@ -145,7 +145,7 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
                 var effectiveSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, _settings.Value, cts.Token);
 
                 var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
-                await conductor.RunForkedTranscodeAsync(originalJobId, rawFilePath, cts.Token, discType, videoType);
+                await conductor.RunForkedTranscodeAsync(originalJobId, rawFilePath, cts.Token, discType, videoType, effectiveSettings);
                 logger.LogInformation("Forked transcode completed for job {OriginalJobId}, raw path {RawPath}",
                     originalJobId, rawFilePath);
             }
@@ -167,14 +167,19 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
 
     public int StartImportJob(string rawFilePath, string title, string? year, VideoContentType? videoType, DiscType? discType, CancellationToken ct = default)
     {
-        // ── Create the job in the DB synchronously so we can return its ID ──
+        // ── Load effective settings (YAML + DB overrides) so the config snapshot
+        //     gets the user's current GPU, preset, and argument choices. ──
         int jobId;
         using (var scope = scopeFactory.CreateScope())
         {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var effectiveSettings = SettingsHelper.GetEffectiveSettingsAsync(db, _settings.Value, ct)
+                .GetAwaiter().GetResult();
+
             var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
             try
             {
-                var job = conductor.CreateImportJobAsync(rawFilePath, title, year, videoType, discType, ct)
+                var job = conductor.CreateImportJobAsync(rawFilePath, title, year, videoType, discType, effectiveSettings, ct)
                     .GetAwaiter().GetResult();
                 jobId = job.Id;
             }

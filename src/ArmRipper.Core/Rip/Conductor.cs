@@ -93,7 +93,7 @@ public sealed class Conductor(
     /// <param name="rawFilePath">Path to the raw .mkv file (or its parent directory) to transcode.</param>
     /// <param name="discType">Optional override for the disc type (e.g. "dvd", "bluray").</param>
     /// <param name="videoType">Optional override for the video type (e.g. "movie", "series").</param>
-    public async Task<int> RunForkedTranscodeAsync(int originalJobId, string rawFilePath, CancellationToken ct = default, DiscType? discType = null, VideoContentType? videoType = null)
+    public async Task<int> RunForkedTranscodeAsync(int originalJobId, string rawFilePath, CancellationToken ct = default, DiscType? discType = null, VideoContentType? videoType = null, ArmSettings? effectiveSettings = null)
     {
         // ── 1. Load the original job ──
         var originalJob = await db.Jobs
@@ -148,76 +148,92 @@ public sealed class Conductor(
         job.LogFile = $"{job.Id}.log";
         job.TransitionToStage(RipStage.Setup);
 
-        // ── 3. Copy the config snapshot from the original job's config or fall back to settings ──
-        var armSettings = settings.Value;
+        // ── 3. Build config snapshot from current effective settings.
+        //     For a forked transcode the user expects current settings (GPU,
+        //     DelRawFiles, presets, etc.) to apply — NOT the stale snapshot
+        //     from the original job.  We only carry forward disc-specific
+        //     behavioural overrides (MainFeature, RipMethod, etc.) that were
+        //     chosen for this particular disc. ──
+        var armSettings = effectiveSettings ?? settings.Value;
         var sourceConfig = originalJob.Config;
 
         var config = new ConfigSnapshot
         {
             JobId = job.Id,
-            SkipTranscode = sourceConfig?.SkipTranscode ?? armSettings.SkipTranscode,
-            MainFeature = sourceConfig?.MainFeature ?? armSettings.MainFeature,
-            UseFfmpeg = sourceConfig?.UseFfmpeg ?? armSettings.UseFfmpeg,
-            ManualWait = sourceConfig?.ManualWait ?? armSettings.ManualWait,
-            ManualWaitTime = sourceConfig?.ManualWaitTime ?? armSettings.ManualWaitTime,
-            AllowDuplicates = sourceConfig?.AllowDuplicates ?? armSettings.AllowDuplicates,
-            Prevent99 = sourceConfig?.Prevent99 ?? armSettings.Prevent99,
-            GetVideoTitle = sourceConfig?.GetVideoTitle ?? armSettings.GetVideoTitle,
-            GetAudioTitle = sourceConfig?.GetAudioTitle ?? armSettings.GetAudioTitle,
-            AutoEject = false, // Don't eject — no physical disc
-            DelRawFiles = sourceConfig?.DelRawFiles ?? armSettings.DelRawFiles,
-            RawPath = sourceConfig?.RawPath ?? armSettings.RawPath,
-            TranscodePath = sourceConfig?.TranscodePath ?? armSettings.TranscodePath,
-            CompletedPath = sourceConfig?.CompletedPath ?? armSettings.CompletedPath,
-            LogPath = sourceConfig?.LogPath ?? armSettings.LogPath,
-            RipMethod = sourceConfig?.RipMethod ?? armSettings.RipMethod,
-            MinLength = sourceConfig?.MinLength ?? armSettings.MinLength,
-            MaxLength = sourceConfig?.MaxLength ?? armSettings.MaxLength,
-            HbPresetDvd = sourceConfig?.HbPresetDvd ?? armSettings.HbPresetDvd,
-            HbPresetBd = sourceConfig?.HbPresetBd ?? armSettings.HbPresetBd,
-            HbArgsDvd = sourceConfig?.HbArgsDvd ?? armSettings.HbArgsDvd,
-            HbArgsBd = sourceConfig?.HbArgsBd ?? armSettings.HbArgsBd,
-            GpuIndex = sourceConfig?.GpuIndex ?? armSettings.GpuIndex,
-            DestExt = sourceConfig?.DestExt ?? armSettings.DestExt,
-            FfmpegCli = sourceConfig?.FfmpegCli ?? armSettings.FfmpegCli,
-            FfmpegPreFileArgs = sourceConfig?.FfmpegPreFileArgs ?? armSettings.FfmpegPreFileArgs,
-            FfmpegPostFileArgs = sourceConfig?.FfmpegPostFileArgs ?? armSettings.FfmpegPostFileArgs,
-            MkvArgs = sourceConfig?.MkvArgs ?? armSettings.MkvArgs,
-            ExtrasSub = sourceConfig?.ExtrasSub ?? armSettings.ExtrasSub,
-            InstallPath = sourceConfig?.InstallPath ?? armSettings.InstallPath,
-            DbFile = sourceConfig?.DbFile ?? armSettings.DbFile,
-            NotifyRip = false, // Skip rip notifications
-            NotifyTranscode = sourceConfig?.NotifyTranscode ?? armSettings.NotifyTranscode,
-            PbKey = sourceConfig?.PbKey ?? armSettings.PbKey,
-            IftttKey = sourceConfig?.IftttKey ?? armSettings.IftttKey,
-            PoUserKey = sourceConfig?.PoUserKey ?? armSettings.PoUserKey,
-            BashScript = sourceConfig?.BashScript ?? armSettings.BashScript,
-            JsonUrl = sourceConfig?.JsonUrl ?? armSettings.JsonUrl,
-            Apprise = sourceConfig?.Apprise ?? armSettings.Apprise,
-            OmdbApiKey = sourceConfig?.OmdbApiKey ?? armSettings.OmdbApiKey,
-            TmdbApiKey = sourceConfig?.TmdbApiKey ?? armSettings.TmdbApiKey,
-            ArmApiKey = sourceConfig?.ArmApiKey ?? armSettings.ArmApiKey,
-            MetadataProvider = sourceConfig?.MetadataProvider ?? armSettings.MetadataProvider,
-            WebServerPort = sourceConfig?.WebServerPort ?? armSettings.WebServerPort,
-            WebServerIp = sourceConfig?.WebServerIp ?? armSettings.WebServerIp,
-            UiBaseUrl = sourceConfig?.UiBaseUrl ?? armSettings.UiBaseUrl,
-            EmbyRefresh = sourceConfig?.EmbyRefresh ?? armSettings.EmbyRefresh,
-            EmbyServer = sourceConfig?.EmbyServer ?? armSettings.EmbyServer,
-            EmbyPort = sourceConfig?.EmbyPort ?? armSettings.EmbyPort,
-            EmbyApiKey = sourceConfig?.EmbyApiKey ?? armSettings.EmbyApiKey,
-            MaxConcurrentTranscodes = sourceConfig?.MaxConcurrentTranscodes ?? armSettings.MaxConcurrentTranscodes,
-            MaxConcurrentMakemkvInfo = sourceConfig?.MaxConcurrentMakemkvInfo ?? armSettings.MaxConcurrentMakemkvInfo,
-            DiscDbEnabled = sourceConfig?.DiscDbEnabled ?? armSettings.DiscDbEnabled,
-            DiscDbApiBaseUrl = sourceConfig?.DiscDbApiBaseUrl ?? armSettings.DiscDbApiBaseUrl,
-            DiscDbMinConfidence = sourceConfig?.DiscDbMinConfidence ?? armSettings.DiscDbMinConfidence,
-            DiscDbRequireConfirmation = sourceConfig?.DiscDbRequireConfirmation ?? armSettings.DiscDbRequireConfirmation
+            // ── Current user settings (takes precedence over original job) ──
+            SkipTranscode      = armSettings.SkipTranscode,
+            UseFfmpeg           = armSettings.UseFfmpeg,
+            ManualWait          = armSettings.ManualWait,
+            ManualWaitTime      = armSettings.ManualWaitTime,
+            AllowDuplicates     = armSettings.AllowDuplicates,
+            GetVideoTitle       = armSettings.GetVideoTitle,
+            GetAudioTitle       = armSettings.GetAudioTitle,
+            AutoEject           = false, // Don't eject — no physical disc
+            DelRawFiles         = armSettings.DelRawFiles,
+            RawPath             = armSettings.RawPath,
+            TranscodePath       = armSettings.TranscodePath,
+            CompletedPath       = armSettings.CompletedPath,
+            LogPath             = armSettings.LogPath,
+            MinLength           = armSettings.MinLength,
+            MaxLength           = armSettings.MaxLength,
+            HbPresetDvd         = armSettings.HbPresetDvd,
+            HbPresetBd          = armSettings.HbPresetBd,
+            HbArgsDvd           = armSettings.HbArgsDvd,
+            HbArgsBd            = armSettings.HbArgsBd,
+            GpuIndex            = armSettings.GpuIndex,
+            DestExt             = armSettings.DestExt,
+            FfmpegCli           = armSettings.FfmpegCli,
+            FfmpegPreFileArgs   = armSettings.FfmpegPreFileArgs,
+            FfmpegPostFileArgs  = armSettings.FfmpegPostFileArgs,
+            ExtrasSub           = armSettings.ExtrasSub,
+            InstallPath         = armSettings.InstallPath,
+            DbFile              = armSettings.DbFile,
+            NotifyRip           = false, // Skip rip notifications
+            NotifyTranscode     = armSettings.NotifyTranscode,
+            PbKey               = armSettings.PbKey,
+            IftttKey            = armSettings.IftttKey,
+            PoUserKey           = armSettings.PoUserKey,
+            BashScript          = armSettings.BashScript,
+            JsonUrl             = armSettings.JsonUrl,
+            Apprise             = armSettings.Apprise,
+            OmdbApiKey          = armSettings.OmdbApiKey,
+            TmdbApiKey          = armSettings.TmdbApiKey,
+            ArmApiKey           = armSettings.ArmApiKey,
+            MetadataProvider    = armSettings.MetadataProvider,
+            WebServerPort       = armSettings.WebServerPort,
+            WebServerIp         = armSettings.WebServerIp,
+            UiBaseUrl           = armSettings.UiBaseUrl,
+            EmbyRefresh         = armSettings.EmbyRefresh,
+            EmbyServer          = armSettings.EmbyServer,
+            EmbyPort            = armSettings.EmbyPort,
+            EmbyApiKey          = armSettings.EmbyApiKey,
+            MaxConcurrentTranscodes   = armSettings.MaxConcurrentTranscodes,
+            MaxConcurrentMakemkvInfo  = armSettings.MaxConcurrentMakemkvInfo,
+            DiscDbEnabled              = armSettings.DiscDbEnabled,
+            DiscDbApiBaseUrl           = armSettings.DiscDbApiBaseUrl,
+            DiscDbMinConfidence        = armSettings.DiscDbMinConfidence,
+            DiscDbRequireConfirmation  = armSettings.DiscDbRequireConfirmation,
         };
+
+        // ── Carry forward disc-specific overrides from the original job ──
+        if (sourceConfig is not null)
+        {
+            config.MainFeature = sourceConfig.MainFeature;
+            config.Prevent99   = sourceConfig.Prevent99;
+            config.RipMethod   = sourceConfig.RipMethod;
+            config.MkvArgs     = sourceConfig.MkvArgs;
+        }
 
         db.ConfigSnapshots.Add(config);
         job.MarkStageComplete(RipStage.Setup);
         job.MarkStageComplete(RipStage.Identify);
         job.MarkStageComplete(RipStage.Rip);
         await db.SaveChangesAsync(ct);
+
+        // Attach the config snapshot to the in-memory job so that HandBrakeService
+        // (which reads job.Config?.GpuIndex, job.Config?.HbPresetBd, etc.) picks up
+        // the correct per-job overrides instead of falling through to IOptions defaults.
+        job.Config = config;
 
         logger.LogInformation("Forked job {JobId} created from original job {OriginalJobId} for raw directory {RawDir}",
             job.Id, originalJob.Id, rawDir);
@@ -276,7 +292,7 @@ public sealed class Conductor(
     /// Creates a new standalone job from raw MKV files that were ripped elsewhere,
     /// skipping identify and rip stages — jumps straight to transcoding.
     /// </summary>
-    public async Task<Job> CreateImportJobAsync(string rawFilePath, string title, string? year, VideoContentType? videoType, DiscType? discType, CancellationToken ct = default)
+    public async Task<Job> CreateImportJobAsync(string rawFilePath, string title, string? year, VideoContentType? videoType, DiscType? discType, ArmSettings? effectiveSettings = null, CancellationToken ct = default)
     {
         // ── 1. Determine the raw directory ──
         var rawDir = File.Exists(rawFilePath)
@@ -292,7 +308,9 @@ public sealed class Conductor(
         var parsedDiscType = discType ?? DiscType.Bluray; // safest default for imported MKVs
 
         // ── 3. Create the job with user-provided metadata ──
-        var armSettings = settings.Value;
+        //     Use effectiveSettings (merged YAML + DB overrides) when available,
+        //     otherwise fall back to IOptions defaults (which only have YAML values).
+        var armSettings = effectiveSettings ?? settings.Value;
         var job = new Job
         {
             DevPath = rawDir,
@@ -383,6 +401,10 @@ public sealed class Conductor(
         job.MarkStageComplete(RipStage.Rip);
         await db.SaveChangesAsync(ct);
 
+        // Attach the config snapshot so transcode services see the correct
+        // GPU, preset, and argument overrides.
+        job.Config = config;
+
         logger.LogInformation("Import job {JobId} created for title \"{Title}\" ({DiscType}) from raw directory {RawDir}",
             job.Id, title, parsedDiscType, rawDir);
 
@@ -391,7 +413,9 @@ public sealed class Conductor(
 
     public async Task<int> RunImportTranscodeForJobAsync(int jobId, CancellationToken ct = default)
     {
-        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        var job = await db.Jobs
+            .Include(j => j.Config)
+            .FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job is null)
         {
             logger.LogError("Import job {JobId} not found in DB", jobId);
@@ -452,7 +476,7 @@ public sealed class Conductor(
 
     public async Task<int> RunImportTranscodeAsync(string rawFilePath, string title, string? year, VideoContentType? videoType, DiscType? discType, CancellationToken ct = default)
     {
-        var job = await CreateImportJobAsync(rawFilePath, title, year, videoType, discType, ct);
+        var job = await CreateImportJobAsync(rawFilePath, title, year, videoType, discType, effectiveSettings: null, ct);
         return await RunImportTranscodeForJobAsync(job.Id, ct);
     }
 

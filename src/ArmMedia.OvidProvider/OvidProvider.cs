@@ -153,15 +153,12 @@ public sealed class OvidProvider : IEpisodeIdentificationProvider
     }
 
     /// <summary>
-    /// Convert a physical track index to an episode number, using the
-    /// <see cref="DiscContext.StartingEpisodeNumber"/> if available.
+    /// Convert a physical track index to an episode number, taking
+    /// <see cref="DiscContext.StartingEpisodeNumber"/> into account so the
+    /// correct title is paired with the shifted episode number.
     /// </summary>
     private static int TrackIndexToEpisode(int trackIndex, DiscContext context)
     {
-        if (context.StartingEpisodeNumber.HasValue)
-            return context.StartingEpisodeNumber.Value + trackIndex;
-
-        // Default: 1-based episode numbering matching physical order
-        return trackIndex + 1;
+        return trackIndex + (context.StartingEpisodeNumber ?? 1);
     }
 }

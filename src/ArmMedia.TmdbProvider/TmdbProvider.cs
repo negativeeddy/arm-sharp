@@ -87,13 +87,7 @@ public sealed class TmdbProvider : IEpisodeIdentificationProvider
         var orderedTracks = context.Tracks.OrderBy(t => t.TrackIndex).ToList();
         var results = new List<ProviderResult>();
 
-        var offset = (context.StartingEpisodeNumber ?? 1) - 1; // 0-based index into seasonEpisodes[]
-        if (context.StartingEpisodeNumber is not null)
-        {
-            _logger.LogInformation(
-                "[TmdbProvider] Using manual starting episode offset {Offset}.",
-                context.StartingEpisodeNumber);
-        }
+        var offset = (context.StartingEpisodeNumber ?? 1) - 1;
 
         for (int i = 0; i < orderedTracks.Count; i++)
         {

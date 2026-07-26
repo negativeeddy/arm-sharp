@@ -36,6 +36,19 @@
             </div>
 
             <div class="form-group row">
+                <label for="seasonInput" class="col-sm-2 col-form-label">Season Override</label>
+                <div class="col-sm-3">
+                    <div class="input-group">
+                        <input type="number" id="seasonInput" name="seasonOverride" class="form-control" min="0" placeholder="Use job default" />
+                        <div class="input-group-append">
+                            <button type="button" id="clearSeasonBtn" class="btn btn-outline-secondary" title="Reset to default">&times;</button>
+                        </div>
+                    </div>
+                    <small class="form-text text-muted">Optional — override the season number for identification (e.g. for multi-season discs or specials).</small>
+                </div>
+            </div>
+
+            <div class="form-group row">
                 <label for="startEpInput" class="col-sm-2 col-form-label">Starting Episode</label>
                 <div class="col-sm-3">
                     <div class="input-group">
@@ -133,9 +146,12 @@
     $(function () {
         var currentJobId = null;
 
-        // Clear starting episode input
+        // Clear override inputs
         $('#clearStartEpBtn').on('click', function () {
             $('#startEpInput').val('');
+        });
+        $('#clearSeasonBtn').on('click', function () {
+            $('#seasonInput').val('');
         });
 
         $('#reidentifyForm').on('submit', function (e) {
@@ -152,9 +168,13 @@
             $('#errorArea').hide();
 
             var startEp = $('#startEpInput').val().trim();
+            var seasonOv = $('#seasonInput').val().trim();
             var postData = { jobId: currentJobId, save: false };
             if (startEp) {
                 postData.startingEpisodeNumber = parseInt(startEp);
+            }
+            if (seasonOv) {
+                postData.seasonOverride = parseInt(seasonOv);
             }
 
             $.ajax({
@@ -188,9 +208,13 @@
             $('#renameResultsArea').hide();
 
             var startEp = $('#startEpInput').val().trim();
+            var seasonOv = $('#seasonInput').val().trim();
             var postData = { jobId: currentJobId, save: true };
             if (startEp) {
                 postData.startingEpisodeNumber = parseInt(startEp);
+            }
+            if (seasonOv) {
+                postData.seasonOverride = parseInt(seasonOv);
             }
             if ($('#renameCheck').is(':checked')) {
                 postData.renameFiles = true;
@@ -224,6 +248,7 @@
         function renderResults(data) {
             var titleStr = 'Job ' + data.jobId + ': ' + data.title
                 + (data.season ? ' S' + data.season : '')
+                + (data.seasonOverridden && data.originalSeason ? ' (was S' + data.originalSeason + ')' : '')
                 + (data.discLabel ? ' [' + data.discLabel + ']' : '')
                 + ' — ' + data.trackCount + ' tracks';
             if (data.startingEpisodeNumber) {
