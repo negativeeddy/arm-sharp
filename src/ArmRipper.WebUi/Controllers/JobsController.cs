@@ -158,6 +158,39 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
         return RedirectToAction("JobDetail", new { jobId });
     }
 
+    [HttpPost("cancel-all")]
+    public async Task<IActionResult> CancelAll(CancellationToken ct = default)
+    {
+        var activeJobs = await db.Jobs
+            .Where(j => j.Status != JobState.Success
+                     && j.Status != JobState.Failure
+                     && j.Status != JobState.Cancelled
+                     && j.Status != JobState.Stopping)
+            .ToListAsync(ct);
+
+        var cancelledCount = 0;
+        foreach (var job in activeJobs)
+        {
+            if (job.Status.IsTerminal())
+                continue;
+
+            var prevStatus = job.Status;
+            job.Status = JobState.Cancelled;
+            job.Errors = "Cancelled by user (bulk cancel)";
+            job.ProgressMessage = "Cancelled";
+            AppendToJobLog(job, $"Job cancelled by user — bulk cancel (previous status: {prevStatus})");
+            cancelledCount++;
+
+            if (!string.IsNullOrEmpty(job.DevPath))
+                backgroundRip.CancelRip(job.DevPath);
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        TempData["SuccessMessage"] = $"Cancelled {cancelledCount} active job{(cancelledCount != 1 ? "s" : "")}.";
+        return RedirectToAction("ActiveRips");
+    }
+
     [HttpPost("resume")]
     public IActionResult Resume(int jobId)
     {

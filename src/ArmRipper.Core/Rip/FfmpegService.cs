@@ -252,6 +252,14 @@ public sealed partial class FfmpegService(
         var effectiveMax = job.Config?.MaxConcurrentTranscodes ?? settings.Value.MaxConcurrentTranscodes;
         await using var slot = await transcodeSlotLimiter.AcquireAsync(effectiveMax, ct);
 
+        // Slot acquired — update status from Waiting to Active
+        if (job.Status == JobState.TranscodeWaiting)
+        {
+            job.Status = JobState.TranscodeActive;
+            job.ProgressMessage = "Transcoding...";
+            await db.SaveChangesAsync(ct);
+        }
+
         var (ffPreArgs, ffPostArgs) = GetFfSettings(job);
 
         var cmd = $"ffmpeg {ffPreArgs} -i \"{inputFile}\" {ffPostArgs} \"{outputFile}\"";

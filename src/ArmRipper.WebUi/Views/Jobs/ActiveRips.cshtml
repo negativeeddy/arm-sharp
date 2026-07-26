@@ -12,6 +12,13 @@
 }
 else
 {
+    <div class="mb-3">
+        <form method="post" action="/jobs/cancel-all" id="cancelAllForm">
+            <button type="button" id="cancelAllBtn" class="btn btn-outline-danger btn-sm">
+                ⛔ Cancel All
+            </button>
+        </form>
+    </div>
     <table class="table table-striped table-hover table-sm">
         <thead>
             <tr>
@@ -37,6 +44,18 @@ else
             }
         </tbody>
     </table>
+}
+
+@section Scripts {
+<script>
+    $(function () {
+        $('#cancelAllBtn').on('click', function () {
+            if (confirm('Cancel ALL active rips?\n\nThis will stop every running job. This cannot be undone.')) {
+                $('#cancelAllForm').submit();
+            }
+        });
+    });
+</script>
 }
 
 @if (resumable is not null && resumable.Any())

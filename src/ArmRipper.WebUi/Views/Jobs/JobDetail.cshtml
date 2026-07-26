@@ -51,6 +51,10 @@
                                 {
                                     <span class="badge bg-warning text-dark" title="@Model.Warnings">⚠ @Model.Status</span>
                                 }
+                                else if (Model.Status is JobState.TranscodeWaiting)
+                                {
+                                    <span class="badge bg-primary-striped">Waiting for GPU</span>
+                                }
                                 else
                                 {
                                     @Model.Status
@@ -69,7 +73,7 @@
                                             @(Model.MakeMkvProgress.HasValue ? $"{Model.MakeMkvProgress}%" : "—")
                                         </div>
                                     </div>
-                                    @if (Model.Status is JobState.VideoRipping or JobState.TranscodeActive)
+                                    @if (Model.Status is JobState.VideoRipping or JobState.TranscodeActive or JobState.TranscodeWaiting)
                                     {
                                         <span class="spinner-border spinner-border-sm text-secondary" role="status"></span>
                                     }
@@ -640,6 +644,8 @@ else
                 if (dd) {
                     if (update.warnings) {
                         dd.innerHTML = '<span class="badge bg-warning text-dark" title="' + update.warnings.replace(/"/g, '&quot;') + '">\u26A0 ' + update.status + '</span>';
+                    } else if (update.status === 'waiting_transcode') {
+                        dd.innerHTML = '<span class="badge bg-primary-striped">Waiting for GPU</span>';
                     } else {
                         dd.textContent = update.status;
                     }

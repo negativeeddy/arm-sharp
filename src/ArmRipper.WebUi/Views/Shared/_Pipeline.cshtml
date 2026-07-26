@@ -44,7 +44,7 @@
     {
         pipelineStages.Add(("rip", "Rip",
             Model.Status is JobState.VideoRipping,
-            Model.Status is JobState.TranscodeActive or JobState.Success or JobState.Failure,
+            Model.Status is JobState.TranscodeActive or JobState.TranscodeWaiting or JobState.Success or JobState.Failure,
             StageError("rip") is not null));
     }
     else if (isMusic)
@@ -66,7 +66,7 @@
     if (isVideo)
     {
         pipelineStages.Add(("transcode", "Transcode",
-            Model.Status is JobState.TranscodeActive,
+            Model.Status is JobState.TranscodeActive or JobState.TranscodeWaiting,
             Model.Status is JobState.Success or JobState.Failure,
             StageError("transcode") is not null));
     }
@@ -90,10 +90,11 @@
     var failed = FailedStage();
     var failedIdx = failed is null ? -1 : Array.IndexOf(stageOrder, failed);
 
-    string StageClass(bool isFailed, bool isDone, bool isActive, bool isWarning) =>
+    string StageClass(bool isFailed, bool isDone, bool isActive, bool isWarning, bool isWaiting) =>
         isFailed ? "bg-danger text-white"
         : isWarning && isDone ? "bg-warning text-dark"
         : isDone ? "bg-success text-white"
+        : isActive && isWaiting ? "bg-primary-striped"
         : isActive ? "bg-primary text-white"
         : "bg-light text-muted";
 }
@@ -108,7 +109,8 @@
         var isFailed = name == failed;
         var isActive = inFailure ? false : active;
         var isWarning = warning && isDone && !inFailure;
-        var cls = StageClass(isFailed, isDone, isActive, isWarning);
+        var isWaiting = Model.Status is JobState.TranscodeWaiting;
+        var cls = StageClass(isFailed, isDone, isActive, isWarning, isWaiting);
         var stageErr = StageError(name);
         var tip = isFailed ? $"Failed at {label}" : stageErr is not null ? $"{label}: {stageErr}" : isWarning ? Model.Warnings : label;
         <div class="text-center flex-fill mx-1" style="min-width:0;">
@@ -129,8 +131,9 @@
         _ => (int?)null
     };
     var hasMessage = !string.IsNullOrEmpty(Model.ProgressMessage);
+    var isWaitingSlot = Model.Status is JobState.TranscodeWaiting;
     var showProgress = activeProgress.HasValue
-        || Model.Status is JobState.VideoRipping or JobState.TranscodeActive
+        || Model.Status is JobState.VideoRipping or JobState.TranscodeActive or JobState.TranscodeWaiting
         || hasMessage;
 }
 @if (showProgress)
@@ -141,12 +144,14 @@
         ? (activeProgress.HasValue ? Model.ProgressMessage + " — " + pct + "%" : Model.ProgressMessage)
         : pct + "%";
     <div class="progress mt-2" style="height:22px;">
-        <div class="progress-bar @(isIndeterminate
-            ? "progress-bar-striped progress-bar-animated bg-info"
-            : pct >= 100
-                ? "bg-success"
-                : "progress-bar-striped progress-bar-animated")" role="progressbar"
-             style="width:@(isIndeterminate ? "100" : pct)%" aria-valuenow="@pct" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-bar @(isWaitingSlot
+            ? "progress-bar-striped progress-bar-animated bg-primary"
+            : isIndeterminate
+                ? "progress-bar-striped progress-bar-animated bg-info"
+                : pct >= 100
+                    ? "bg-success"
+                    : "progress-bar-striped progress-bar-animated")" role="progressbar"
+             style="width:@(isWaitingSlot || isIndeterminate ? "100" : pct)%" aria-valuenow="@pct" aria-valuemin="0" aria-valuemax="100">
             @label
         </div>
     </div>

@@ -82,6 +82,7 @@ public sealed class EpisodeIdentificationOrchestrator : IEpisodeIdentificationOr
         }
 
         // Fill unresolved tracks with positional fallback
+        // (fallback already respects StartingEpisodeNumber via the providers' own offset logic)
         FillPositionalFallback(context, bestResults);
 
         // Post-processing

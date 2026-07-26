@@ -77,17 +77,11 @@ public sealed class OmdbProvider : IEpisodeIdentificationProvider
             .OrderBy(t => t.TrackIndex)
             .ToList();
 
-        var offset = (context.StartingEpisodeNumber ?? 1) - 1; // 0-based index into episodes[]
-        if (context.StartingEpisodeNumber is not null)
-        {
-            _logger.LogInformation(
-                "[OmdbProvider] Using manual starting episode offset {Offset}.",
-                context.StartingEpisodeNumber);
-        }
+        var offset = (context.StartingEpisodeNumber ?? 1) - 1;
 
         _logger.LogInformation(
-            "[OmdbProvider] Disc {Disc}: {EpsPerDisc} episode tracks, mapping sequentially.",
-            context.DiscNumber, episodeTracks.Count);
+            "[OmdbProvider] Disc {Disc}: {EpsPerDisc} episode tracks, mapping sequentially (offset {Offset}).",
+            context.DiscNumber, episodeTracks.Count, offset);
 
         // ── Step 3: Map tracks to episodes ───────────────────────────────────
         var results = new List<ProviderResult>();

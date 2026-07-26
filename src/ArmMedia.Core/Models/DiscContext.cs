@@ -46,11 +46,11 @@ public sealed class DiscContext
     public int? CurrentTrackIndex { get; init; }
 
     /// <summary>
-    /// Gets an optional starting episode number override for sequential/positional
-    /// providers (Omdb, Tmdb, Tvdb, PositionalFallback). When set, the first
-    /// track will be assigned this episode number instead of 1.
-    /// Providers that know the actual disc layout (DvdCompare, DiscDb) ignore
-    /// this value and use their own numbering.
+    /// Gets an optional starting episode number override. Sequential providers
+    /// (Omdb, Tmdb, Tvdb) and the positional fallback use this to index into
+    /// the correct position in the season episode list, so the title naturally
+    /// matches the shifted episode number. Providers that identify by disc
+    /// layout (DvdCompare, DiscDb) ignore this value.
     /// </summary>
     public int? StartingEpisodeNumber { get; init; }
 

@@ -43,7 +43,7 @@ public sealed partial class HandBrakeService(
             logger.LogInformation("Transcoding {File} to {Output}", file, outputFile);
             var cmd = BuildCommand(file, outputFile, job, trackNumber: null, mainFeature: false);
             var effectiveMax = job.Config?.MaxConcurrentTranscodes ?? settings.Value.MaxConcurrentTranscodes;
-            lastResult = await RunHandBrakeCommandAsync(cmd, effectiveMax, ct, progress);
+            lastResult = await RunHandBrakeCommandAsync(cmd, effectiveMax, job, ct, progress);
 
             if (lastResult.ExitCode != 0)
             {
@@ -123,7 +123,7 @@ public sealed partial class HandBrakeService(
 
         try
         {
-            var result = await RunHandBrakeCommandAsync(cmd, effectiveMax, ct, progress);
+            var result = await RunHandBrakeCommandAsync(cmd, effectiveMax, job, ct, progress);
             if (result.ExitCode != 0)
             {
                 var err = $"HandBrake main feature transcoding failed with code {result.ExitCode}: {result.StdErr}";
@@ -197,7 +197,7 @@ public sealed partial class HandBrakeService(
 
             try
             {
-                lastResult = await RunHandBrakeCommandAsync(cmd, effectiveMax, ct, progress);
+                lastResult = await RunHandBrakeCommandAsync(cmd, effectiveMax, job, ct, progress);
                 if (lastResult.ExitCode != 0)
                 {
                     var err = $"HandBrake encoding of title {trackNo} failed with code {lastResult.ExitCode}: {lastResult.StdErr}";
@@ -285,9 +285,17 @@ public sealed partial class HandBrakeService(
         return (settings.Value.HbPresetDvd, settings.Value.HbArgsDvd);
     }
 
-    private async Task<CliResult> RunHandBrakeCommandAsync(string cmd, int maxConcurrent, CancellationToken ct, IProgress<int>? progress = null)
+    private async Task<CliResult> RunHandBrakeCommandAsync(string cmd, int maxConcurrent, Job job, CancellationToken ct, IProgress<int>? progress = null)
     {
         await using var slot = await transcodeSlotLimiter.AcquireAsync(maxConcurrent, ct);
+
+        // Slot acquired — update status from Waiting to Active
+        if (job.Status == JobState.TranscodeWaiting)
+        {
+            job.Status = JobState.TranscodeActive;
+            job.ProgressMessage = "Transcoding...";
+            await db.SaveChangesAsync(ct);
+        }
 
         logger.LogInformation("HandBrake command: {Command}", cmd);
 

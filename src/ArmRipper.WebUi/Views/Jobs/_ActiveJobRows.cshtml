@@ -24,6 +24,10 @@ else
                 {
                     <span class="badge bg-warning text-dark" title="@job.Warnings">Warning</span>
                 }
+                else if (job.Status is JobState.TranscodeWaiting)
+                {
+                    <span class="badge bg-primary-striped">Waiting for GPU</span>
+                }
                 else
                 {
                     @job.Status
