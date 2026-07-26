@@ -1,6 +1,7 @@
 using ArmMedia.Core.Abstractions;
 using ArmMedia.Core.DependencyInjection;
 using ArmMedia.Core.Orchestration;
+using ArmMedia.Core.Services;
 using ArmMedia.DvdCompareProvider;
 using ArmMedia.Linting;
 using ArmMedia.Linting.Abstractions;
@@ -75,6 +76,9 @@ public static class ArmSharpServiceCollectionExtensions
         // ── Naming ───────────────────────────────────────────────────────────
         services.Configure<NamingOptions>(configuration.GetSection(NamingOptions.SectionName));
         services.AddSingleton<IEpisodeRenamer, DefaultEpisodeRenamer>();
+
+        // ── Title normalization ──────────────────────────────────────────────
+        services.AddSingleton<ITitleNormalizer, TitleNormalizer>();
 
         // ── TMDB provider options ────────────────────────────────────────────
         // Bind the "Tmdb" appsettings section, then register a resolver that
