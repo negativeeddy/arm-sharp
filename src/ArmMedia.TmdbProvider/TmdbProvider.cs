@@ -16,6 +16,7 @@ namespace ArmMedia.TmdbProvider;
 public sealed class TmdbProvider : IEpisodeIdentificationProvider
 {
     private readonly ITmdbApiKeySource          _apiKeySource;
+    private readonly ITitleNormalizer?          _titleNormalizer;
     private readonly ILogger<TmdbProvider>      _logger;
     private readonly IHttpClientFactory?        _httpClientFactory;
 
@@ -25,9 +26,11 @@ public sealed class TmdbProvider : IEpisodeIdentificationProvider
     public TmdbProvider(
         ITmdbApiKeySource            apiKeySource,
         ILogger<TmdbProvider>        logger,
-        IHttpClientFactory?          httpClientFactory = null)
+        IHttpClientFactory?          httpClientFactory = null,
+        ITitleNormalizer?            titleNormalizer = null)
     {
         _apiKeySource       = apiKeySource;
+        _titleNormalizer    = titleNormalizer;
         _logger             = logger;
         _httpClientFactory  = httpClientFactory;
     }
@@ -53,15 +56,50 @@ public sealed class TmdbProvider : IEpisodeIdentificationProvider
             return [];
         }
 
+        // ── Step 0: Normalize title for search ────────────────────────────────
+        var normalizedTitle = context.SeriesTitle;
+        int? seasonOverride = null;
+        if (_titleNormalizer is not null)
+        {
+            var norm = _titleNormalizer.Normalize(context.SeriesTitle);
+            _logger.LogDebug(
+                "[TmdbProvider] Title normalized: '{Raw}' \u2192 query='{Query}', season={Season}, disc={Disc}, edition='{Edition}'.",
+                context.SeriesTitle, norm.Query, norm.Season, norm.Disc, norm.Edition);
+
+            // Use the cleaned query for search (if non-empty), else fall back to raw title
+            if (!string.IsNullOrWhiteSpace(norm.Query))
+                normalizedTitle = norm.Query;
+
+            // If the title contained an explicit season hint and the context season is the default,
+            // prefer the extracted season.
+            if (norm.Season is int s && context.Season <= 1)
+                seasonOverride = s;
+        }
+
         // ── Step 1: Search for the TV series ──────────────────────────────────
-        int? seriesId = await SearchSeriesAsync(context.SeriesTitle, apiKey, cancellationToken);
+        int? seriesId = await SearchSeriesAsync(normalizedTitle, apiKey, cancellationToken);
         if (seriesId is null)
         {
-            _logger.LogInformation(
-                "[TmdbProvider] No TMDB series found for '{Title}'.",
-                context.SeriesTitle);
-            return [];
+            // If normalization changed the query, retry with the original title
+            if (normalizedTitle != context.SeriesTitle)
+            {
+                _logger.LogDebug(
+                    "[TmdbProvider] Normalized search returned no results; retrying with original title '{Title}'.",
+                    context.SeriesTitle);
+                seriesId = await SearchSeriesAsync(context.SeriesTitle, apiKey, cancellationToken);
+            }
+
+            if (seriesId is null)
+            {
+                _logger.LogInformation(
+                    "[TmdbProvider] No TMDB series found for '{Title}'.",
+                    context.SeriesTitle);
+                return [];
+            }
         }
+
+        // Apply season override from title normalization if context season was not explicit
+        var effectiveSeason = seasonOverride ?? context.Season;
 
         _logger.LogInformation(
             "[TmdbProvider] Found TMDB series '{Title}' (ID {SeriesId}).",
@@ -69,19 +107,19 @@ public sealed class TmdbProvider : IEpisodeIdentificationProvider
 
         // ── Step 2: Get season episodes ───────────────────────────────────────
         var seasonEpisodes = await GetSeasonEpisodesAsync(
-            seriesId.Value, context.Season, apiKey, cancellationToken);
+            seriesId.Value, effectiveSeason, apiKey, cancellationToken);
 
         if (seasonEpisodes is null || seasonEpisodes.Count == 0)
         {
             _logger.LogInformation(
                 "[TmdbProvider] No episodes found for series {SeriesId}, season {Season}.",
-                seriesId, context.Season);
+                seriesId, effectiveSeason);
             return [];
         }
 
         _logger.LogInformation(
             "[TmdbProvider] Loaded {Count} episodes for series {SeriesId}, season {Season}.",
-            seasonEpisodes.Count, seriesId, context.Season);
+            seasonEpisodes.Count, seriesId, effectiveSeason);
 
         // ── Step 3: Map tracks to episodes by position ────────────────────────
         var orderedTracks = context.Tracks.OrderBy(t => t.TrackIndex).ToList();
@@ -108,7 +146,7 @@ public sealed class TmdbProvider : IEpisodeIdentificationProvider
                 results.Add(new ProviderResult
                 {
                     TrackIndex   = track.TrackIndex,
-                    Season       = isExtra ? 0 : context.Season,
+                    Season       = isExtra ? 0 : effectiveSeason,
                     Episodes     = [matchingEpisode.EpisodeNumber],
                     Title        = matchingEpisode.Name,
                     IsExtra      = isExtra,
@@ -118,7 +156,7 @@ public sealed class TmdbProvider : IEpisodeIdentificationProvider
 
                 _logger.LogDebug(
                     "[TmdbProvider] Track {TrackIdx} → S{Season}E{Ep} '{Title}'",
-                    track.TrackIndex, context.Season,
+                    track.TrackIndex, effectiveSeason,
                     matchingEpisode.EpisodeNumber, matchingEpisode.Name);
             }
             else
