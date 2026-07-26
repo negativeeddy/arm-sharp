@@ -24,7 +24,8 @@ public sealed partial class IdentifyService(
     IDiscDbMappingService discDbMappingService,
     IBackgroundRipService backgroundRipService,
     OvidApiClient ovidApiClient,
-    IOptions<OvidProviderOptions> ovidOptions) : IIdentifyService
+    IOptions<OvidProviderOptions> ovidOptions,
+    ArmMedia.Core.Abstractions.ITitleNormalizer? titleNormalizer = null) : IIdentifyService
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("IdentifyService");
 
@@ -67,6 +68,45 @@ public sealed partial class IdentifyService(
         if (job.DiscType is DiscType.Dvd or DiscType.Bluray or DiscType.Uhd)
         {
             await IdentifyVideoDiscAsync(job, ct);
+        }
+
+        // ── Auto-populate season/disc from title normalization (series only) ──
+        if (titleNormalizer is not null &&
+            job.VideoType is "series" or "tv" &&
+            !string.IsNullOrWhiteSpace(job.Title))
+        {
+            var norm = titleNormalizer.Normalize(job.Title);
+            logger.LogDebug(
+                "[IdentifyService] Title normalized: '{Title}' → season={Season}, disc={Disc}",
+                job.Title, norm.Season, norm.Disc);
+
+            if (norm.Season is int s)
+            {
+                job.SeasonNumberAuto = s;
+                job.SeasonNumber ??= s;
+            }
+
+            if (norm.Disc is int d)
+            {
+                job.DiscNumberAuto = d;
+                job.DiscNumber ??= d;
+            }
+
+            // Also try the label (e.g. "S3D1" or "Season 3 Disc 2")
+            if (norm.Season is null && !string.IsNullOrWhiteSpace(job.Label))
+            {
+                var labelNorm = titleNormalizer.Normalize(job.Label);
+                if (labelNorm.Season is int ls)
+                {
+                    job.SeasonNumberAuto = ls;
+                    job.SeasonNumber ??= ls;
+                }
+                if (labelNorm.Disc is int ld)
+                {
+                    job.DiscNumberAuto = ld;
+                    job.DiscNumber ??= ld;
+                }
+            }
         }
 
         job.ProgressMessage = "Computing disc fingerprint...";

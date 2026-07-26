@@ -70,6 +70,24 @@ public class Job
     /// <summary>Season number for TV series discs (auto-detected or user-set).</summary>
     public int? SeasonNumber { get; set; }
 
+    /// <summary>Auto-detected season number from title normalization.</summary>
+    public int? SeasonNumberAuto { get; set; }
+
+    /// <summary>User-overridden season number.</summary>
+    public int? SeasonNumberManual { get; set; }
+
+    /// <summary>Disc number for TV series discs (auto-detected or user-set).</summary>
+    public int? DiscNumber { get; set; }
+
+    /// <summary>Auto-detected disc number from label/title normalization.</summary>
+    public int? DiscNumberAuto { get; set; }
+
+    /// <summary>User-overridden disc number.</summary>
+    public int? DiscNumberManual { get; set; }
+
+    /// <summary>User-specified starting episode number for identification (1-based). When set, providers use this as the offset into the season episode list.</summary>
+    public int? StartingEpisodeNumber { get; set; }
+
     /// <summary>Transient — current MakeMKV rip percentage (0–100). Goes over SignalR, NOT persisted to DB.</summary>
     [NotMapped]
     public int? MakeMkvProgress { get; set; }

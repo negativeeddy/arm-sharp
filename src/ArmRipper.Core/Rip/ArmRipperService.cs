@@ -799,12 +799,13 @@ public sealed class ArmRipperService(
 
             var ctx = new DiscContext
             {
-                DiscId      = discId,
-                SeriesTitle = CleanSeriesTitle(job.Title ?? job.Label ?? "Unknown"),
-                Season      = season,
-                Tracks      = trackContexts,
-                DiscDbHint  = makeMkvOutPath,  // FileBot CLI uses this for raw file path
-                DiscNumber  = ParseDiscNumber(job.Label)
+                DiscId                = discId,
+                SeriesTitle           = CleanSeriesTitle(job.Title ?? job.Label ?? "Unknown"),
+                Season                = season,
+                Tracks                = trackContexts,
+                DiscDbHint            = makeMkvOutPath,  // FileBot CLI uses this for raw file path
+                DiscNumber            = job.DiscNumber ?? ParseDiscNumber(job.Label),
+                StartingEpisodeNumber = job.StartingEpisodeNumber
             };
 
             logger.LogInformation(
