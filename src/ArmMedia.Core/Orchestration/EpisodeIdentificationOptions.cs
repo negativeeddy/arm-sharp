@@ -35,6 +35,15 @@ public sealed class EpisodeIdentificationOptions
     public int MultiPartDurationToleranceSeconds { get; set; } = 10;
 
     /// <summary>
+    /// Gets or sets the maximum duration in seconds for each individual part of a
+    /// multi-part episode. Both adjacent tracks must be shorter than this threshold
+    /// to be merged. This prevents normal-length episodes (e.g. 20-min sitcoms)
+    /// from being incorrectly merged just because they are consecutive and have
+    /// similar durations.
+    /// </summary>
+    public int MultiPartMaxPartDurationSeconds { get; set; } = 900;
+
+    /// <summary>
     /// Gets or sets the maximum duration in seconds below which a track with no
     /// matching episode is automatically classified as an extra/bonus feature.
     /// </summary>

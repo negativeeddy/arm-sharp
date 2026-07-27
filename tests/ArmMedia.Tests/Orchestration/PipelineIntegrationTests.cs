@@ -27,8 +27,8 @@ public sealed class PipelineIntegrationTests
         [
             new TrackContext { TrackIndex = 1, Duration = TimeSpan.FromMinutes(44), SizeBytes = 900_000_000 },
             new TrackContext { TrackIndex = 2, Duration = TimeSpan.FromMinutes(37), SizeBytes = 750_000_000 }, // different enough from track 1 to avoid false merge
-            new TrackContext { TrackIndex = 3, Duration = TimeSpan.FromMinutes(44), SizeBytes = 880_000_000 },
-            new TrackContext { TrackIndex = 4, Duration = TimeSpan.FromMinutes(46), SizeBytes = 910_000_000 }, // similar to track 3 → will merge
+            new TrackContext { TrackIndex = 3, Duration = TimeSpan.FromMinutes(11), SizeBytes = 200_000_000 },  // short part of multi-part episode
+            new TrackContext { TrackIndex = 4, Duration = TimeSpan.FromMinutes(12), SizeBytes = 210_000_000 },  // short part of multi-part episode (under 15 min → will merge)
             new TrackContext { TrackIndex = 5, Duration = TimeSpan.FromMinutes(45), SizeBytes = 890_000_000 },
             new TrackContext { TrackIndex = 6, Duration = TimeSpan.FromSeconds(300), SizeBytes = 50_000_000 },
             new TrackContext { TrackIndex = 7, Duration = TimeSpan.FromSeconds(480), SizeBytes = 80_000_000 }
@@ -88,7 +88,7 @@ public sealed class PipelineIntegrationTests
         Assert.Equal("Cosmic Frontier", episodeMap.SeriesTitle);
         Assert.Equal(1, episodeMap.Season);
 
-        // After multi-part merge: tracks 3+4 merged, so we expect 6 mapped tracks
+        // After multi-part merge: tracks 3+4 merged (both < 15 min), so we expect 6 mapped tracks
         // (merged track occupies track 3's position)
         Assert.Equal(6, episodeMap.Tracks.Count);
 

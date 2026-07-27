@@ -94,6 +94,19 @@ public sealed class EpisodeIdentificationOrchestrator : IEpisodeIdentificationOr
             .Select(r =>
             {
                 var trackCtx = context.Tracks.FirstOrDefault(t => t.TrackIndex == r.TrackIndex);
+
+                // For multi-part tracks, sum the durations of all merged tracks
+                TimeSpan? duration = trackCtx?.Duration;
+                if (r.Episodes.Length > 1 && duration.HasValue)
+                {
+                    for (int extra = 1; extra < r.Episodes.Length; extra++)
+                    {
+                        var extraCtx = context.Tracks.FirstOrDefault(t => t.TrackIndex == r.TrackIndex + extra);
+                        if (extraCtx is not null)
+                            duration = duration.Value + extraCtx.Duration;
+                    }
+                }
+
                 return new MappedTrack
                 {
                     TrackIndex      = r.TrackIndex,
@@ -101,7 +114,7 @@ public sealed class EpisodeIdentificationOrchestrator : IEpisodeIdentificationOr
                     Episodes        = r.Episodes,
                     Title           = r.Title,
                     IsExtra         = r.IsExtra,
-                    Duration        = trackCtx?.Duration,
+                    Duration        = duration,
                     SizeBytes       = trackCtx?.SizeBytes,
                     WinningProvider = r.ProviderName,
                     Confidence      = r.Confidence
@@ -170,6 +183,12 @@ public sealed class EpisodeIdentificationOrchestrator : IEpisodeIdentificationOr
             // Duration delta check
             double durationDelta = Math.Abs((aTrack.Duration - bTrack.Duration).TotalSeconds);
             if (durationDelta > _options.MultiPartDurationToleranceSeconds) continue;
+
+            // Both parts must be shorter than the max part duration threshold.
+            // This prevents two normal-length episodes (e.g. 20-min sitcoms) from
+            // being merged just because they are consecutive and have similar durations.
+            if (aTrack.Duration.TotalSeconds > _options.MultiPartMaxPartDurationSeconds) continue;
+            if (bTrack.Duration.TotalSeconds > _options.MultiPartMaxPartDurationSeconds) continue;
 
             _logger.LogDebug("Merging tracks {A} and {B} as multi-part episode [{Eps}]",
                 a.TrackIndex, b.TrackIndex,
