@@ -64,7 +64,10 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
     }
 
     [HttpPost("update-identification")]
-    public async Task<IActionResult> UpdateIdentification(int jobId, string? title, string? year, string? videoType, string? imdbId, string? posterUrl, CancellationToken ct = default)
+    public async Task<IActionResult> UpdateIdentification(
+        int jobId, string? title, string? year, string? videoType, string? imdbId, string? posterUrl,
+        int? seasonNumber, int? discNumber, int? startingEpisodeNumber,
+        CancellationToken ct = default)
     {
         var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job is null)
@@ -75,6 +78,16 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
         if (videoType is not null) { job.VideoTypeManual = videoType; job.VideoType = videoType; }
         if (imdbId is not null) { job.ImdbIdManual = imdbId; job.ImdbId = imdbId; }
         if (posterUrl is not null) { job.PosterUrlManual = posterUrl; job.PosterUrl = posterUrl; }
+
+        // Season/Disc/StartingEpisode: empty string = clear manual override, non-null = set manual
+        if (seasonNumber.HasValue) { job.SeasonNumberManual = seasonNumber; job.SeasonNumber = seasonNumber; }
+        else if (Request.Form.ContainsKey("seasonNumber")) { job.SeasonNumberManual = null; job.SeasonNumber = job.SeasonNumberAuto; }
+
+        if (discNumber.HasValue) { job.DiscNumberManual = discNumber; job.DiscNumber = discNumber; }
+        else if (Request.Form.ContainsKey("discNumber")) { job.DiscNumberManual = null; job.DiscNumber = job.DiscNumberAuto; }
+
+        if (startingEpisodeNumber.HasValue) { job.StartingEpisodeNumber = startingEpisodeNumber; }
+        else if (Request.Form.ContainsKey("startingEpisodeNumber")) { job.StartingEpisodeNumber = null; }
 
         job.HasNiceTitle = true;
 

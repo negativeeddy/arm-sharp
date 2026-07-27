@@ -266,6 +266,24 @@
                                 <td><strong>@Model.ImdbId</strong></td>
                             </tr>
                             <tr>
+                                <td>Season</td>
+                                <td>@(Model.SeasonNumberAuto?.ToString() ?? "—")</td>
+                                <td><input type="number" name="seasonNumber" class="form-control form-control-sm" min="0" placeholder="Use auto" value="@(Model.SeasonNumberManual?.ToString() ?? "")" /></td>
+                                <td><strong>@(Model.SeasonNumber?.ToString() ?? "—")</strong></td>
+                            </tr>
+                            <tr>
+                                <td>Disc</td>
+                                <td>@(Model.DiscNumberAuto?.ToString() ?? "—")</td>
+                                <td><input type="number" name="discNumber" class="form-control form-control-sm" min="1" placeholder="Use auto" value="@(Model.DiscNumberManual?.ToString() ?? "")" /></td>
+                                <td><strong>@(Model.DiscNumber?.ToString() ?? "—")</strong></td>
+                            </tr>
+                            <tr>
+                                <td>Starting Episode</td>
+                                <td class="text-muted small">Manual entry</td>
+                                <td><input type="number" name="startingEpisodeNumber" class="form-control form-control-sm" min="1" placeholder="Optional" value="@(Model.StartingEpisodeNumber?.ToString() ?? "")" /></td>
+                                <td><strong>@(Model.StartingEpisodeNumber?.ToString() ?? "—")</strong></td>
+                            </tr>
+                            <tr>
                                 <td>Poster URL</td>
                                 <td class="text-truncate" style="max-width:200px" title="@Model.PosterUrlAuto">@(Model.PosterUrlAuto ?? "—")</td>
                                 <td><input type="text" name="posterUrl" class="form-control form-control-sm" value="@(Model.PosterUrlManual ?? "")" /></td>

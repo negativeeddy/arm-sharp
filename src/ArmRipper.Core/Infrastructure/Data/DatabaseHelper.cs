@@ -47,6 +47,14 @@ public static class DatabaseHelper
         TryAlterColumn(db, "jobs", "OriginalJobId", "INTEGER");
         // MaxConcurrentRips removed — per-drive gating supersedes the global slot.
 
+        // ── Season/Disc/StartingEpisode columns (PR#32) ──
+        TryAlterColumn(db, "jobs", "SeasonNumberAuto", "INTEGER");
+        TryAlterColumn(db, "jobs", "SeasonNumberManual", "INTEGER");
+        TryAlterColumn(db, "jobs", "DiscNumber", "INTEGER");
+        TryAlterColumn(db, "jobs", "DiscNumberAuto", "INTEGER");
+        TryAlterColumn(db, "jobs", "DiscNumberManual", "INTEGER");
+        TryAlterColumn(db, "jobs", "StartingEpisodeNumber", "INTEGER");
+
         // ── ConfigSnapshot columns added after the Initial migration ──
         TryAlterColumn(db, "config", "PreferWidescreen", "INTEGER");
 
