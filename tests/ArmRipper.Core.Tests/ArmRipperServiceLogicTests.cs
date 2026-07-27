@@ -143,6 +143,8 @@ public sealed class ArmRipperServiceLogicTests
     [InlineData("Friends",                              "Friends")]
     [InlineData("THE_OFFICE",                           "The Office")]
     [InlineData("Simpsons_S10_D2",                      "Simpsons")]
+    [InlineData("HOW_I_MET_YOUR_MOTHER_S2_D1_US",       "How I Met Your Mother")]
+    [InlineData("HOW_I_MET_YOUR_MOTHER_S3_D1",          "How I Met Your Mother")]
     public void CleanSeriesTitle_VariousFormats_ReturnsCleanTitle(string input, string expected)
     {
         var result = InvokeCleanSeriesTitle(input);

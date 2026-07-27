@@ -1225,13 +1225,15 @@ public sealed class ArmRipperService(
         var result = System.Text.RegularExpressions.Regex.Replace(
             raw.Trim(), @"\s*\([^)]*\d{4}.*\)$", "");
 
-        // Strip season/disc suffix — handles both spaced and compact formats:
-        //   "MY_NAME_IS_EARL_S1_D1"       → "MY_NAME_IS_EARL"
-        //   "MY_NAME_IS_EARL_SEASON1_DISC2" → "MY_NAME_IS_EARL"
-        //   "How I Met Your Mother S3D1"   → "How I Met Your Mother"
-        //   "HOW_I_MET_YOUR_MOTHER_S3D1"  → "HOW_I_MET_YOUR_MOTHER"
+        // Strip season/disc suffix — handles both spaced and compact formats,
+        // with optional trailing country/region code:
+        //   "MY_NAME_IS_EARL_S1_D1"              → "MY_NAME_IS_EARL"
+        //   "MY_NAME_IS_EARL_SEASON1_DISC2"       → "MY_NAME_IS_EARL"
+        //   "How I Met Your Mother S3D1"          → "How I Met Your Mother"
+        //   "HOW_I_MET_YOUR_MOTHER_S3D1"          → "HOW_I_MET_YOUR_MOTHER"
+        //   "HOW_I_MET_YOUR_MOTHER_S2_D1_US"      → "HOW_I_MET_YOUR_MOTHER"
         result = System.Text.RegularExpressions.Regex.Replace(
-            result, @"[_\s][Ss](?:EASON)?\d+[_\s]?[Dd](?:ISC)?\d+$", "",
+            result, @"[_\s][Ss](?:EASON)?\d+[_\s]?[Dd](?:ISC)?\d+(?:[_\s][A-Za-z]{2,4})?$", "",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         // Replace underscores with spaces
@@ -1240,7 +1242,7 @@ public sealed class ArmRipperService(
         // After underscore→space conversion, also strip trailing season/disc
         // suffixes (e.g. from labels where underscores were already spaces).
         result = System.Text.RegularExpressions.Regex.Replace(
-            result, @"\s+[Ss](?:EASON)?\d+\s?[Dd](?:ISC)?\d+$", "",
+            result, @"\s+[Ss](?:EASON)?\d+\s?[Dd](?:ISC)?\d+(?:\s[A-Za-z]{2,4})?$", "",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         // If the result is all-uppercase with no lowercase letters (disc label),
