@@ -376,8 +376,9 @@ static int ParseDiscNumber(string? label)
 
 static string CleanSeriesTitle(string title)
 {
-    // Strip _S1_D2 suffix then title-case
-    var cleaned = System.Text.RegularExpressions.Regex.Replace(title, @"_S\d+_D\d+$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    // Strip season/disc suffixes — handles spaced and compact formats:
+    //   _S1_D2, _S1D2, _SEASON1_DISC2, _SEASON1DISC2
+    var cleaned = System.Text.RegularExpressions.Regex.Replace(title, @"_S(?:EASON)?\d+_?D(?:ISC)?\d+$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     cleaned = cleaned.Replace('_', ' ');
     // Title case: capitalise first letter of each word
     var words = cleaned.Split(' ', StringSplitOptions.RemoveEmptyEntries);

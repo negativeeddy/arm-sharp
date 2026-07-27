@@ -275,8 +275,9 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
             ? $" - {ArmRipperService.SanitizeFileName(track.EpisodeTitle)}"
             : "";
 
+        // Jellyfin convention: series name is in the directory, not the filename
         return Path.Combine(seasonDir,
-            $"{seriesFileName} - S{season:D2}E{episode:D2}{episodeTitle}.{destExt}");
+            $"S{season:D2}E{episode:D2}{episodeTitle}.{destExt}");
     }
 
     /// <summary>

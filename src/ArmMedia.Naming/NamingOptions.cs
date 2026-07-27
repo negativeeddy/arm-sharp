@@ -69,9 +69,9 @@ public sealed class NamingOptions
     /// <summary>Jellyfin-compatible naming template (default).</summary>
     public static NamingOptions Jellyfin => new()
     {
-        Template          = "{Series} - S{Season:D2}E{Episode:D2} - {Title}",
-        MultiPartTemplate = "{Series} - S{Season:D2}{Episodes} - {Title}",
-        ExtraTemplate     = "{Series} - S00 - {Title}"
+        Template          = "S{Season:D2}E{Episode:D2} - {Title}",
+        MultiPartTemplate = "S{Season:D2}{Episodes} - {Title}",
+        ExtraTemplate     = "S00 - {Title}"
     };
 
     /// <summary>FileBot-style naming template.</summary>

@@ -37,7 +37,8 @@ public sealed class NamingTests
         opts.SeriesTitle = "Cosmic Frontier";
 
         var result = _renamer.Rename(track, opts);
-        Assert.Equal("Cosmic Frontier - S01E05 - Pilot", result);
+        // Jellyfin: series name is in directory only, not filename
+        Assert.Equal("S01E05 - Pilot", result);
     }
 
     [Fact]
@@ -63,10 +64,11 @@ public sealed class NamingTests
         opts.SeriesTitle = "Cosmic Frontier";
 
         var result = _renamer.Rename(track, opts);
-        // Template: "{Series} - S{Season:D2}{Episodes} - {Title}"
+        // Template: "S{Season:D2}{Episodes} - {Title}"
         // Episodes token for [3,4] → "E03E04"
         Assert.Contains("E03E04", result);
-        Assert.Contains("Cosmic Frontier", result);
+        // No series name in Jellyfin template
+        Assert.DoesNotContain("Cosmic Frontier", result);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -81,7 +83,8 @@ public sealed class NamingTests
         opts.SeriesTitle = "Cosmic Frontier";
 
         var result = _renamer.Rename(track, opts);
-        Assert.Equal("Cosmic Frontier - S00 - Behind the Scenes", result);
+        // Jellyfin extras: series name in directory only
+        Assert.Equal("S00 - Behind the Scenes", result);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

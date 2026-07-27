@@ -120,4 +120,42 @@ public sealed class ArmRipperServiceLogicTests
         var result = method.Invoke(null, [job, protection]);
         Assert.Equal(expected, result);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CleanSeriesTitle
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static string InvokeCleanSeriesTitle(string raw)
+    {
+        var method = GetStaticMethod("CleanSeriesTitle");
+        return (string)method.Invoke(null, [raw])!;
+    }
+
+    [Theory]
+    [InlineData("How I Met Your Mother S3D1",          "How I Met Your Mother")]
+    [InlineData("How I Met Your Mother S3D2",          "How I Met Your Mother")]
+    [InlineData("MY_NAME_IS_EARL_S1_D1",               "My Name Is Earl")]
+    [InlineData("MY_NAME_IS_EARL_SEASON1_DISC2",       "My Name Is Earl")]
+    [InlineData("Seinfeld S08D03",                      "Seinfeld")]
+    [InlineData("Seinfeld Season8Disc3",                "Seinfeld")]
+    [InlineData("Game of Thrones Season2 Disc1",        "Game of Thrones")]
+    [InlineData("How I Met Your Mother S3D1 (2005)",    "How I Met Your Mother")]
+    [InlineData("Friends",                              "Friends")]
+    [InlineData("THE_OFFICE",                           "The Office")]
+    [InlineData("Simpsons_S10_D2",                      "Simpsons")]
+    public void CleanSeriesTitle_VariousFormats_ReturnsCleanTitle(string input, string expected)
+    {
+        var result = InvokeCleanSeriesTitle(input);
+        Assert.Equal(expected, result);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void CleanSeriesTitle_NullOrEmpty_ReturnsUnknownSeries(string? input)
+    {
+        var result = InvokeCleanSeriesTitle(input ?? "");
+        Assert.Equal("Unknown Series", result);
+    }
 }

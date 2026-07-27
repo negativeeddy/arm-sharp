@@ -1084,9 +1084,9 @@ public sealed class ArmRipperService(
                 ? $" - {SanitizeFileName(track.EpisodeTitle)}"
                 : "";
 
-            var seriesFileName = SanitizeFileName(cleanSeries);
+            // Jellyfin convention: SxxExx - Title.ext (series name is in the directory)
             var episodeFile = Path.Combine(seasonDir,
-                $"{seriesFileName} - S{season:D2}E{episode:D2}{episodeTitle}.{destExt}");
+                $"S{season:D2}E{episode:D2}{episodeTitle}.{destExt}");
 
             EnsureDirectory(seasonDir);
             logger.LogInformation("Track is a TV episode. Moving '{Src}' to '{Dst}'",
@@ -1225,22 +1225,22 @@ public sealed class ArmRipperService(
         var result = System.Text.RegularExpressions.Regex.Replace(
             raw.Trim(), @"\s*\([^)]*\d{4}.*\)$", "");
 
-        // Strip season/disc suffix — handles both formats:
-        //   "MY_NAME_IS_EARL_S1_D1"     → "MY_NAME_IS_EARL"
+        // Strip season/disc suffix — handles both spaced and compact formats:
+        //   "MY_NAME_IS_EARL_S1_D1"       → "MY_NAME_IS_EARL"
         //   "MY_NAME_IS_EARL_SEASON1_DISC2" → "MY_NAME_IS_EARL"
+        //   "How I Met Your Mother S3D1"   → "How I Met Your Mother"
+        //   "HOW_I_MET_YOUR_MOTHER_S3D1"  → "HOW_I_MET_YOUR_MOTHER"
         result = System.Text.RegularExpressions.Regex.Replace(
-            result, @"[_\s][Ss](?:EASON)?\d+[_\s][Dd](?:ISC)?\d+$", "",
+            result, @"[_\s][Ss](?:EASON)?\d+[_\s]?[Dd](?:ISC)?\d+$", "",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         // Replace underscores with spaces
         result = result.Replace('_', ' ').Trim();
 
-        // After underscore→space conversion, also strip trailing
-        // "Season 1 Disc 2" / "S1 D2" style suffixes (e.g. from
-        // labels where underscores were already spaces or were
-        // partially converted).
+        // After underscore→space conversion, also strip trailing season/disc
+        // suffixes (e.g. from labels where underscores were already spaces).
         result = System.Text.RegularExpressions.Regex.Replace(
-            result, @"\s+[Ss](?:EASON)?\d+\s+[Dd](?:ISC)?\d+$", "",
+            result, @"\s+[Ss](?:EASON)?\d+\s?[Dd](?:ISC)?\d+$", "",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         // If the result is all-uppercase with no lowercase letters (disc label),

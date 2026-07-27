@@ -154,15 +154,15 @@ public sealed class PipelineIntegrationTests
         var namingOpts = NamingOptions.Jellyfin;
         namingOpts.SeriesTitle = "Cosmic Frontier";
 
-        // ── Assert: File names ───────────────────────────────────────────────
-        Assert.Equal("Cosmic Frontier - S01E01 - Pilot",                     renamer.Rename(t1, namingOpts));
-        Assert.Equal("Cosmic Frontier - S01E02 - The Setup",                 renamer.Rename(t2, namingOpts));
+        // ── Assert: File names (Jellyfin convention: series name in directory, not filename) ──
+        Assert.Equal("S01E01 - Pilot",                     renamer.Rename(t1, namingOpts));
+        Assert.Equal("S01E02 - The Setup",                 renamer.Rename(t2, namingOpts));
         // Multi-part: S01E03E04 (for [3,4] with MultiPartSep="E")
         var renamedMulti = renamer.Rename(t3, namingOpts);
         Assert.Contains("E03E04", renamedMulti);
-        Assert.Contains("Cosmic Frontier", renamedMulti);
-        Assert.Equal("Cosmic Frontier - S01E05 - Arrival",                   renamer.Rename(t5, namingOpts));
-        Assert.Equal("Cosmic Frontier - S00 - Making of Cosmic Frontier",    renamer.Rename(t6, namingOpts));
-        Assert.Equal("Cosmic Frontier - S00 - Deleted Scenes",               renamer.Rename(t7, namingOpts));
+        Assert.DoesNotContain("Cosmic Frontier", renamedMulti);
+        Assert.Equal("S01E05 - Arrival",                   renamer.Rename(t5, namingOpts));
+        Assert.Equal("S00 - Making of Cosmic Frontier",    renamer.Rename(t6, namingOpts));
+        Assert.Equal("S00 - Deleted Scenes",               renamer.Rename(t7, namingOpts));
     }
 }
