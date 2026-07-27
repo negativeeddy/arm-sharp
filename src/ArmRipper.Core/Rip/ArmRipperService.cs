@@ -963,15 +963,10 @@ public sealed class ArmRipperService(
         //     The Conductor uses job.Path for the final output verification.
         if (job.VideoType == "series" || job.VideoType == "tv")
         {
-            var episodeTrack = tracks.FirstOrDefault(t => t.EpisodeNumber is not null);
-            if (episodeTrack is not null)
-            {
-                var cleanSeries = CleanSeriesTitle(job.Title ?? "Unknown Series");
-                var season = episodeTrack.TrackSeasonNumber ?? job.SeasonNumber ?? 1;
-                var completedBase = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value);
-                job.Path = Path.Combine(completedBase, "tv", SanitizeFileName(cleanSeries));
-                logger.LogInformation("Updated job path to series directory: {Path}", job.Path);
-            }
+            var cleanSeries = CleanSeriesTitle(job.Title ?? "Unknown Series");
+            var completedBase = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value);
+            job.Path = Path.Combine(completedBase, "tv", SanitizeFileName(cleanSeries));
+            logger.LogInformation("Updated job path to series directory: {Path}", job.Path);
         }
     }
 
