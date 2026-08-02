@@ -1,6 +1,8 @@
 using System.Net;
+using System.Text;
 using System.Text.RegularExpressions;
 using ArmRipper.Core.Infrastructure.Data;
+using ArmRipper.Core.Metadata;
 using ArmRipper.Core.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -59,8 +61,10 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
     }
 
     private async Task<HttpClient> CreateAuthenticatedClientAsync()
+        => await AuthenticateAsync(_factory.CreateClient());
+
+    private async Task<HttpClient> AuthenticateAsync(HttpClient client)
     {
-        var client = _factory.CreateClient();
         var loginPage = await client.GetAsync("/auth/login");
         var html = await loginPage.Content.ReadAsStringAsync();
         var match = Regex.Match(html,
@@ -161,6 +165,59 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
 
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains("No results found", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TitleSearch_UsesDbStoredOmdbApiKey()
+    {
+        // Seed the API key the way the Settings page does: stored in the DB ripper_settings row,
+        // NOT in the static appsettings config. The search must read it from the DB-merged
+        // effective settings (SettingsHelper.GetEffectiveSettingsAsync), otherwise it silently
+        // no-ops and returns "No results found" even though the key is configured.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            db.RipperSettings.Add(new RipperSettings
+            {
+                SettingsJson = """{"OmdbApiKey":"dbkey-test-123"}"""
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var capturedUrls = new List<string>();
+        var handler = new FuncHttpMessageHandler(request =>
+        {
+            capturedUrls.Add(request.RequestUri?.ToString() ?? "");
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"Response":"True","totalResults":"1","Search":[{"Title":"A League of Their Own","Year":"1992","imdbID":"tt0104694","Type":"movie","Poster":"N/A"}]}""",
+                    Encoding.UTF8,
+                    "application/json")
+            };
+        });
+
+        var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+        {
+            services.AddHttpClient<OmdbService>().ConfigurePrimaryHttpMessageHandler(() => handler);
+        }));
+
+        var client = await AuthenticateAsync(factory.CreateClient());
+        var response = await client.GetAsync("/jobs/titlesearch?query=A%20League%20of%20Their%20Own");
+        var html = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        // The search should have reached OMDB (rendered results) instead of the no-results fallback.
+        Assert.Contains("Results for", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(capturedUrls, url =>
+            url.Contains("apikey=dbkey-test-123", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private sealed class FuncHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> handler)
+        : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(handler(request));
     }
 
     [Fact]

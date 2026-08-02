@@ -279,7 +279,11 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
         if (string.IsNullOrWhiteSpace(query))
             return View(Array.Empty<OmdbSearchItem>());
 
-        var apiKey = settings.Value.OmdbApiKey;
+        // The OMDB key is stored in the DB ripper_settings row (Settings page) and merged
+        // on top of the file config by SettingsHelper — read it the same way Conductor does,
+        // otherwise the search silently no-ops when the key only exists in the DB.
+        var effective = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, ct);
+        var apiKey = effective.OmdbApiKey;
         if (!string.IsNullOrEmpty(apiKey))
         {
             var result = await omdb.SearchAsync(apiKey, query, exact: exact, ct: ct);
@@ -300,7 +304,8 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
         if (job is null)
             return NotFound();
 
-        var apiKey = settings.Value.OmdbApiKey;
+        var effective = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, ct);
+        var apiKey = effective.OmdbApiKey;
         if (string.IsNullOrEmpty(apiKey))
         {
             TempData["Error"] = "OMDB API key not configured";
