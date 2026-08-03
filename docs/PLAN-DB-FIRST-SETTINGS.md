@@ -266,14 +266,28 @@ The ARM drop-in replacement goal is retired. ARM's `/etc/arm/config/arm.yaml` is
   WebUi 68/68, ArmMedia 104/104.
 
 ### Phase 3 — Remove duplicate values
-1. Delete `Omdb:ApiKey`, `Tmdb:ApiKey`, `Tvdb:ApiKey`, `OvidProvider:ApiToken` from
+1. ✅ Delete `Omdb:ApiKey`, `Tmdb:ApiKey`, `Tvdb:ApiKey`, `OvidProvider:ApiToken` from
    `appsettings.json` / `appsettings.Development.json` (keys now live only in DB
    deltas, pulled in via the explicit "Import ARM settings" action from YAML).
-2. Remove alias properties + `AliasToCanonical` (after Phase 1 migration rewrites
-   legacy keys). Keep `PreventTrack99`/`DeleteRawFiles`/`AudioMetadataProvider` only as
-   `[JsonIgnore]` read-only getters for one release if external consumers exist.
-3. Prune `Arm:` section in `appsettings.json` to only non-YAML keys.
-- **Exit:** no configuration value exists in more than one place.
+   - Removed from `WebUi/appsettings.json`, `WebUi/appsettings.Development.json`,
+     `Cli/appsettings.json`. Kept `Tvdb:ApiBaseUrl` (non-secret URL constant).
+   - Deleted `OmdbProviderOptions.cs` / `TmdbProviderOptions.cs`; removed
+     `ApiKey`/`ApiToken` from `TvdbProviderOptions` / `OvidProviderOptions`.
+   - Dropped the dead `Configure<OmdbProviderOptions>` / `Configure<TmdbProviderOptions>`
+     DI registrations in `ArmSharpServiceCollectionExtensions`.
+2. ✅ Remove alias properties + `AliasToCanonical`. `PreventTrack99`/`DeleteRawFiles`/
+   `AudioMetadataProvider` had no external consumers, so the aliases were removed
+   outright from `ArmSettings` / `ConfigSnapshot` and `AliasToCanonical` from
+   `SettingsHelper` (Phase 1 migration already rewrote legacy keys to canonical names).
+3. ✅ Prune `Arm:` section in the WebUi `appsettings.json` to only non-YAML keys — it
+   now holds just `CompletedPath`. The CLI `appsettings.json` retains its `Arm:`
+   defaults as the CLI's seed source. **Drift note:** the C# `ArmSettings` defaults
+   differ from the CLI file for `HbArgsDvd`/`HbArgsBd` (e.g. `--comb-detect --decomb`,
+   `--quality 22` vs `18`) — reconcile the C# defaults in a follow-up rather than
+   silently removing the file keys and changing CLI behavior.
+- **Exit:** no configuration value exists in more than one place (API keys live only
+  in DB deltas; aliases gone; appsettings hold seed defaults only, DB overrides win).
+- Committed as `feature/db-first-settings-phase3` (not merged).
 
 ### Phase 4 — Enforce the file-only/DB-backed boundary
 1. Add a startup validator that flags file-only keys present in DB deltas (and
