@@ -1,7 +1,8 @@
 # Plan: DB-First Settings — Remove File/DB Ambiguity
 
-> Status: Phases 0–1 complete & committed on `feature/db-first-settings` (`b92db80`);
-> not yet merged to `master`. Phases 2–5 not started.
+> Status: Phases 0–2 complete & committed on `feature/db-first-settings`
+> (Phase 1: `b92db80`; Phase 2: `9520851`); not yet merged to `master`.
+> Phases 3–5 not started.
 > Goal: Make the database the single source of truth for *runtime* settings. Files
 > (`appsettings.json` + `/etc/arm/config/arm.yaml`) become **seed-only** — they can
 > never override the DB after first boot.
