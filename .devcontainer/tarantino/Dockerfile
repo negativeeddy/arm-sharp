@@ -20,9 +20,9 @@ COPY install-nv-codec-headers.sh /tmp/install-nv-codec-headers.sh
 COPY VERSION_HANDBRAKE /tmp/VERSION_HANDBRAKE
 COPY install-handbrake.sh /tmp/install-handbrake.sh
 
-RUN chmod +x /tmp/install-makemkv.sh \
-    && /tmp/install-makemkv.sh \
-    && rm -f /tmp/install-makemkv.sh /tmp/VERSION_MAKEMKV
+# RUN chmod +x /tmp/install-makemkv.sh \
+#     && /tmp/install-makemkv.sh \
+#     && rm -f /tmp/install-makemkv.sh /tmp/VERSION_MAKEMKV
 
 RUN chmod +x /tmp/install-nv-codec-headers.sh /tmp/install-handbrake.sh \
     && /tmp/install-nv-codec-headers.sh \

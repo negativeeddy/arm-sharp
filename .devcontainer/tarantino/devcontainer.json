@@ -39,6 +39,6 @@
                 "SantiagoRomanChillon.opencode-zen-copilot"
             ]
         }
-    },
-    "postCreateCommand": ".devcontainer/post-create.sh"
+    }
+    //"postCreateCommand": ".devcontainer/post-create.sh"
 }
