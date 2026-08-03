@@ -16,7 +16,7 @@ namespace ArmRipper.WebUi.Controllers;
 public partial class ApiController(
     ArmDbContext db,
     ICliProcessRunner runner,
-    IOptions<ArmSettings> settings,
+    ISettingsService settingsService,
     IDatabaseSubmitService databaseSubmitService,
     IOvidSubmitService ovidSubmitService) : Controller
 {
@@ -224,7 +224,7 @@ public partial class ApiController(
             return Json(new { success = false, error = "Job or log file not found" });
 
         // Resolve from effective DB settings (file/appsettings values may differ in dev).
-        var effective = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, ct);
+        var effective = await settingsService.GetEffectiveAsync(ct);
         var logPath = ArmPaths.GetLogPath(effective);
         var fullPath = Path.Combine(logPath, job.LogFile);
 

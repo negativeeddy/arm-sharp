@@ -24,12 +24,14 @@ public partial class MakeMkvService : IMakeMkvService
     private readonly IOptions<ArmSettings> _settings;
     private readonly ArmDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ISettingsService _settingsService;
 
-    public MakeMkvService(ICliProcessRunner runner, ILoggerFactory loggerFactory, IOptions<ArmSettings> settings, ArmDbContext db, IHttpClientFactory httpClientFactory)
+    public MakeMkvService(ICliProcessRunner runner, ILoggerFactory loggerFactory, IOptions<ArmSettings> settings, ArmDbContext db, IHttpClientFactory httpClientFactory, ISettingsService? settingsService = null)
     {
         _runner = runner;
         _logger = loggerFactory.CreateLogger("MakeMkvService");
         _settings = settings;
+        _settingsService = settingsService ?? new SettingsService(db, settings);
         _db = db;
         _httpClientFactory = httpClientFactory;
     }
@@ -55,7 +57,10 @@ public partial class MakeMkvService : IMakeMkvService
 
     public async Task EnsureKeyAsync(CancellationToken ct = default)
     {
-        var configuredKey = _settings.Value.MakeMkvPermaKey;
+        // Resolve from effective DB settings so a perma key imported via ARM settings
+        // or saved on the Settings page is honored.
+        var effective = await _settingsService.GetEffectiveAsync(ct);
+        var configuredKey = effective.MakeMkvPermaKey;
         if (!string.IsNullOrEmpty(configuredKey))
         {
             await RegisterKeyAsync(configuredKey, ct);

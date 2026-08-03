@@ -13,7 +13,7 @@ namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("reidentify")]
-public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchestrator orchestrator, IOptions<ArmSettings> settings) : Controller
+public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchestrator orchestrator, ISettingsService settingsService) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken ct = default)
@@ -152,7 +152,7 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
         // We record the ACTUAL existing file so "Save & Rename" can move it to the newly
         // identified episode path. Effective settings are used (not the static IOptions values,
         // which in dev resolve to ./data/... and a null DestExt → "mp4").
-        var effectiveSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, ct);
+        var effectiveSettings = await settingsService.GetEffectiveAsync(ct);
         var oldFilePaths = new Dictionary<int, (string? Found, string[] Candidates)>();
         if (renameFiles)
         {

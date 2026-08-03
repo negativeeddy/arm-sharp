@@ -228,18 +228,41 @@ The ARM drop-in replacement goal is retired. ARM's `/etc/arm/config/arm.yaml` is
   delta-only; no code paths copy file→DB at boot; ARM YAML is import-only.
   Verified at runtime: dev DB row migrated from full snapshot → 13-key delta.
 
-### Phase 2 — One resolver, zero direct reads
-1. Implement `ISettingsService` (wraps `SettingsHelper`), register scoped.
-2. Route all existing correct callers through it (controllers, `Conductor`,
-   `BackgroundRipService`, `DiscPollingService`, `NotificationHub`, MCP tools).
-3. Fix the direct-read services: `ArmRipperService`, `HandBrakeService`,
-   `FfmpegService`, `MakeMkvService`, `MusicBrainzService`, `IdentifyService`
-   (L921/L1006), `DatabaseSubmitService`, `DiscDbQueryService`, and
-   `Conductor.Setup()` (L485) — resolve via the service once per job/scope.
-4. Collapse the four key resolvers (`OmdbApiKeyResolver`, `TmdbApiKeyResolver`,
-   `TvdbApiKeyResolver`, `OvidApiTokenResolver`) into `ISettingsService`.
-- **Exit:** grep for `IOptions<ArmSettings>` / `settings.Value` returns only
-  `ISettingsService` wiring and test helpers; zero DB-backed settings read from files.
+### Phase 2 — One resolver, zero direct reads ✅ done (committed, not merged)
+1. ✅ Implement `ISettingsService` (`GetEffectiveAsync`/`MergeAsync`/`ClearAllAsync`/
+   `EnsureSeededAsync`/`NormalizeLegacyRowAsync`, wrapping `SettingsHelper`), register
+   scoped in both WebUi and CLI `Program.cs`.
+2. ✅ Route all existing correct callers through it: `SettingsController`
+   (Index + all Save*/Reset), `ApiController`, `CompletedController` (incl. `ResolveSource`),
+   `JobsController`, `LogsController`, `ReIdentifyController`, `NotificationHub`,
+   MCP `ArmRipperTools` (`GetLog`, `GetConfig`), `Conductor`, `BackgroundRipService`
+   (per-scope), `DiscPollingService` (per-scope).
+3. ✅ Fix the flagged direct-read bugs by resolving via the service once per
+   job/scope:
+   - `Conductor.Setup()` (L485) — dirs now created from effective settings, not
+     `settings.Value`; `RunAsync` resolves once and passes it in.
+   - `Conductor` L846/L849 — raw/completed path fallbacks use effective settings.
+   - `IdentifyService` L921 `OmdbApiKey` + L1006 `MetadataProvider` +
+     `OmdbSearchAsync`/`TmdbSearchAsync` (API keys now passed in from effective).
+   - `MakeMkvService.EnsureKeyAsync` — `MakeMkvPermaKey` from effective settings.
+   - `MusicBrainzService.IdentifyAsync` — `GetAudioTitle` from effective settings.
+   - Remaining `job.Config?.X ?? settings.Value.X` reads (ArmRipperService,
+     HandBrakeService, FfmpegService, MakeMkv MinLength/MaxLength, IdentifyService
+     DiscDbEnabled/GetVideoTitle/Prevent99/AutoEject) are file-defaults fallbacks
+     *after* the per-job `ConfigSnapshot` (which is captured from effective settings at
+     job start) — deliberately left as-is; no live DB value is bypassed.
+4. ✅ Collapse the four key resolvers (`OmdbApiKeyResolver`, `TmdbApiKeyResolver`,
+   `TvdbApiKeyResolver`, `OvidApiTokenResolver`) to a single
+   `ISettingsService.GetEffectiveAsync()` read — all DB-blob parsing and file fallbacks
+   now live in one place.
+- **Exit (met):** every DB-backed setting is read through `ISettingsService` (or a
+  per-job `ConfigSnapshot` captured from it). `IOptions<ArmSettings>` remains only for
+  file-defaults fallbacks and the ARM-import path (`SettingsController.ImportArmSettings`).
+  Grep: `SettingsHelper.GetEffectiveSettingsAsync` has zero *runtime* callers left —
+  only one startup bootstrap in WebUi `Program.cs` (resolves the file logger's
+  fallback `LogPath` before the DI scope is set up) and the `SettingsService` wrapper.
+  Build green (0 warnings), Core 149 pass / 20 pre-existing MakeMkv harness NREs,
+  WebUi 68/68, ArmMedia 104/104.
 
 ### Phase 3 — Remove duplicate values
 1. Delete `Omdb:ApiKey`, `Tmdb:ApiKey`, `Tvdb:ApiKey`, `OvidProvider:ApiToken` from

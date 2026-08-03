@@ -14,7 +14,7 @@ namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("completed")]
-public class CompletedController(IOptions<ArmSettings> settings, ArmDbContext db, IBackgroundRipService backgroundRip) : Controller
+public class CompletedController(ArmDbContext db, ISettingsService settingsService, IBackgroundRipService backgroundRip) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken ct = default)
@@ -27,7 +27,7 @@ public class CompletedController(IOptions<ArmSettings> settings, ArmDbContext db
     {
         // Use effective DB settings (DB RipperSettings override appsettings) so the
         // page shows the real media directories, not dev-only ./data paths.
-        var effective = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, ct);
+        var effective = await settingsService.GetEffectiveAsync(ct);
         var cp = ArmPaths.GetCompletedPath(effective);
         var rp = ArmPaths.GetRawPath(effective);
         var tp = ArmPaths.GetTranscodePath(effective);
@@ -331,8 +331,11 @@ public class CompletedController(IOptions<ArmSettings> settings, ArmDbContext db
 
     private (string basePath, FileSource source) ResolveSource(string filePath)
     {
-        var source = ArmPaths.ResolveSourceType(filePath, settings.Value);
-        var basePath = ArmPaths.GetPathForSource(source, settings.Value);
+        // Resolve from effective DB settings (DB RipperSettings override appsettings),
+        // so paths overridden via Import ARM settings or the Settings page are honored.
+        var effective = settingsService.GetEffectiveAsync().GetAwaiter().GetResult();
+        var source = ArmPaths.ResolveSourceType(filePath, effective);
+        var basePath = ArmPaths.GetPathForSource(source, effective);
         return (basePath.TrimEnd('/'), source);
     }
 

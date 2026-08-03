@@ -8,7 +8,7 @@ namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("logs")]
-public class LogsController(ArmDbContext db, IOptions<ArmSettings> settings) : Controller
+public class LogsController(ISettingsService settingsService) : Controller
 {
     /// <summary>
     /// Resolves the log directory from the effective settings (the DB RipperSettings
@@ -17,7 +17,7 @@ public class LogsController(ArmDbContext db, IOptions<ArmSettings> settings) : C
     /// </summary>
     private async Task<string> GetLogPathAsync(CancellationToken ct = default)
     {
-        var effective = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, ct);
+        var effective = await settingsService.GetEffectiveAsync(ct);
         return ArmPaths.GetLogPath(effective);
     }
 

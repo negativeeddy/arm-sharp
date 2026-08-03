@@ -18,6 +18,7 @@ public sealed partial class IdentifyService(
     ILoggerFactory loggerFactory,
     ArmDbContext db,
     IOptions<ArmSettings> settings,
+    ISettingsService settingsService,
     IHttpClientFactory httpClientFactory,
     IDiscDbHashService discDbHashService,
     IDiscDbQueryService discDbQueryService,
@@ -852,6 +853,7 @@ public sealed partial class IdentifyService(
 
     private async Task GetVideoDetailsAsync(Job job, CancellationToken ct)
     {
+        var effective = await settingsService.GetEffectiveAsync(ct);
         var title = job.Title;
         if (string.IsNullOrEmpty(title) || title == "not identified")
         {
@@ -918,7 +920,7 @@ public sealed partial class IdentifyService(
                     {
                         try
                         {
-                            var apiKey = settings.Value.OmdbApiKey;
+                            var apiKey = effective.OmdbApiKey;
                             if (!string.IsNullOrEmpty(apiKey))
                             {
                                 var httpClient = httpClientFactory.CreateClient("IdentifyService");
@@ -1003,18 +1005,18 @@ public sealed partial class IdentifyService(
 
     private async Task<JsonDocument?> CallMetadataProviderAsync(Job job, string title, string? year, CancellationToken ct)
     {
-        var provider = settings.Value.MetadataProvider?.ToLowerInvariant();
+        var effective = await settingsService.GetEffectiveAsync(ct);
+        var provider = effective.MetadataProvider?.ToLowerInvariant();
         return provider switch
         {
-            "tmdb" => await TmdbSearchAsync(title, year, ct),
-            "omdb" => await OmdbSearchAsync(title, year, ct),
+            "tmdb" => await TmdbSearchAsync(title, year, effective.TmdbApiKey, ct),
+            "omdb" => await OmdbSearchAsync(title, year, effective.OmdbApiKey, ct),
             _ => null
         };
     }
 
-    private async Task<JsonDocument?> OmdbSearchAsync(string title, string? year, CancellationToken ct)
+    private async Task<JsonDocument?> OmdbSearchAsync(string title, string? year, string? apiKey, CancellationToken ct)
     {
-        var apiKey = settings.Value.OmdbApiKey;
         if (string.IsNullOrEmpty(apiKey))
             return null;
 
@@ -1042,9 +1044,8 @@ public sealed partial class IdentifyService(
         }
     }
 
-    private async Task<JsonDocument?> TmdbSearchAsync(string title, string? year, CancellationToken ct)
+    private async Task<JsonDocument?> TmdbSearchAsync(string title, string? year, string? apiKey, CancellationToken ct)
     {
-        var apiKey = settings.Value.TmdbApiKey;
         if (string.IsNullOrEmpty(apiKey))
             return null;
 

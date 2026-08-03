@@ -12,7 +12,7 @@ namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("jobs")]
-public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSettings> settings, IBackgroundRipService backgroundRip) : Controller
+public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService settingsService, IBackgroundRipService backgroundRip) : Controller
 {
     [HttpGet("jobdetail")]
     public async Task<IActionResult> JobDetail(int jobId, CancellationToken ct = default)
@@ -122,7 +122,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
         // Prefer the job's config snapshot (captured from the DB at rip time), then
         // the effective DB settings — NOT the static appsettings values, which can
         // differ in dev (e.g. ./data/logs vs /home/arm/logs).
-        var effective = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, ct);
+        var effective = await settingsService.GetEffectiveAsync(ct);
         var logPath = Path.Combine(
             job.Config?.LogPath ?? ArmPaths.GetLogPath(effective),
             job.LogFile ?? $"{jobId}.log");
@@ -288,7 +288,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
         // The OMDB key is stored in the DB ripper_settings row (Settings page) and merged
         // on top of the file config by SettingsHelper — read it the same way Conductor does,
         // otherwise the search silently no-ops when the key only exists in the DB.
-        var effective = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, ct);
+        var effective = await settingsService.GetEffectiveAsync(ct);
         var apiKey = effective.OmdbApiKey;
         if (!string.IsNullOrEmpty(apiKey))
         {
@@ -310,7 +310,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
         if (job is null)
             return NotFound();
 
-        var effective = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, ct);
+        var effective = await settingsService.GetEffectiveAsync(ct);
         var apiKey = effective.OmdbApiKey;
         if (string.IsNullOrEmpty(apiKey))
         {

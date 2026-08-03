@@ -21,6 +21,7 @@ public class SettingsController(
     IFfmpegService ffmpegService,
     IHardwareEncoderInfoService hardwareEncoderInfoService,
     IOptions<ArmSettings> settings,
+    ISettingsService settingsService,
     IBackgroundRipService backgroundRip,
     IDiscPollingNotifier discPolling) : Controller
 {
@@ -41,7 +42,7 @@ public class SettingsController(
         ViewBag.UiSettings = uiCfg;
 
         // Merge DB-stored ripper settings on top of defaults
-        var mergedSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, ct);
+        var mergedSettings = await settingsService.GetEffectiveAsync(ct);
         ViewBag.ArmSettings = mergedSettings;
         ViewBag.Hostname = Environment.MachineName;
         ViewBag.OsDesc = RuntimeInformation.OSDescription;
@@ -162,7 +163,7 @@ public class SettingsController(
             ["PreferWidescreen"] = JsonSerialize(PreferWidescreen),
         };
 
-        await SettingsHelper.MergeIntoDbAsync(db, fields, ct);
+        await settingsService.MergeAsync(fields, ct);
 
         // Notify the disc detection service so it can start/stop the
         // UeventMonitor based on the new DiscPollingEnabled value.
@@ -204,7 +205,7 @@ public class SettingsController(
             ["FfmpegPostFileArgs"] = FfmpegPostFileArgs is not null ? JsonSerialize(FfmpegPostFileArgs) : null,
         };
 
-        await SettingsHelper.MergeIntoDbAsync(db, fields, ct);
+        await settingsService.MergeAsync(fields, ct);
         TempData["Message"] = "Transcoding settings saved.";
         TempData["ActiveTab"] = "tab8";
         return RedirectToAction("Index");
@@ -218,7 +219,7 @@ public class SettingsController(
     {
         // DB-first: reset means CLEAR all DB overrides (back to file/code defaults),
         // never re-writing file values into the DB.
-        await SettingsHelper.ClearAllAsync(db, ct);
+        await settingsService.ClearAllAsync(ct);
         TempData["Message"] = "Settings reset to defaults (all DB overrides cleared).";
         TempData["ActiveTab"] = "tab3";
         return RedirectToAction("Index");
@@ -574,7 +575,7 @@ public class SettingsController(
             ["OvidApiToken"] = OvidApiToken is not null ? JsonSerialize(OvidApiToken) : null,
         };
 
-        await SettingsHelper.MergeIntoDbAsync(db, fields, ct);
+        await settingsService.MergeAsync(fields, ct);
         TempData["Message"] = "API keys saved.";
         TempData["ActiveTab"] = "tab9";
         return RedirectToAction("Index");
@@ -598,7 +599,7 @@ public class SettingsController(
             ["ArmApiKey"] = ArmApiKey is not null ? JsonSerialize(ArmApiKey) : null,
         };
 
-        await SettingsHelper.MergeIntoDbAsync(db, fields, ct);
+        await settingsService.MergeAsync(fields, ct);
         TempData["Message"] = "Notification settings saved.";
         TempData["ActiveTab"] = "tab6";
         return RedirectToAction("Index");

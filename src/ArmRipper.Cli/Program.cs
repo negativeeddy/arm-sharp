@@ -35,6 +35,7 @@ builder.Services.AddDbContext<ArmDbContext>(options =>
     options.UseSqlite(connectionString));
 
 builder.Services.Configure<ArmSettings>(builder.Configuration.GetSection(ArmSettings.SectionName));
+builder.Services.AddScoped<ISettingsService, SettingsService>();
 
 builder.Services.AddSingleton<ICliProcessRunner, CliProcessRunner>();
 builder.Services.AddHttpClient("IdentifyService", client =>

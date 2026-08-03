@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace ArmRipper.WebUi.Hubs;
 
-public class NotificationHub(ArmDbContext db, IOptions<ArmSettings> settings) : Hub
+public class NotificationHub(ISettingsService settingsService) : Hub
 {
     public async IAsyncEnumerable<string> StreamLog(
         string fileName,
@@ -19,7 +19,7 @@ public class NotificationHub(ArmDbContext db, IOptions<ArmSettings> settings) : 
             yield break;
 
         // Resolve from effective DB settings (DB RipperSettings overrides appsettings).
-        var effective = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, cancellationToken);
+        var effective = await settingsService.GetEffectiveAsync(cancellationToken);
         var logPath = ArmPaths.GetLogPath(effective);
         var fullPath = Path.Combine(logPath, safeFileName);
         if (!System.IO.File.Exists(fullPath))

@@ -181,7 +181,8 @@ public sealed class DiscPollingService(
         {
             using var scope = scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-            var effective = await SettingsHelper.GetEffectiveSettingsAsync(db, _settings.Value, ct);
+            var settingsService = scope.ServiceProvider.GetRequiredService<ISettingsService>();
+            var effective = await settingsService.GetEffectiveAsync(ct);
             return effective.DiscPollingEnabled;
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
