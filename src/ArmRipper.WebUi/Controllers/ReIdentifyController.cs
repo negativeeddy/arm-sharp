@@ -33,6 +33,7 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
     {
         var job = await db.Jobs
             .Include(j => j.Tracks)
+            .Include(j => j.Config)
             .FirstOrDefaultAsync(j => j.Id == jobId, ct);
 
         if (job is null)
@@ -143,16 +144,21 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
             };
         }).ToList();
 
-        // ── Compute old file paths (before save) for rename tracking ──
-        var oldFilePaths = new Dictionary<int, string?>();
+        // ── Locate the OLD on-disk file for every track (before save mutates track fields) ──
+        // A completed job's files can live in very different places depending on whether the
+        // original rip had episode mappings:
+        //   • Identified rip → {completed}/tv/{Series}/Season {NN}/SxxExx...
+        //   • Unidentified rip → {completed}/unidentified/{JobTitle}/{rawName}.mkv
+        // We record the ACTUAL existing file so "Save & Rename" can move it to the newly
+        // identified episode path. Effective settings are used (not the static IOptions values,
+        // which in dev resolve to ./data/... and a null DestExt → "mp4").
+        var effectiveSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, ct);
+        var oldFilePaths = new Dictionary<int, (string? Found, string[] Candidates)>();
         if (renameFiles)
         {
             foreach (var t in rippedTracks)
             {
-                if (t.EpisodeNumber.HasValue)
-                {
-                    oldFilePaths[t.Id] = BuildEpisodeFilePath(job, t, settings.Value);
-                }
+                oldFilePaths[t.Id] = LocateCurrentFile(job, t, effectiveSettings);
             }
         }
 
@@ -176,6 +182,8 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
         var renameResults = new List<object>();
         if (renameFiles && save)
         {
+            var completedBase = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(effectiveSettings);
+
             foreach (var mapped in episodeMap.Tracks)
             {
                 var track = rippedTracks.FirstOrDefault(t => t.TrackNumberInt == mapped.TrackIndex);
@@ -186,11 +194,23 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
                 if (!mapped.Episodes.Any())
                     continue;
 
-                var oldPath = oldFilePaths.GetValueOrDefault(track.Id);
-                if (string.IsNullOrEmpty(oldPath))
-                    continue;
+                var (oldPath, candidates) = oldFilePaths.GetValueOrDefault(track.Id);
 
-                var newPath = BuildEpisodeFilePath(job, track, settings.Value);
+                if (string.IsNullOrEmpty(oldPath))
+                {
+                    renameResults.Add(new
+                    {
+                        track.Id,
+                        trackIndex = mapped.TrackIndex,
+                        status = "not_found",
+                        oldPath = candidates.FirstOrDefault() ?? "?",
+                        newPath = BuildEpisodeFilePath(job, track, effectiveSettings),
+                        message = "Old file not found on disk. Searched: " + string.Join(" | ", candidates)
+                    });
+                    continue;
+                }
+
+                var newPath = BuildEpisodeFilePath(job, track, effectiveSettings);
 
                 // Skip if the path hasn't changed
                 if (string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase))
@@ -204,15 +224,28 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
                 renameResults.Add(result);
             }
 
-            // Try to clean up empty directories after renames
+            // Try to clean up empty directories after renames (tv series folder)
             try
             {
-                var completedBase = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value);
                 var cleanSeries = CleanSeriesTitle(job.Title ?? job.Label ?? "Unknown Series");
                 var seriesDir = Path.Combine(completedBase, "tv", ArmRipperService.SanitizeFileName(cleanSeries));
                 if (Directory.Exists(seriesDir))
                 {
                     RemoveEmptyDirectories(seriesDir);
+                }
+            }
+            catch
+            {
+                // Best-effort cleanup
+            }
+
+            // Also clean up the unidentified folder the raw files were moved out of
+            try
+            {
+                var unidentifiedDir = Path.Combine(completedBase, "unidentified");
+                if (Directory.Exists(unidentifiedDir))
+                {
+                    RemoveEmptyDirectories(unidentifiedDir);
                 }
             }
             catch
@@ -278,6 +311,63 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
         // Jellyfin convention: series name is in the directory, not the filename
         return Path.Combine(seasonDir,
             $"S{season:D2}E{episode:D2}{episodeTitle}.{destExt}");
+    }
+
+    /// <summary>
+    /// Finds where a track's ripped file currently lives on disk so the
+    /// re-identification rename can move it to the newly identified episode path.
+    ///
+    /// A completed job's files can be in one of two very different places:
+    ///   • Identified rip → {completed}/tv/{Series}/Season {NN}/SxxExx... (track has an episode number)
+    ///   • Unidentified rip → {completed}/unidentified/{JobTitle}/{rawName}.mkv (raw file, no episode number)
+    /// Both locations are probed (the first that exists wins).
+    /// </summary>
+    private static (string? Found, string[] Candidates) LocateCurrentFile(Job job, Track track, ArmSettings settings)
+    {
+        var candidates = new List<string>();
+        var rawName = track.FileName ?? track.OrigFileName;
+
+        // 1. If the track previously had an episode number, the file may already be
+        //    at the expected tv-series path under the old SxxExx name.
+        if (track.EpisodeNumber.HasValue)
+        {
+            candidates.Add(BuildEpisodeFilePath(job, track, settings));
+        }
+
+        // 2. Unidentified-rip fallback: the raw file still sitting in the job's own
+        //    final directory (job.Path) or under {completed}/unidentified/.
+        if (!string.IsNullOrEmpty(rawName))
+        {
+            var completedBase = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings);
+
+            // 2a. Directly under the job's recorded final path (e.g. an unidentified folder).
+            if (!string.IsNullOrEmpty(job.Path))
+            {
+                candidates.Add(Path.Combine(job.Path, rawName));
+            }
+
+            // 2b. Under {completed}/unidentified/ — the folder is named after the job
+            //     title (with a year suffix when present) or the disc label.
+            var title = job.Title?.Trim();
+            if (!string.IsNullOrEmpty(title))
+            {
+                if (!string.IsNullOrEmpty(job.Year) && job.Year != "0000")
+                {
+                    candidates.Add(Path.Combine(completedBase, "unidentified",
+                        ArmRipperService.SanitizeFileName($"{title} ({job.Year})"), rawName));
+                }
+                candidates.Add(Path.Combine(completedBase, "unidentified",
+                    ArmRipperService.SanitizeFileName(title), rawName));
+            }
+            if (!string.IsNullOrEmpty(job.Label))
+            {
+                candidates.Add(Path.Combine(completedBase, "unidentified",
+                    ArmRipperService.SanitizeFileName(job.Label), rawName));
+            }
+        }
+
+        var distinct = candidates.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        return (distinct.FirstOrDefault(System.IO.File.Exists), distinct);
     }
 
     /// <summary>
