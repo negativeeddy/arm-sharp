@@ -236,7 +236,7 @@
             {
                 ["RipMethod"] = "Which program to use: mkv (MakeMKV), backup, or abcde",
                 ["MkvArgs"] = "Extra arguments passed to makemkvcon (e.g. --decrypt)",
-                ["MinLength"] = "Shortest track length in seconds to include",
+                ["MinLength"] = "Shortest track length to include, in SECONDS. Examples: 300 = 5 min, 900 = 15 min. (MakeMKV's --minlength is in seconds, not minutes or milliseconds.)",
                 ["MaxLength"] = "Longest track length in seconds (99999 = no limit)",
                 // MaxConcurrentRips removed — per-drive gating ensures one rip per drive naturally.
                 ["MainFeature"] = "Rip only the main feature (longest track)",
@@ -247,14 +247,38 @@
             };
             static string tip(string key, Dictionary<string, string> tips) =>
                 $"<span class=\"text-info ml-1\" data-toggle=\"tooltip\" title=\"{tips[key]}\" style=\"cursor:help\">&#9432;</span>";
+
+            static string FormatSeconds(int s)
+            {
+                if (s <= 0) return "0 s";
+                var t = TimeSpan.FromSeconds(s);
+                var parts = new List<string>();
+                if (t.Days > 0) parts.Add($"{t.Days}d");
+                if (t.Hours > 0) parts.Add($"{t.Hours}h");
+                if (t.Minutes > 0) parts.Add($"{t.Minutes}m");
+                if (t.Seconds > 0 || parts.Count == 0) parts.Add($"{t.Seconds}s");
+                return string.Join(" ", parts);
+            }
         }
         <h2>Ripper Settings</h2>
         <form method="post" action="/settings/save-ripper">
             <table class="table table-sm">
                 <tr><td class="w-25"><label>Rip Method:</label>@Html.Raw(tip("RipMethod", tips))</td><td><select name="RipMethod" class="form-control"><option value="mkv" selected="@(armSettings?.RipMethod == "mkv")">mkv (MakeMKV)</option><option value="backup" selected="@(armSettings?.RipMethod == "backup")">backup</option><option value="abcde" selected="@(armSettings?.RipMethod == "abcde")">abcde (Audio CD)</option></select></td></tr>
                 <tr><td><label>MKV Args:</label>@Html.Raw(tip("MkvArgs", tips))</td><td><input type="text" name="MkvArgs" value="@armSettings?.MkvArgs" class="form-control" /></td></tr>
-                <tr><td><label>Min Length:</label>@Html.Raw(tip("MinLength", tips))</td><td><input type="number" name="MinLength" value="@armSettings?.MinLength" class="form-control" /></td></tr>
-                <tr><td><label>Max Length:</label>@Html.Raw(tip("MaxLength", tips))</td><td><input type="number" name="MaxLength" value="@armSettings?.MaxLength" class="form-control" /></td></tr>
+                <tr><td><label>Min Length:</label>@Html.Raw(tip("MinLength", tips))</td><td>
+                    <div class="input-group">
+                        <input type="number" name="MinLength" id="minLengthInput" value="@armSettings?.MinLength" class="form-control" min="0" step="1" />
+                        <div class="input-group-append"><span class="input-group-text">sec</span></div>
+                    </div>
+                    <small class="form-text text-muted">= <strong id="minLengthPreview">@FormatSeconds((int)(armSettings?.MinLength ?? 0))</strong></small>
+                </td></tr>
+                <tr><td><label>Max Length:</label>@Html.Raw(tip("MaxLength", tips))</td><td>
+                    <div class="input-group">
+                        <input type="number" name="MaxLength" id="maxLengthInput" value="@armSettings?.MaxLength" class="form-control" min="0" step="1" />
+                        <div class="input-group-append"><span class="input-group-text">sec</span></div>
+                    </div>
+                    <small class="form-text text-muted">= <strong id="maxLengthPreview">@FormatSeconds((int)(armSettings?.MaxLength ?? 0))</strong></small>
+                </td></tr>
                 <tr><td><label>Eject Cooldown (s):</label><span class="text-info ml-1" data-toggle="tooltip" title="Seconds to wait after a rip completes before the same drive is eligible for a new auto-rip. Prevents false re-triggering while the disc is still ejecting." style="cursor:help">&#9432;</span></td><td><input type="number" name="EjectCooldownSeconds" value="@(armSettings?.EjectCooldownSeconds ?? 15)" class="form-control" min="0" max="120" step="1" /></td></tr>
                 <tr><td><label for="MainFeature">Main Feature:</label>@Html.Raw(tip("MainFeature", tips))</td><td><input type="hidden" name="MainFeature" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="MainFeature" name="MainFeature" value="true" checked="@armSettings?.MainFeature" /><label class="custom-control-label" for="MainFeature"></label></div></td></tr>
                 <tr><td><label for="AutoEject">Auto Eject:</label>@Html.Raw(tip("AutoEject", tips))</td><td><input type="hidden" name="AutoEject" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="AutoEject" name="AutoEject" value="true" checked="@armSettings?.AutoEject" /><label class="custom-control-label" for="AutoEject"></label></div></td></tr>
@@ -863,6 +887,32 @@
     <script>
         $(document).ready(function () {
             $('[data-toggle="tooltip"]').tooltip();
+
+            function fmtDuration(seconds) {
+                seconds = parseInt(seconds, 10);
+                if (isNaN(seconds) || seconds < 0) return '\u2014';
+                if (seconds === 0) return '0 s';
+                var d = Math.floor(seconds / 86400);
+                var h = Math.floor((seconds % 86400) / 3600);
+                var m = Math.floor((seconds % 3600) / 60);
+                var s = seconds % 60;
+                var parts = [];
+                if (d > 0) parts.push(d + 'd');
+                if (h > 0) parts.push(h + 'h');
+                if (m > 0) parts.push(m + 'm');
+                if (s > 0 || parts.length === 0) parts.push(s + 's');
+                return parts.join(' ');
+            }
+            // Delegated input handler: survives AJAX re-render of #settingsPage
+            // (the preview elements are re-created on save, so direct binding would break).
+            document.getElementById('settingsPage').addEventListener('input', function (e) {
+                var target = e.target;
+                if (target.id === 'minLengthInput' || target.id === 'maxLengthInput') {
+                    var preview = document.getElementById(target.id === 'minLengthInput' ? 'minLengthPreview' : 'maxLengthPreview');
+                    if (preview) preview.textContent = fmtDuration(target.value);
+                }
+            });
+
             var lastTab = sessionStorage.getItem('armSettingsTab');
             if (lastTab) {
                 $('#settingsTabs a[href="' + lastTab + '"]').tab('show');

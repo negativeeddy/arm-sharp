@@ -6,6 +6,20 @@
     var imdbUrl = !string.IsNullOrEmpty(Model.ImdbId) ? $"https://www.imdb.com/title/{Model.ImdbId}/" : null;
 }
 
+@functions {
+    static string FormatSeconds(int seconds)
+    {
+        if (seconds <= 0) return "0 s";
+        var t = TimeSpan.FromSeconds(seconds);
+        var parts = new System.Collections.Generic.List<string>();
+        if (t.Days > 0) parts.Add($"{t.Days}d");
+        if (t.Hours > 0) parts.Add($"{t.Hours}h");
+        if (t.Minutes > 0) parts.Add($"{t.Minutes}m");
+        if (t.Seconds > 0 || parts.Count == 0) parts.Add($"{t.Seconds}s");
+        return string.Join(" ", parts);
+    }
+}
+
 <h1>Job @Model.Id: @Model.Title</h1>
 
 @* === PIPELINE (moved to top) === *@
@@ -366,8 +380,8 @@
                             <dt class="col-6">Use FFmpeg</dt><dd class="col-6">@cfg.UseFfmpeg</dd>
                             <dt class="col-6">Manual Wait</dt><dd class="col-6">@cfg.ManualWait</dd>
                             <dt class="col-6">Allow Duplicates</dt><dd class="col-6">@cfg.AllowDuplicates</dd>
-                            <dt class="col-6">Min Length</dt><dd class="col-6">@(cfg.MinLength?.ToString() ?? "—")s</dd>
-                            <dt class="col-6">Max Length</dt><dd class="col-6">@(cfg.MaxLength?.ToString() ?? "—")s</dd>
+                            <dt class="col-6">Min Length</dt><dd class="col-6">@(cfg.MinLength?.ToString() ?? "—")s@(cfg.MinLength.HasValue ? $" ({FormatSeconds(cfg.MinLength.Value)})" : "")</dd>
+                            <dt class="col-6">Max Length</dt><dd class="col-6">@(cfg.MaxLength?.ToString() ?? "—")s@(cfg.MaxLength.HasValue ? $" ({FormatSeconds(cfg.MaxLength.Value)})" : "")</dd>
                             <dt class="col-6">Prevent 99</dt><dd class="col-6">@cfg.Prevent99</dd>
                         </dl>
                         <h6 class="text-muted">Paths</h6>
