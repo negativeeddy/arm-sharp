@@ -38,7 +38,7 @@ docker run -d --privileged \
 
 ## Configuration
 
-Configuration is read from `/etc/arm/config/arm.yaml` (native YAML loader maps ARM's `UPPER_CASE` keys to `Arm:CamelCase` config keys) with fallback to `appsettings.json`.
+Configuration is **DB-first**: runtime settings are stored as overrides in the database (`ripper_settings`) and always win. `/etc/arm/config/arm.yaml` is no longer loaded at startup — use the **"Import ARM settings"** action in the Settings UI to pull legacy ARM values into the DB once. `appsettings.json` supplies file defaults.
 
 Key paths (configurable via arm.yaml):
 - Raw rips: `/home/arm/media/raw`

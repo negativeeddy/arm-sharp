@@ -1,14 +1,14 @@
 using System.Runtime.CompilerServices;
 using ArmRipper.Core.Configuration;
+using ArmRipper.Core.Infrastructure.Data;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace ArmRipper.WebUi.Hubs;
 
-public class NotificationHub(IOptions<ArmSettings> settings) : Hub
+public class NotificationHub(ArmDbContext db, IOptions<ArmSettings> settings) : Hub
 {
-    private string LogPath => ArmPaths.GetLogPath(settings.Value);
-
     public async IAsyncEnumerable<string> StreamLog(
         string fileName,
         string mode,
@@ -18,7 +18,10 @@ public class NotificationHub(IOptions<ArmSettings> settings) : Hub
         if (string.IsNullOrEmpty(safeFileName))
             yield break;
 
-        var fullPath = Path.Combine(LogPath, safeFileName);
+        // Resolve from effective DB settings (DB RipperSettings overrides appsettings).
+        var effective = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, cancellationToken);
+        var logPath = ArmPaths.GetLogPath(effective);
+        var fullPath = Path.Combine(logPath, safeFileName);
         if (!System.IO.File.Exists(fullPath))
             yield break;
 

@@ -1,9 +1,15 @@
 # Configuration
 
-Configuration is read from two sources, merged in order (later wins):
+> **DB-first (2026-08-02):** The database is the source of truth for runtime
+> settings. `/etc/arm/config/arm.yaml` is **no longer loaded at startup** — it is
+> only read by the explicit **"Import ARM settings"** action in the Settings UI
+> (one-time migration of legacy ARM values into the DB). Files never override the DB.
 
-1. `appsettings.json` — built into the WebUI project
-2. `/etc/arm/config/arm.yaml` — native YAML overlay (50+ key mappings)
+Runtime settings resolve as:
+
+1. `ripper_settings` (DB) — user overrides, highest priority
+2. `appsettings.json` — built into the WebUI project (file defaults)
+3. C# class defaults (`ArmSettings`, provider options)
 
 ## ArmSettings (bound from `Arm:` section)
 

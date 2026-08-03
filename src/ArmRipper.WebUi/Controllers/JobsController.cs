@@ -113,12 +113,18 @@ public class JobsController(ArmDbContext db, OmdbService omdb, IOptions<ArmSetti
     [HttpGet("log-tail")]
     public async Task<IActionResult> LogTail(int jobId, int lines = 50, CancellationToken ct = default)
     {
-        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
+        var job = await db.Jobs
+            .Include(j => j.Config)
+            .FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job is null)
             return NotFound();
 
+        // Prefer the job's config snapshot (captured from the DB at rip time), then
+        // the effective DB settings — NOT the static appsettings values, which can
+        // differ in dev (e.g. ./data/logs vs /home/arm/logs).
+        var effective = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, ct);
         var logPath = Path.Combine(
-            job.Config?.LogPath ?? ArmPaths.GetLogPath(settings.Value),
+            job.Config?.LogPath ?? ArmPaths.GetLogPath(effective),
             job.LogFile ?? $"{jobId}.log");
 
         if (!System.IO.File.Exists(logPath))

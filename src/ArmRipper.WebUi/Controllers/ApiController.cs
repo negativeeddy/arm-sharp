@@ -223,7 +223,9 @@ public partial class ApiController(
         if (job?.LogFile is null)
             return Json(new { success = false, error = "Job or log file not found" });
 
-        var logPath = ArmPaths.GetLogPath(settings.Value);
+        // Resolve from effective DB settings (file/appsettings values may differ in dev).
+        var effective = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, ct);
+        var logPath = ArmPaths.GetLogPath(effective);
         var fullPath = Path.Combine(logPath, job.LogFile);
 
         if (!System.IO.File.Exists(fullPath))

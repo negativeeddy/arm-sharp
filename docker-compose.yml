@@ -48,9 +48,9 @@ services:
       # Database connection (defaults to /etc/arm/config/arm-sharp.db)
       # ConnectionStrings__ArmDb: "Data Source=/etc/arm/config/arm-sharp.db"
 
-      # Set to "true" to re-seed the DB settings from arm.yaml on next restart.
-      # Changes in arm.yaml are otherwise ignored once the DB has been seeded.
-      # ARM_RESET_SETTINGS: "false"
+      # Settings are DB-first: /etc/arm/config/arm.yaml is not loaded at startup.
+      # Pull legacy ARM values into the DB once via the "Import ARM settings"
+      # action in the Settings UI (never overwrites existing DB values).
 
     # ── Volume mounts ──
     volumes:

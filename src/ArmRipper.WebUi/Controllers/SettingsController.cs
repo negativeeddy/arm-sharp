@@ -216,8 +216,26 @@ public class SettingsController(
     [HttpPost("reset-settings")]
     public async Task<IActionResult> ResetSettings(CancellationToken ct = default)
     {
-        await SettingsHelper.SeedFromFileAsync(db, settings.Value, force: true, ct);
-        TempData["Message"] = "Settings reset to file defaults.";
+        // DB-first: reset means CLEAR all DB overrides (back to file/code defaults),
+        // never re-writing file values into the DB.
+        await SettingsHelper.ClearAllAsync(db, ct);
+        TempData["Message"] = "Settings reset to defaults (all DB overrides cleared).";
+        TempData["ActiveTab"] = "tab3";
+        return RedirectToAction("Index");
+    }
+
+    [HttpPost("import-arm")]
+    public async Task<IActionResult> ImportArmSettings(CancellationToken ct = default)
+    {
+        // Explicit, user-initiated import of legacy ARM settings from
+        // /etc/arm/config/arm.yaml. Never overwrites values already set in the DB.
+        var result = await ArmSettingsImporter.ImportFromYamlAsync(db, settings.Value, ct: ct);
+        TempData["Message"] = result.Imported > 0
+            ? $"Imported {result.Imported} setting(s) from {result.Path} ({result.Skipped} skipped — already set in the DB or not recognized)."
+            : result.FileExists
+                ? $"Nothing imported from {result.Path} — every value is already set in the DB (DB takes priority) or was not recognized."
+                : $"No ARM config found at {result.Path}. Import skipped.";
+        TempData["ActiveTab"] = "tab3";
         return RedirectToAction("Index");
     }
 

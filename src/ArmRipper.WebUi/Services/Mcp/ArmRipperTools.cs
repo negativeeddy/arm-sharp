@@ -113,8 +113,11 @@ public class ArmRipperTools
         if (job is null)
             return JsonSerializer.Serialize(new { error = $"Job {jobId} not found." });
 
+        // Prefer the job's config snapshot, then effective DB settings (DB wins over
+        // static appsettings values which can differ in dev).
+        var effective = await SettingsHelper.GetEffectiveSettingsAsync(_db, _settings.Value);
         var logPath = Path.Combine(
-            job.Config?.LogPath ?? ArmPaths.GetLogPath(_settings.Value),
+            job.Config?.LogPath ?? ArmPaths.GetLogPath(effective),
             job.LogFile ?? $"{jobId}.log");
 
         if (!File.Exists(logPath))

@@ -25,9 +25,12 @@ public class CompletedController(IOptions<ArmSettings> settings, ArmDbContext db
 
     private async Task<List<CompletedFileInfo>> ScanAllFilesAsync(CancellationToken ct)
     {
-        var cp = ArmPaths.GetCompletedPath(settings.Value);
-        var rp = ArmPaths.GetRawPath(settings.Value);
-        var tp = ArmPaths.GetTranscodePath(settings.Value);
+        // Use effective DB settings (DB RipperSettings override appsettings) so the
+        // page shows the real media directories, not dev-only ./data paths.
+        var effective = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, ct);
+        var cp = ArmPaths.GetCompletedPath(effective);
+        var rp = ArmPaths.GetRawPath(effective);
+        var tp = ArmPaths.GetTranscodePath(effective);
 
         // Scan the configured completed path.
         var completed = await ScanFilesAsync(cp, FileSource.Completed, ct);
