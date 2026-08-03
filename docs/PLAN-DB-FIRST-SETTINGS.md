@@ -1,6 +1,7 @@
 # Plan: DB-First Settings — Remove File/DB Ambiguity
 
-> Status: In progress — branch `feature/db-first-settings`
+> Status: Phases 0–1 complete & committed on `feature/db-first-settings` (`b92db80`);
+> not yet merged to `master`. Phases 2–5 not started.
 > Goal: Make the database the single source of truth for *runtime* settings. Files
 > (`appsettings.json` + `/etc/arm/config/arm.yaml`) become **seed-only** — they can
 > never override the DB after first boot.
@@ -209,22 +210,23 @@ The ARM drop-in replacement goal is retired. ARM's `/etc/arm/config/arm.yaml` is
   classification (DB-backed vs file-only) and UI surface.
 - **Exit:** a single source of truth table exists; startup prints the resolution.
 
-### Phase 1 — DB stores deltas (core fix) ✅ in progress
-1. `SeedFromFileAsync` → `EnsureSeededAsync`: creates an empty `{}` row only when the
+### Phase 1 — DB stores deltas (core fix) ✅ done (committed `b92db80`, not merged)
+1. ✅ `SeedFromFileAsync` → `EnsureSeededAsync`: creates an empty `{}` row only when the
    row is missing; never writes file values into the DB.
-2. One-time data migration: `NormalizeLegacyRowAsync` converts an existing full-snapshot
+2. ✅ One-time data migration: `NormalizeLegacyRowAsync` converts an existing full-snapshot
    row (≥25 keys) into a delta: drop keys equal to the current file default, keep keys
    that differ (real overrides), drop the stale `MinLength=600`. Idempotent, runs at
    startup.
-3. Remove the `MinLength` 600→300 hack from `GetEffectiveSettingsAsync` (kept only as a
+3. ✅ Remove the `MinLength` 600→300 hack from `GetEffectiveSettingsAsync` (kept only as a
    legacy-snapshot safety net).
-4. Remove `ARM_RESET_SETTINGS` handling in WebUi `Program.cs` and CLI `Program.cs`.
-5. Add `ClearAllAsync` (per-key clear already handled by `MergeIntoDbAsync`).
-6. Add `ArmSettingsImporter` + `SettingsController.ImportArmSettings` + UI button.
-7. Update `SettingsController.ResetSettings` to call `ClearAllAsync` ("Reset to
+4. ✅ Remove `ARM_RESET_SETTINGS` handling in WebUi `Program.cs` and CLI `Program.cs`.
+5. ✅ Add `ClearAllAsync` (per-key clear already handled by `MergeIntoDbAsync`).
+6. ✅ Add `ArmSettingsImporter` + `SettingsController.ImportArmSettings` + UI button.
+7. ✅ Update `SettingsController.ResetSettings` to call `ClearAllAsync` ("Reset to
    defaults" = clear overrides).
-- **Exit:** a fresh install writes `{}` to `ripper_settings`; old installs migrate to
+- **Exit (met):** a fresh install writes `{}` to `ripper_settings`; old installs migrate to
   delta-only; no code paths copy file→DB at boot; ARM YAML is import-only.
+  Verified at runtime: dev DB row migrated from full snapshot → 13-key delta.
 
 ### Phase 2 — One resolver, zero direct reads
 1. Implement `ISettingsService` (wraps `SettingsHelper`), register scoped.
