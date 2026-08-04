@@ -866,7 +866,12 @@ public sealed partial class IdentifyService(
         // field assignments below are guarded by null/empty checks, so they will
         // not overwrite values already set by authoritative sources (DiscDb, OVID).
         var searchTitle = Regex.Replace(title.Trim(), "[_ ]", "+");
-        var year = string.IsNullOrEmpty(job.Year) ? "" : Regex.Replace(job.Year, @"\D", "");
+        // job.Year can be a year RANGE for TV series (e.g. "2005–2014" for
+        // How I Met Your Mother). OMDB (y=) and TMDB (year=) only accept a
+        // single year, so use the FIRST 4-digit year (the series' start year).
+        // Stripping all non-digits here would concatenate the range into a
+        // garbage value like "20052014" that makes the search fail.
+        var year = string.IsNullOrEmpty(job.Year) ? "" : Regex.Match(job.Year, @"\d{4}").Value;
 
         logger.LogDebug("Calling webservice with title: {Title} and year: {Year}", searchTitle, year);
         var response = await IdentifyLoopAsync(job, searchTitle, year, ct);
