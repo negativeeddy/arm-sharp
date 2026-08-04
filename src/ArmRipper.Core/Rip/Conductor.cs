@@ -14,6 +14,7 @@ public sealed class Conductor(
     ArmDbContext db,
     ICliProcessRunner runner,
     IOptions<ArmSettings> settings,
+    ISettingsService settingsService,
     IIdentifyService identifyService,
     IArmRipperService armRipperService,
     IMusicBrainzService musicBrainzService,
@@ -44,7 +45,10 @@ public sealed class Conductor(
         Job? job = null;
         try
         {
-            Setup();
+            // Resolve effective settings (DB overrides win) for the directory setup so
+            // paths imported via ARM settings / saved in the DB are honored.
+            var effectiveSetupSettings = await settingsService.GetEffectiveAsync(ct);
+            Setup(effectiveSetupSettings);
             job = await SetupJobAsync(devicePath, ct);
             return await ProcessJobAsync(job, ct);
         }
@@ -480,10 +484,8 @@ public sealed class Conductor(
         return await RunImportTranscodeForJobAsync(job.Id, ct);
     }
 
-    private void Setup()
+    private void Setup(ArmSettings armSettings)
     {
-        var armSettings = settings.Value;
-
         var directories = new[]
         {
             armSettings.RawPath,
@@ -519,7 +521,7 @@ public sealed class Conductor(
         job.TransitionToStage(RipStage.Setup);
 
         // Create config snapshot from effective settings (file + DB override)
-        var armSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, settings.Value, ct);
+        var armSettings = await settingsService.GetEffectiveAsync(ct);
         var config = new ConfigSnapshot
         {
             JobId = job.Id,
@@ -841,12 +843,13 @@ public sealed class Conductor(
     private async Task RipDataAsync(Job job, CancellationToken ct)
     {
         var label = !string.IsNullOrEmpty(job.Label) ? job.Label : "data-disc";
+        var effective = await settingsService.GetEffectiveAsync(ct);
         var rawPath = job.Config?.RawPath is not null
             ? Path.Combine(job.Config.RawPath, label)
-            : Path.Combine(ArmPaths.GetRawPath(settings.Value), label);
+            : Path.Combine(ArmPaths.GetRawPath(effective), label);
         var finalDir = job.Config?.CompletedPath is not null
             ? Path.Combine(job.Config.CompletedPath, ArmPaths.DataDir)
-            : Path.Combine(ArmPaths.GetCompletedPath(settings.Value), ArmPaths.DataDir);
+            : Path.Combine(ArmPaths.GetCompletedPath(effective), ArmPaths.DataDir);
         var finalFileName = label;
 
         if (Directory.Exists(rawPath))

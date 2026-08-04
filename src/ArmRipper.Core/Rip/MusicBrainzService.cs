@@ -14,16 +14,19 @@ public sealed partial class MusicBrainzService(
     ILoggerFactory loggerFactory,
     ArmDbContext db,
     IOptions<ArmSettings> settings,
-    HttpClient httpClient) : IMusicBrainzService
+    HttpClient httpClient,
+    ISettingsService? settingsService = null) : IMusicBrainzService
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("MusicBrainzService");
+    private readonly ISettingsService _settingsService = settingsService ?? new SettingsService(db, settings);
     public async Task<string> IdentifyAsync(Job job, CancellationToken ct = default)
     {
         var discId = await GetDiscIdAsync(job.DevPath!, ct);
         if (string.IsNullOrEmpty(discId))
             return "";
 
-        if (settings.Value.GetAudioTitle is not null and not "none")
+        var effective = await _settingsService.GetEffectiveAsync(ct);
+        if (effective.GetAudioTitle is not null and not "none")
         {
             var title = await MusicBrainzLookupAsync(job, discId, ct);
             if (!string.IsNullOrEmpty(title))

@@ -50,15 +50,18 @@ public sealed class ConductorTests : IDisposable
         IArmRipperService? ripper = null,
         IMusicBrainzService? musicBrainz = null,
         IOptions<ArmSettings>? options = null,
-        ICliProcessRunner? runner = null)
+        ICliProcessRunner? runner = null,
+        ISettingsService? settingsService = null)
     {
         runner ??= CreateMockRunner().Object;
         var musicBrainzService = musicBrainz ?? new Mock<IMusicBrainzService>().Object;
+        options ??= CreateTestOptions();
         return new Conductor(
             NullLoggerFactory.Instance,
             _db,
             runner,
-            options ?? CreateTestOptions(),
+            options,
+            settingsService ?? TestHelpers.CreateSettingsService(options),
             identify ?? new MockIdentifyService(),
             ripper ?? new MockArmRipperService(),
             musicBrainzService,

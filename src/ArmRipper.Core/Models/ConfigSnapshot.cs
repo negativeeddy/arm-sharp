@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations.Schema;
-
 namespace ArmRipper.Core.Models;
 
 public class ConfigSnapshot
@@ -76,27 +74,6 @@ public class ConfigSnapshot
     public string? DiscDbApiBaseUrl { get; set; }
     public double DiscDbMinConfidence { get; set; } = 0.7;
     public bool DiscDbRequireConfirmation { get; set; } = false;
-
-    [NotMapped]
-    public bool PreventTrack99
-    {
-        get => Prevent99;
-        set => Prevent99 = value;
-    }
-
-    [NotMapped]
-    public string? AudioMetadataProvider
-    {
-        get => GetAudioTitle;
-        set => GetAudioTitle = value;
-    }
-
-    [NotMapped]
-    public bool DeleteRawFiles
-    {
-        get => DelRawFiles;
-        set => DelRawFiles = value;
-    }
 
     public Job Job { get; set; } = null!;
 }

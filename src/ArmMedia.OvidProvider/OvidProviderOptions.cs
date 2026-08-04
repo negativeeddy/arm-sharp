@@ -15,11 +15,6 @@ public sealed class OvidProviderOptions
     public string ApiUrl { get; set; } = "https://api.oviddb.org";
 
     /// <summary>
-    /// Optional bearer token for authenticated operations (disc submission).
-    /// </summary>
-    public string? ApiToken { get; set; }
-
-    /// <summary>
     /// HTTP request timeout in seconds (default: 30).
     /// </summary>
     public int TimeoutSeconds { get; set; } = 30;

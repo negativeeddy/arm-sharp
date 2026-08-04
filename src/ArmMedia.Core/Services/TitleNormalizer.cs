@@ -18,18 +18,21 @@ namespace ArmMedia.Core.Services;
 public sealed partial class TitleNormalizer : ITitleNormalizer
 {
     // ── Season patterns ────────────────────────────────────────────────────────
-    // Matches: "Season 3", "saison 3", "temporada 3"
-    [GeneratedRegex(@"(?:season|saison|temporada)\s*(\d{1,2})", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    // Matches: "Season 3", "saison 3", "temporada 3", and underscore-separated
+    // variants like "SEASON_1". [\s_]* treats underscores like whitespace.
+    [GeneratedRegex(@"(?:season|saison|temporada)[\s_]*(\d{1,2})", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex SeasonWordPattern();
 
     // Matches compact: "S03", "S3" — negative lookahead prevents matching "S5" inside "S5E08"
-    // when the combined pattern already handles that.
-    [GeneratedRegex(@"\bS(\d{1,2})(?!\d)", RegexOptions.Compiled)]
+    // when the combined pattern already handles that. Negative lookbehind for alphanumerics
+    // (instead of \b) allows a preceding underscore, e.g. "Weeds_S2".
+    [GeneratedRegex(@"(?<![A-Za-z0-9])S(\d{1,2})(?!\d)", RegexOptions.Compiled)]
     private static partial Regex SeasonLetterPattern();
 
     // ── Disc patterns ──────────────────────────────────────────────────────────
-    // Matches: "Disc 2", "Disc2"
-    [GeneratedRegex(@"\bdisc\s*(\d{1,2})", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    // Matches: "Disc 2", "Disc2", "Disc_1". [\s_]* treats underscores like whitespace;
+    // the alphanumeric lookbehind allows a preceding underscore ("_Disc_1").
+    [GeneratedRegex(@"(?<![A-Za-z0-9])disc[\s_]*(\d{1,2})", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex DiscWordPattern();
 
     // Matches compact: "D2", "D02" — negative lookahead prevents "D2" matching in "D2X"
@@ -187,8 +190,11 @@ public sealed partial class TitleNormalizer : ITitleNormalizer
             query = Regex.Replace(query, pattern, " ");
         }
 
-        // Normalize punctuation, whitespace, and lowercase
+        // Normalize punctuation, whitespace, and lowercase. Underscores are filename
+        // separators (e.g. "Weeds_S2_Disc_1"), so collapse them to spaces like any
+        // other separator before trimming and lowercasing.
         query = PunctuationPattern().Replace(query, " ");
+        query = query.Replace('_', ' ');
         query = WhitespacePattern().Replace(query, " ").Trim();
         query = query.ToLowerInvariant();
 

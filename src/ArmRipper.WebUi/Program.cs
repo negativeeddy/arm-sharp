@@ -18,14 +18,15 @@ using ModelContextProtocol.Server;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var yamlValues = ArmYamlConfigLoader.LoadYamlValues("/etc/arm/config/arm.yaml");
-builder.Configuration.AddInMemoryCollection(yamlValues);
-
+// DB-first settings: /etc/arm/config/arm.yaml is NOT loaded as a config overlay
+// anymore. Legacy ARM values can be pulled into the DB explicitly via the
+// "Import ARM settings" action in the Settings UI (ArmSettingsImporter).
 var connectionString = builder.Configuration.GetConnectionString("ArmDb") ?? "Data Source=/etc/arm/config/arm-sharp.db";
 builder.Services.AddDbContext<ArmDbContext>(options =>
     options.UseSqlite(connectionString));
 
 builder.Services.Configure<ArmSettings>(builder.Configuration.GetSection(ArmSettings.SectionName));
+builder.Services.AddScoped<ISettingsService, SettingsService>();
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
@@ -153,9 +154,9 @@ var app = builder.Build();
 
 // Non-job-scoped logs (BackgroundRipService, DiscPollingService, startup, etc.)
 // are written to a general ARM log file instead of being silently discarded.
+// The path is finalized inside the scope below, once the DB is available, so the
+// DB-stored LogPath wins over the file config when they conflict.
 var initArmSettings = app.Services.GetRequiredService<IOptions<ArmSettings>>().Value;
-fileLogProvider.FallbackFilePath = Path.Combine(
-    initArmSettings.LogPath ?? ArmPaths.DefaultLogPath, "arm.log");
 
 var dbFile = connectionString.Replace("Data Source=", "").Split(';')[0];
 var dbDir = Path.GetDirectoryName(dbFile);
@@ -175,26 +176,25 @@ using (var scope = app.Services.CreateScope())
     DatabaseHelper.EnsureMigrated(db);
     initLogger.LogInformation("Database migrated successfully");
 
-    // Seed (or reset) DB RipperSettings from file config
-    // Set ARM_RESET_SETTINGS=true to overwrite DB with file values on startup
+    // Prefer the DB-stored LogPath (effective settings) over the file config when
+    // they conflict, so the general ARM log (arm.log) lands alongside the per-job
+    // logs instead of a dev-only ./data/logs directory.
+    var effectiveSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, initArmSettings, CancellationToken.None);
+    fileLogProvider.FallbackFilePath = Path.Combine(
+        effectiveSettings.LogPath ?? ArmPaths.DefaultLogPath, "arm.log");
+
+    // DB-first: the ripper_settings row stores ONLY user overrides (deltas).
+    // Files never write into the DB at boot. Legacy full-snapshot rows (from older
+    // builds) are migrated to deltas on first boot after upgrade. Existing ARM config
+    // can be pulled into the DB explicitly via "Import ARM settings" in the UI.
     var seedSettings = scope.ServiceProvider.GetRequiredService<IOptions<ArmSettings>>().Value;
-    var reset = Environment.GetEnvironmentVariable("ARM_RESET_SETTINGS") == "true";
+    var hadRow = await db.RipperSettings.AnyAsync();
+    await SettingsHelper.EnsureSeededAsync(db, CancellationToken.None);
+    await SettingsHelper.NormalizeLegacyRowAsync(db, seedSettings, CancellationToken.None);
 
-    var existingRow = db.RipperSettings.OrderBy(x => x.Id).FirstOrDefault();
-    if (existingRow is null)
-    {
-        initLogger.LogInformation("No existing DB settings — seeding from file config on first boot");
-    }
-    else if (reset)
-    {
-        initLogger.LogInformation("ARM_RESET_SETTINGS=true — overwriting DB settings with file config values");
-    }
-    else
-    {
-        initLogger.LogInformation("DB settings exist and are authoritative (set ARM_RESET_SETTINGS=true to re-seed from file)");
-    }
-
-    SettingsHelper.SeedFromFileAsync(db, seedSettings, reset).GetAwaiter().GetResult();
+    initLogger.LogInformation(hadRow
+        ? "DB settings row exists — DB overrides are authoritative"
+        : "No DB settings row found — created empty overrides row (file defaults apply)");
 }
 
 var armSettings = app.Services.GetRequiredService<IOptions<ArmSettings>>().Value;

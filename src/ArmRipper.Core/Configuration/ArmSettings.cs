@@ -41,7 +41,7 @@ public class ArmSettings
     public string? HbPresetDvd { get; set; } = "";
     public string? HbPresetBd { get; set; } = "";
     public string? HbArgsDvd { get; set; } = "-e nvenc_h264 --encoder-preset slower --quality 18 --enable-hw-decoding nvdec --encopts spatial-aq=1:aq-strength=10:bf=4:cabac=1:g=50:keyint-min=23 --comb-detect --decomb --all-audio --all-subtitles --subtitle-burned=none --aencoder aac --audio-fallback aac --mixdown none";
-    public string? HbArgsBd { get; set; } = "-e nvenc_h265 --encoder-preset slower --quality 18 --enable-hw-decoding nvdec --encopts spatial-aq=1:aq-strength=10:g=50:keyint-min=23 --all-audio --all-subtitles --subtitle-burned=none --aencoder aac --audio-fallback aac --mixdown none";
+    public string? HbArgsBd { get; set; } = "-e nvenc_h265 --encoder-preset slower --quality 22 --enable-hw-decoding nvdec --encopts spatial-aq=1:aq-strength=10:g=50:keyint-min=23 --all-audio --all-subtitles --subtitle-burned=none --aencoder aac --audio-fallback aac --mixdown none";
     public string? DestExt { get; set; } = "mkv";
 
     public string? FfmpegCli { get; set; } = "ffmpeg";
@@ -122,28 +122,4 @@ public class ArmSettings
     /// (non-strict/fuzzy matching enabled).
     /// </summary>
     public bool FileBotNonStrict { get; set; } = true;
-
-    // Backward-compatible naming aliases.
-    // Marked [JsonIgnore] so they are never persisted to the DB — only the
-    // canonical property names (Prevent99, GetAudioTitle, DelRawFiles) are stored.
-    [System.Text.Json.Serialization.JsonIgnore]
-    public bool PreventTrack99
-    {
-        get => Prevent99;
-        set => Prevent99 = value;
-    }
-
-    [System.Text.Json.Serialization.JsonIgnore]
-    public string? AudioMetadataProvider
-    {
-        get => GetAudioTitle;
-        set => GetAudioTitle = value;
-    }
-
-    [System.Text.Json.Serialization.JsonIgnore]
-    public bool DeleteRawFiles
-    {
-        get => DelRawFiles;
-        set => DelRawFiles = value;
-    }
 }

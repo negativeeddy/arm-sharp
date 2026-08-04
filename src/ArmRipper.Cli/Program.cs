@@ -16,9 +16,9 @@ using Microsoft.Extensions.Options;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-var yamlValues = ArmYamlConfigLoader.LoadYamlValues("/etc/arm/config/arm.yaml");
-builder.Configuration.AddInMemoryCollection(yamlValues);
-
+// DB-first settings: /etc/arm/config/arm.yaml is NOT loaded as a config overlay
+// anymore. Legacy ARM values can be pulled into the DB explicitly via the
+// "Import ARM settings" action in the Web UI (ArmSettingsImporter).
 // Allow --db to override the database path
 var dbOverride = args.FirstOrDefault(a => a.StartsWith("--db="))?.Split('=', 2)[1];
 if (dbOverride is null)
@@ -35,6 +35,7 @@ builder.Services.AddDbContext<ArmDbContext>(options =>
     options.UseSqlite(connectionString));
 
 builder.Services.Configure<ArmSettings>(builder.Configuration.GetSection(ArmSettings.SectionName));
+builder.Services.AddScoped<ISettingsService, SettingsService>();
 
 builder.Services.AddSingleton<ICliProcessRunner, CliProcessRunner>();
 builder.Services.AddHttpClient("IdentifyService", client =>
@@ -141,26 +142,17 @@ using (var initScope = host.Services.CreateScope())
     DatabaseHelper.EnsureMigrated(db);
     initLogger.LogInformation("Database migrated successfully");
 
-    // Seed (or reset) DB RipperSettings from file config
-    // Set ARM_RESET_SETTINGS=true to overwrite DB with file values on startup
+    // DB-first: the ripper_settings row stores ONLY user overrides (deltas).
+    // Files never write into the DB at boot. Legacy full-snapshot rows (from older
+    // builds) are migrated to deltas on first boot after upgrade.
     var seedSettings = initScope.ServiceProvider.GetRequiredService<IOptions<ArmSettings>>().Value;
-    var reset = Environment.GetEnvironmentVariable("ARM_RESET_SETTINGS") == "true";
+    var hadRow = await db.RipperSettings.AnyAsync();
+    await SettingsHelper.EnsureSeededAsync(db, CancellationToken.None);
+    await SettingsHelper.NormalizeLegacyRowAsync(db, seedSettings, CancellationToken.None);
 
-    var existingRow = db.RipperSettings.OrderBy(x => x.Id).FirstOrDefault();
-    if (existingRow is null)
-    {
-        initLogger.LogInformation("No existing DB settings — seeding from file config on first boot");
-    }
-    else if (reset)
-    {
-        initLogger.LogInformation("ARM_RESET_SETTINGS=true — overwriting DB settings with file config values");
-    }
-    else
-    {
-        initLogger.LogInformation("DB settings exist and are authoritative (set ARM_RESET_SETTINGS=true to re-seed from file)");
-    }
-
-    SettingsHelper.SeedFromFileAsync(db, seedSettings, reset).GetAwaiter().GetResult();
+    initLogger.LogInformation(hadRow
+        ? "DB settings row exists — DB overrides are authoritative"
+        : "No DB settings row found — created empty overrides row (file defaults apply)");
 }
 
 var testMode = args.Any(a => a is "--test" or "-t");

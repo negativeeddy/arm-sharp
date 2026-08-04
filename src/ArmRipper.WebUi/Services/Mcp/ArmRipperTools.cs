@@ -15,12 +15,12 @@ namespace ArmRipper.WebUi.Services.Mcp;
 public class ArmRipperTools
 {
     private readonly ArmDbContext _db;
-    private readonly IOptions<ArmSettings> _settings;
+    private readonly ISettingsService _settingsService;
 
-    public ArmRipperTools(ArmDbContext db, IOptions<ArmSettings> settings)
+    public ArmRipperTools(ArmDbContext db, ISettingsService settingsService)
     {
         _db = db;
-        _settings = settings;
+        _settingsService = settingsService;
     }
 
     /// <summary>
@@ -113,8 +113,11 @@ public class ArmRipperTools
         if (job is null)
             return JsonSerializer.Serialize(new { error = $"Job {jobId} not found." });
 
+        // Prefer the job's config snapshot, then effective DB settings (DB wins over
+        // static appsettings values which can differ in dev).
+        var effective = await _settingsService.GetEffectiveAsync();
         var logPath = Path.Combine(
-            job.Config?.LogPath ?? ArmPaths.GetLogPath(_settings.Value),
+            job.Config?.LogPath ?? ArmPaths.GetLogPath(effective),
             job.LogFile ?? $"{jobId}.log");
 
         if (!File.Exists(logPath))
@@ -176,7 +179,9 @@ public class ArmRipperTools
     [Description("Returns the current ARM Sharp configuration settings.")]
     public Task<string> GetConfig()
     {
-        var settings = _settings.Value;
+        // Report the effective settings (DB overrides win) so MCP clients see the
+        // same values the ripper actually uses.
+        var settings = _settingsService.GetEffectiveAsync().GetAwaiter().GetResult();
 
         var config = new
         {

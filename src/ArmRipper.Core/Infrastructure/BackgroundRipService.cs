@@ -71,7 +71,8 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
             try
             {
                 var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-                effectiveSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, _settings.Value, cts.Token);
+                var settingsService = scope.ServiceProvider.GetRequiredService<ISettingsService>();
+                effectiveSettings = await settingsService.GetEffectiveAsync(cts.Token);
             }
             catch (Exception ex)
             {
@@ -142,7 +143,8 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
             try
             {
                 var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-                var effectiveSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, _settings.Value, cts.Token);
+                var settingsService = scope.ServiceProvider.GetRequiredService<ISettingsService>();
+                var effectiveSettings = await settingsService.GetEffectiveAsync(cts.Token);
 
                 var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
                 await conductor.RunForkedTranscodeAsync(originalJobId, rawFilePath, cts.Token, discType, videoType, effectiveSettings);
@@ -173,8 +175,8 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
         using (var scope = scopeFactory.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-            var effectiveSettings = SettingsHelper.GetEffectiveSettingsAsync(db, _settings.Value, ct)
-                .GetAwaiter().GetResult();
+            var settingsService = scope.ServiceProvider.GetRequiredService<ISettingsService>();
+            var effectiveSettings = settingsService.GetEffectiveAsync(ct).GetAwaiter().GetResult();
 
             var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
             try
@@ -206,7 +208,8 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
             try
             {
                 var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-                var effectiveSettings = await SettingsHelper.GetEffectiveSettingsAsync(db, _settings.Value, cts.Token);
+                var settingsService = scope.ServiceProvider.GetRequiredService<ISettingsService>();
+                var effectiveSettings = await settingsService.GetEffectiveAsync(cts.Token);
 
                 var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
                 await conductor.RunImportTranscodeForJobAsync(capturedJobId, cts.Token);

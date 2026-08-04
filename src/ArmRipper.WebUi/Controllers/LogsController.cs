@@ -1,4 +1,5 @@
 using ArmRipper.Core.Configuration;
+using ArmRipper.Core.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -7,16 +8,25 @@ namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("logs")]
-public class LogsController(IOptions<ArmSettings> settings) : Controller
+public class LogsController(ISettingsService settingsService) : Controller
 {
-    private string LogPath => ArmPaths.GetLogPath(settings.Value);
+    /// <summary>
+    /// Resolves the log directory from the effective settings (the DB RipperSettings
+    /// row overrides appsettings/YAML). The job logger writes job logs using the
+    /// effective LogPath, so the logs page must read from that same directory.
+    /// </summary>
+    private async Task<string> GetLogPathAsync(CancellationToken ct = default)
+    {
+        var effective = await settingsService.GetEffectiveAsync(ct);
+        return ArmPaths.GetLogPath(effective);
+    }
 
     private const int PageSize = 25;
 
     [HttpGet("")]
-    public IActionResult Index(int page = 1)
+    public async Task<IActionResult> Index(int page = 1, CancellationToken ct = default)
     {
-        var dir = new DirectoryInfo(LogPath);
+        var dir = new DirectoryInfo(await GetLogPathAsync(ct));
         if (!dir.Exists)
             return View(Array.Empty<LogFileEntry>());
 
@@ -47,13 +57,13 @@ public class LogsController(IOptions<ArmSettings> settings) : Controller
     }
 
     [HttpGet("view")]
-    public IActionResult Viewer(string file, string mode = "full")
+    public async Task<IActionResult> Viewer(string file, string mode = "full", CancellationToken ct = default)
     {
         var safeFileName = Path.GetFileName(file);
         if (string.IsNullOrEmpty(safeFileName))
             return BadRequest("Invalid log file");
 
-        var fullPath = Path.Combine(LogPath, safeFileName);
+        var fullPath = Path.Combine(await GetLogPathAsync(ct), safeFileName);
         if (!System.IO.File.Exists(fullPath))
             return NotFound("Log file not found");
 
@@ -63,13 +73,13 @@ public class LogsController(IOptions<ArmSettings> settings) : Controller
     }
 
     [HttpGet("reader")]
-    public IActionResult Reader(string file, string mode = "full")
+    public async Task<IActionResult> Reader(string file, string mode = "full", CancellationToken ct = default)
     {
         var safeFileName = Path.GetFileName(file);
         if (string.IsNullOrEmpty(safeFileName))
             return BadRequest("Invalid log file");
 
-        var fullPath = Path.Combine(LogPath, safeFileName);
+        var fullPath = Path.Combine(await GetLogPathAsync(ct), safeFileName);
         if (!System.IO.File.Exists(fullPath))
             return NotFound();
 
@@ -86,13 +96,13 @@ public class LogsController(IOptions<ArmSettings> settings) : Controller
     }
 
     [HttpGet("download")]
-    public IActionResult Download(string file)
+    public async Task<IActionResult> Download(string file, CancellationToken ct = default)
     {
         var safeFileName = Path.GetFileName(file);
         if (string.IsNullOrEmpty(safeFileName))
             return BadRequest("Invalid log file");
 
-        var fullPath = Path.Combine(LogPath, safeFileName);
+        var fullPath = Path.Combine(await GetLogPathAsync(ct), safeFileName);
         if (!System.IO.File.Exists(fullPath))
             return NotFound();
 

@@ -177,11 +177,14 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-            db.RipperSettings.Add(new RipperSettings
+            // Store the key the way the Settings page does: merged into the single
+            // ripper_settings delta row via SettingsHelper.MergeIntoDbAsync. A separate
+            // second row would be ignored because the effective-settings reader reads
+            // the first (delta) row only.
+            await SettingsHelper.MergeIntoDbAsync(db, new Dictionary<string, string?>
             {
-                SettingsJson = """{"OmdbApiKey":"dbkey-test-123"}"""
+                ["OmdbApiKey"] = "\"dbkey-test-123\""
             });
-            await db.SaveChangesAsync();
         }
 
         var capturedUrls = new List<string>();

@@ -116,13 +116,13 @@ Identify disc type ───► Audio CD ──► MusicBrainz lookup ──► 
 
 ### Configuration
 
-`ArmSettings` provides global defaults bound from `appsettings.json` + YAML overlay.
+`ArmSettings` provides global defaults bound from `appsettings.json` + class defaults. Runtime settings are **DB-first**: `ripper_settings` stores only user overrides (deltas) that always win over file defaults.
 
 `ConfigSnapshot` stores per-job overrides at rip time so changing global settings doesn't affect in-progress jobs.
 
 ### YAML Key Mapping
 
-`ArmYamlConfigLoader` maps 50+ ARM `UPPER_CASE` config keys to `Arm:CamelCase` settings:
+`ArmYamlConfigLoader` maps 50+ ARM `UPPER_CASE` config keys to `Arm:CamelCase` settings. It is used **only** by the explicit "Import ARM settings" action — it is not applied as a startup config overlay:
 
 | ARM Key | Config Key | Default |
 |---------|-----------|---------|

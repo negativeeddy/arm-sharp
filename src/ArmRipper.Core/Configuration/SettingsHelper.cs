@@ -7,27 +7,23 @@ namespace ArmRipper.Core.Configuration;
 /// <summary>
 /// Central point for loading and persisting <see cref="ArmSettings"/>.
 ///
-/// Precedence:
-///   1. DB RipperSettings row (saved via UI) — highest priority
-///   2. YAML file + appsettings.json — loaded into IOptions by startup
-///   3. ArmSettings class defaults — lowest priority
+/// DB-first precedence:
+///   1. DB RipperSettings row (deltas saved via UI) — highest priority
+///   2. File defaults (appsettings.json + class defaults) — loaded into IOptions by startup
 ///
+/// The DB row stores ONLY user overrides (a JSON delta), never a full snapshot.
+/// If the DB has no value for a key, the file/code default applies automatically.
 /// Both the Settings UI and Conductor (for creating ConfigSnapshots) use this
 /// helper so they always see the same effective settings.
 /// </summary>
 public static class SettingsHelper
 {
     /// <summary>
-    /// Maps backward-compatible alias property names to their canonical names.
-    /// Aliases are never persisted to the DB; only the canonical names are stored.
-    /// During loading, any legacy alias keys in the DB are skipped.
+    /// Rows with at least this many keys are treated as legacy full snapshots
+    /// (a serialized <see cref="ArmSettings"/>) rather than deltas. Only full
+    /// snapshots are normalized; small delta rows are never touched.
     /// </summary>
-    private static readonly Dictionary<string, string> AliasToCanonical = new()
-    {
-        ["DeleteRawFiles"] = "DelRawFiles",
-        ["PreventTrack99"] = "Prevent99",
-        ["AudioMetadataProvider"] = "GetAudioTitle",
-    };
+    private const int LegacySnapshotMinKeyCount = 25;
 
     /// <summary>
     /// Returns the merged effective settings: file-based defaults overridden by
@@ -59,10 +55,6 @@ public static class SettingsHelper
                     if (value.ValueKind == JsonValueKind.Null)
                         continue;
 
-                    // Skip legacy alias keys — only canonical property names are used
-                    if (AliasToCanonical.ContainsKey(key))
-                        continue;
-
                     var prop = typeof(ArmSettings).GetProperty(key);
                     if (prop is not null && prop.CanWrite)
                     {
@@ -73,10 +65,13 @@ public static class SettingsHelper
                 }
             }
 
-            // ── Default migration: if DB has MinLength=600 (the old default before it was
-            //    changed to 300 in the code), ignore the DB value so the file default takes effect.
-            //    This prevents stale DB-stored defaults from overriding updated code defaults. ──
-            if (dict?.TryGetValue("MinLength", out var minLenEl) == true &&
+            // ── Legacy-snapshot safety net: an old full-snapshot row may carry
+            //    MinLength=600 (the old code default before it changed to 300). Only treat
+            //    it as stale when the row is a legacy full snapshot — a small delta row
+            //    holding 600 is a genuine user override and is respected verbatim.
+            //    NormalizeLegacyRowAsync converts full snapshots to deltas at startup. ──
+            if (dict?.Count >= LegacySnapshotMinKeyCount &&
+                dict.TryGetValue("MinLength", out var minLenEl) &&
                 minLenEl.ValueKind == JsonValueKind.Number &&
                 minLenEl.GetInt32() == 600 &&
                 fileSettings.MinLength != 600)
@@ -89,39 +84,84 @@ public static class SettingsHelper
     }
 
     /// <summary>
-    /// Seeds (or overwrites) the DB RipperSettings row from the current file-based
-    /// <paramref name="fileSettings"/>. Skips if the row already exists unless
-    /// <paramref name="force"/> is true.
-    ///
-    /// Call with <c>force: true</c> when <c>ARM_RESET_SETTINGS=true</c> or when
-    /// the user clicks "Reset to file defaults" in the UI.
+    /// Ensures a RipperSettings row exists. On a fresh install it creates an empty
+    /// delta (<c>"{}"</c>). It never copies file values into the DB — the DB holds
+    /// only user overrides, so file/code defaults apply automatically.
     /// </summary>
-    public static async Task SeedFromFileAsync(
+    public static async Task EnsureSeededAsync(ArmDbContext db, CancellationToken ct = default)
+    {
+        if (await db.RipperSettings.AnyAsync(ct))
+            return;
+
+        db.RipperSettings.Add(new Models.RipperSettings { SettingsJson = "{}" });
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// One-time, idempotent migration that converts a legacy full-snapshot row
+    /// (a serialized <see cref="ArmSettings"/> with many keys) into a delta row
+    /// containing only keys that differ from the current file defaults — i.e. real
+    /// user overrides. Rows that are already deltas are left untouched.
+    /// </summary>
+    public static async Task NormalizeLegacyRowAsync(
         ArmDbContext db,
         ArmSettings fileSettings,
-        bool force = false,
         CancellationToken ct = default)
     {
-        var existing = await db.RipperSettings.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
+        var row = await db.RipperSettings.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
+        if (row is null || string.IsNullOrEmpty(row.SettingsJson))
+            return;
 
-        if (existing is not null && !force)
-            return; // already seeded, nothing to do
+        var dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(row.SettingsJson);
+        if (dict is null || dict.Count < LegacySnapshotMinKeyCount)
+            return; // already delta-style (or empty) — nothing to normalize
 
-        var json = JsonSerializer.Serialize(fileSettings, new JsonSerializerOptions
+        var delta = new Dictionary<string, JsonElement>();
+        foreach (var (key, value) in dict)
         {
-            WriteIndented = false,
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-        });
+            if (value.ValueKind == JsonValueKind.Null)
+                continue;
 
-        if (existing is not null)
+            var prop = typeof(ArmSettings).GetProperty(key);
+            if (prop is null || !prop.CanWrite)
+                continue;
+
+            // Stale historical default (MinLength was 600 before the code default
+            // changed to 300) — drop it so the current code default applies.
+            if (key == nameof(ArmSettings.MinLength) &&
+                value.ValueKind == JsonValueKind.Number &&
+                value.GetInt32() == 600 &&
+                fileSettings.MinLength != 600)
+                continue;
+
+            // If the stored value equals the current file default, it is not an
+            // override — drop it so the file/code default applies automatically.
+            var dbTyped = JsonSerializer.Deserialize(value.GetRawText(), prop.PropertyType);
+            if (dbTyped is not null && Equals(dbTyped, prop.GetValue(fileSettings)))
+                continue;
+
+            delta[key] = value;
+        }
+
+        row.SettingsJson = JsonSerializer.Serialize(delta, new JsonSerializerOptions { WriteIndented = false });
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Clears ALL DB overrides, resetting every setting back to its file/code
+    /// default. Does not touch file config. This is what "Reset to defaults" does.
+    /// </summary>
+    public static async Task ClearAllAsync(ArmDbContext db, CancellationToken ct = default)
+    {
+        var row = await db.RipperSettings.OrderBy(x => x.Id).FirstOrDefaultAsync(ct);
+        if (row is null)
         {
-            existing.SettingsJson = json;
+            db.RipperSettings.Add(new Models.RipperSettings { SettingsJson = "{}" });
         }
         else
         {
-            db.RipperSettings.Add(new Models.RipperSettings { SettingsJson = json });
+            row.SettingsJson = "{}";
         }
-
         await db.SaveChangesAsync(ct);
     }
 
@@ -162,13 +202,6 @@ public static class SettingsHelper
                 if (doc.RootElement.ValueKind == JsonValueKind.Null)
                     continue;
                 existingDict[key] = doc.RootElement.Clone();
-            }
-
-            // Remove any legacy alias key that points to this canonical key
-            foreach (var (alias, canonical) in AliasToCanonical)
-            {
-                if (canonical == key)
-                    existingDict.Remove(alias);
             }
         }
 

@@ -5,6 +5,7 @@ using ArmRipper.Core.Models;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Moq;
 
 namespace ArmRipper.Core.Tests;
 
@@ -27,6 +28,20 @@ public static class TestHelpers
         var s = new ArmSettings();
         configure?.Invoke(s);
         return Options.Create(s);
+    }
+
+    /// <summary>
+    /// Returns an <see cref="ISettingsService"/> whose effective settings come from
+    /// <paramref name="options"/> (file defaults). Unit tests that don't seed DB
+    /// overrides get a service returning the same defaults the code under test expects.
+    /// </summary>
+    public static ISettingsService CreateSettingsService(IOptions<ArmSettings>? options = null)
+    {
+        var opts = options ?? CreateOptions();
+        var mock = new Mock<ISettingsService>();
+        mock.Setup(s => s.GetEffectiveAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(opts.Value);
+        return mock.Object;
     }
 
     public static Job CreateTestJob(Action<Job>? configure = null, Action<ConfigSnapshot>? configureConfig = null)

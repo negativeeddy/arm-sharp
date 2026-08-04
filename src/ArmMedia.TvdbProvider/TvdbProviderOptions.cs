@@ -10,12 +10,6 @@ public sealed class TvdbProviderOptions
     public const string SectionName = "Tvdb";
 
     /// <summary>
-    /// Gets or sets the TVDB API key (v4 auth).
-    /// Obtain one at https://thetvdb.com/api-information
-    /// </summary>
-    public string ApiKey { get; set; } = "";
-
-    /// <summary>
     /// Gets or sets the TVDB API base URL.
     /// Defaults to the public v4 endpoint.
     /// </summary>

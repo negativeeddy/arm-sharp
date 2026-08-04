@@ -80,22 +80,21 @@ public static class ArmSharpServiceCollectionExtensions
         // ── Title normalization ──────────────────────────────────────────────
         services.AddSingleton<ITitleNormalizer, TitleNormalizer>();
 
-        // ── TMDB provider options ────────────────────────────────────────────
-        // Bind the "Tmdb" appsettings section, then register a resolver that
-        // merges the DB-stored ArmSettings.TmdbApiKey at runtime so Web UI
-        // changes take effect without restarting the process.
-        services.Configure<TmdbProviderOptions>(
-            configuration.GetSection(TmdbProviderOptions.SectionName));
+        // ── TMDB provider ────────────────────────────────────────────────────
+        // The TMDB API key is resolved from the DB-backed ArmSettings.TmdbApiKey
+        // via the resolver (no appsettings section needed anymore).
         services.AddSingleton<ITmdbApiKeySource, TmdbApiKeyResolver>();
 
         // ── TVDB provider options ────────────────────────────────────────────
+        // Only ApiBaseUrl is bound from config; the API key is DB-backed
+        // (ArmSettings.TvdbApiKey) via the resolver.
         services.Configure<TvdbProviderOptions>(
             configuration.GetSection(TvdbProviderOptions.SectionName));
         services.AddSingleton<ITvdbApiKeySource, TvdbApiKeyResolver>();
 
-        // ── OMDB provider options ────────────────────────────────────────────
-        services.Configure<OmdbProviderOptions>(
-            configuration.GetSection(OmdbProviderOptions.SectionName));
+        // ── OMDB provider ────────────────────────────────────────────────────
+        // The OMDB API key is resolved from the DB-backed ArmSettings.OmdbApiKey
+        // via the resolver (no appsettings section needed anymore).
         services.AddSingleton<IOmdbApiKeySource, OmdbApiKeyResolver>();
 
         // ── Linting ──────────────────────────────────────────────────────────

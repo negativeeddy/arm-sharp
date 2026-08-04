@@ -1,62 +1,36 @@
-using System.Text.Json;
 using ArmMedia.Core.Abstractions;
-using ArmMedia.TmdbProvider;
-using ArmRipper.Core.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
+using ArmRipper.Core.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 namespace ArmRipper.Core;
 
 /// <summary>
-/// Resolves the TMDB API key by checking the DB-stored override first,
-/// then falling back to the <c>Tmdb:ApiKey</c> appsettings.json configuration.
-/// Uses a scoped DB query on each call so Web UI changes take effect immediately.
+/// Resolves the TMDB API key from the effective (DB-first) settings via
+/// <see cref="ISettingsService"/>. All DB-blob parsing and file fallbacks live
+/// in one place (SettingsHelper) — no duplicated logic here.
 /// </summary>
 public sealed class TmdbApiKeyResolver : ITmdbApiKeySource
 {
-    private readonly IServiceScopeFactory                   _scopeFactory;
-    private readonly IOptionsMonitor<TmdbProviderOptions>     _tmdbOptions;
+    private readonly IServiceScopeFactory _scopeFactory;
 
-    /// <summary>Initialises the resolver with a scope factory and TMDB options.</summary>
-    public TmdbApiKeyResolver(
-        IServiceScopeFactory                scopeFactory,
-        IOptionsMonitor<TmdbProviderOptions>  tmdbOptions)
+    /// <summary>Initialises the resolver with a scope factory.</summary>
+    public TmdbApiKeyResolver(IServiceScopeFactory scopeFactory)
     {
         _scopeFactory = scopeFactory;
-        _tmdbOptions  = tmdbOptions;
     }
 
     /// <inheritdoc/>
     public string? GetApiKey()
     {
-        // 1. Check the DB for a Web UI override
         try
         {
             using var scope = _scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-            var saved = db.RipperSettings.OrderBy(s => s.Id).FirstOrDefault();
-            if (saved?.SettingsJson is not null)
-            {
-                using var doc = JsonDocument.Parse(saved.SettingsJson);
-                if (doc.RootElement.TryGetProperty("TmdbApiKey", out var el) &&
-                    el.ValueKind == JsonValueKind.String)
-                {
-                    var key = el.GetString();
-                    if (!string.IsNullOrWhiteSpace(key))
-                        return key;
-                }
-            }
+            var settings = scope.ServiceProvider.GetRequiredService<ISettingsService>();
+            return settings.GetEffectiveAsync().GetAwaiter().GetResult().TmdbApiKey;
         }
         catch
         {
-            // Best-effort: if DB is unavailable, fall through to config
+            return null;
         }
-
-        // 2. Fallback to appsettings.json / YAML config
-        if (!string.IsNullOrWhiteSpace(_tmdbOptions.CurrentValue.ApiKey))
-            return _tmdbOptions.CurrentValue.ApiKey;
-
-        return null;
     }
 }

@@ -22,20 +22,14 @@ Multi-stage build: `mcr.microsoft.com/dotnet/sdk:10.0` for compilation, `automat
 
 ## Configuration Strategy
 
-On first boot, settings are **seeded from the config file** (`/etc/arm/config/arm.yaml`) into the SQLite database row (`ripper_settings`). On subsequent boots, the **database is authoritative** — changes to `arm.yaml` alone are ignored in favour of whatever was saved via the UI.
+On first boot, no settings are written to the DB. Settings are **DB-first**: the SQLite `ripper_settings` row stores only the overrides you make in the UI, and the **database always wins** over file config. `/etc/arm/config/arm.yaml` is not read at startup anymore — legacy ARM values are pulled into the DB once via the **"Import ARM settings"** button on the `/settings` page (it never overwrites existing DB values).
 
 | State | Behaviour |
 |-------|-----------|
-| **First boot** (no DB row) | Seeds DB from `arm.yaml` automatically |
-| **Normal restart** | DB settings win; file is ignored |
-| **`ARM_RESET_SETTINGS=true`** | Overwrites DB from `arm.yaml` on next start |
-| **UI "Reset to file defaults"** | Same as `ARM_RESET_SETTINGS=true`, triggered from `/settings` |
-
-To force a re-seed:
-
-```bash
-ARM_RESET_SETTINGS=true docker compose up -d
-```
+| **Fresh install** | Empty `ripper_settings` row; file/code defaults apply |
+| **Normal restart** | DB overrides win |
+| **UI "Reset to defaults"** | Clears all DB overrides (back to defaults) |
+| **UI "Import ARM settings"** | Pulls legacy `/etc/arm/config/arm.yaml` values into the DB once (skips keys already set) |
 
 The startup logs will confirm which path was taken:
 
@@ -209,7 +203,7 @@ Published to `ghcr.io/negativeeddy/arm-sharp` on every push to `main` and on sem
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ARM_RESET_SETTINGS` | `false` | Set to `true` to re-seed database settings from `arm.yaml` on next start |
+| `ARM_RESET_SETTINGS` | — | **Removed.** Settings are DB-first; use the "Import ARM settings" UI action to pull values from `arm.yaml` |
 | `ARM_UID` | — | Host UID for `arm` user (file permission matching) |
 | `ARM_GID` | — | Host GID for `arm` group (file permission matching) |
 | `TZ` | `America/Chicago` | Timezone |
