@@ -88,6 +88,24 @@ public sealed class TitleNormalizerTests
     }
 
     [Theory]
+    [InlineData("Weeds_S2_Disc_1", "weeds", 2, 1)]
+    [InlineData("WEEDS_SEASON_1_DISC_2", "weeds", 1, 2)]
+    public void Normalize_UnderscoreSeparatedDiscNames_ExtractsSeriesSeasonDisc(
+        string input,
+        string expectedSeries,
+        int expectedSeason,
+        int expectedDisc)
+    {
+        var result = _normalizer.Normalize(input);
+
+        Assert.Equal(expectedSeries, result.Query);
+        Assert.Equal(expectedSeason, result.Season);
+        Assert.Equal(expectedDisc, result.Disc);
+        Assert.Null(result.Edition);
+        Assert.Null(result.EpisodeHint);
+    }
+
+    [Theory]
     [InlineData("Season 3 Disc 2 Episodes 13-18", "13-18")]
     [InlineData("S01E05", "05")]
     [InlineData("Episode 3", "3")]
