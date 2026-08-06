@@ -81,8 +81,8 @@ public class SettingsController(
         var pendingCrcCount = await db.Jobs
             .Where(j => j.DiscType == DiscType.Dvd &&
                         !string.IsNullOrEmpty(j.CrcId) &&
-                        (j.HasNiceTitle || !string.IsNullOrEmpty(j.TitleManual)) &&
-                        !EF.Functions.Like(j.CompletedStages ?? "", "%CrcSubmitted%"))
+                        (j.HasNiceTitle || !string.IsNullOrEmpty(j.TitleManual)))
+            .Where(JobStageQueryHelper.NotHasCompletedStage(RipStage.CrcSubmitted))
             .CountAsync(ct);
         ViewBag.PendingCrcCount = pendingCrcCount;
 

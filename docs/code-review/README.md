@@ -72,8 +72,8 @@ proposed fix.
 | 29 | [Duplicate `RemoveWriter` in duplicate-skip path](29-duplicate-removewriter.md) | 🟢 Low | ⬜ Todo | — |
 | 30 | [Default switch case doesn't call `MarkStageComplete`](30-default-case-missing-markstagecomplete.md) | 🟢 Low | ⬜ Todo | — |
 | 31 | [`ManualWaitResume` flag not reset on timeout path](31-manualwaitresume-not-reset.md) | 🟢 Low | ⬜ Todo | — |
-| 32 | [Raw `Contains("Rip")` on `CompletedStages` bypasses abstraction](32-completedstages-contains-bypass.md) | 🟡 Medium | ⬜ Todo | — |
-| 33 | [`EF.Functions.Like` on `CompletedStages` bypasses abstraction](33-settingscontroller-eflike-bypass.md) | 🟡 Medium | ⬜ Todo | — |
+| 32 | [Raw `Contains("Rip")` on `CompletedStages` bypasses abstraction](32-completedstages-contains-bypass.md) | 🟡 Medium | 🔄 In Progress | — |
+| 33 | [`EF.Functions.Like` on `CompletedStages` bypasses abstraction](33-settingscontroller-eflike-bypass.md) | 🟡 Medium | 🔄 In Progress | — |
 | 34 | [No concurrency protection on `MarkStageComplete`](34-markstagecomplete-no-concurrency.md) | 🟡 Medium | ⬜ Todo | — |
 | 35 | [Misleading comment: "CompletedStages is not queryable"](35-completedstages-queryable-misleading.md) | 🟢 Low | ⬜ Todo | — |
 | 36 | [Renaming `RipStage` silently breaks resume for old jobs](36-ripstage-rename-breaks-completedstages.md) | 🟢 Low | ⬜ Todo | — |
@@ -84,9 +84,9 @@ proposed fix.
 
 | Status | Count |
 |--------|-------|
-| ⬜ Todo | 34 |
-| 🔄 In Progress | 0 |
-| ✅ Done | 2 |
+| ⬜ Todo | 30 |
+| 🔄 In Progress | 2 |
+| ✅ Done | 4 |
 
 ---
 
