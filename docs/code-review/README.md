@@ -55,8 +55,8 @@ proposed fix.
 | # | Task | Priority | Status | Assignee |
 |---|------|----------|--------|----------|
 | 14 | [Audit & fix null-forgiving operators (`!`)](14-null-forgiving-audit.md) | 🔴 Critical | ⬜ Todo | — |
-| 15 | [Deep-review `Conductor.ProcessJobAsync`](15-deep-review-processjobasync.md) | 🔴 Critical | ⬜ Todo | — |
-| 16 | [Deep-review `CompletedStages` resume logic](16-deep-review-completedstages.md) | 🔴 Critical | ⬜ Todo | — |
+| 15 | [Deep-review `Conductor.ProcessJobAsync`](15-deep-review-processjobasync.md) | 🔴 Critical | ✅ Done | — |
+| 16 | [Deep-review `CompletedStages` resume logic](16-deep-review-completedstages.md) | 🔴 Critical | ✅ Done | — |
 | 17 | [Deep-review `MakeMkvOutputParser`](17-deep-review-makemkv-parser.md) | 🟡 Medium | ⬜ Todo | — |
 | 18 | [Deep-review `ShutdownJobCancellationService`](18-deep-review-shutdown-cancellation.md) | 🟡 Medium | ⬜ Todo | — |
 | 19 | [Deep-review `IdentifyVideoDiscAsync`](19-deep-review-identifyvideodisc.md) | 🟡 Medium | ⬜ Todo | — |
@@ -64,6 +64,19 @@ proposed fix.
 | 21 | [Deep-review `DefaultLintingEngine`](21-deep-review-linting.md) | 🟢 Low | ⬜ Todo | — |
 | 22 | [Deep-review `OvidSubmitService` & `OvidApiClient`](22-deep-review-ovid.md) | 🟢 Low | ⬜ Todo | — |
 | 23 | [Audit EF Core migrations vs model consistency](23-ef-core-migration-audit.md) | 🟢 Low | ⬜ Todo | — |
+| 24 | [`ProcessJobAsync` has no resume-from-stage logic](24-processjobasync-no-resume-logic.md) | 🔴 Critical | ⬜ Todo | — |
+| 25 | [`RunAsync` always creates new job — resume path is dead](25-runasync-no-resume-overload.md) | 🔴 Critical | ⬜ Todo | — |
+| 26 | [Non-Active status at entry only warns, doesn't gate](26-processjobasync-status-guard-weak.md) | 🟡 Medium | ⬜ Todo | — |
+| 27 | [Synchronous `FirstOrDefault` blocks async pipeline](27-sync-firstordefault-in-async.md) | 🟡 Medium | ⬜ Todo | — |
+| 28 | [After manual wait, Status set to Active unconditionally](28-manualwait-status-overwrite.md) | 🟡 Medium | ⬜ Todo | — |
+| 29 | [Duplicate `RemoveWriter` in duplicate-skip path](29-duplicate-removewriter.md) | 🟢 Low | ⬜ Todo | — |
+| 30 | [Default switch case doesn't call `MarkStageComplete`](30-default-case-missing-markstagecomplete.md) | 🟢 Low | ⬜ Todo | — |
+| 31 | [`ManualWaitResume` flag not reset on timeout path](31-manualwaitresume-not-reset.md) | 🟢 Low | ⬜ Todo | — |
+| 32 | [Raw `Contains("Rip")` on `CompletedStages` bypasses abstraction](32-completedstages-contains-bypass.md) | 🟡 Medium | ⬜ Todo | — |
+| 33 | [`EF.Functions.Like` on `CompletedStages` bypasses abstraction](33-settingscontroller-eflike-bypass.md) | 🟡 Medium | ⬜ Todo | — |
+| 34 | [No concurrency protection on `MarkStageComplete`](34-markstagecomplete-no-concurrency.md) | 🟡 Medium | ⬜ Todo | — |
+| 35 | [Misleading comment: "CompletedStages is not queryable"](35-completedstages-queryable-misleading.md) | 🟢 Low | ⬜ Todo | — |
+| 36 | [Renaming `RipStage` silently breaks resume for old jobs](36-ripstage-rename-breaks-completedstages.md) | 🟢 Low | ⬜ Todo | — |
 
 ---
 
@@ -71,9 +84,9 @@ proposed fix.
 
 | Status | Count |
 |--------|-------|
-| ⬜ Todo | 23 |
+| ⬜ Todo | 34 |
 | 🔄 In Progress | 0 |
-| ✅ Done | 0 |
+| ✅ Done | 2 |
 
 ---
 
