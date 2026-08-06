@@ -7,7 +7,37 @@
 - `src/ArmRipper.Core/Rip/Conductor.cs` (resume-from-stage)
 - `src/ArmRipper.Core/Infrastructure/Data/ArmDbContext.cs` (EF config)
 
-**Status:** ⬜ Todo
+**Status:** ✅ Done — 5 findings produced (see #32–#36)
+
+---
+
+## Review Results (2026-08-06)
+
+The pipe-delimited serialization is simple and functional. `IsStageComplete` correctly
+guards against null/empty/malformed input and returns `false` safely. `MarkStageComplete`
+is idempotent with case-insensitive duplicate detection.
+
+However, several patterns in the codebase bypass the `IsStageComplete`/`MarkStageComplete`
+abstraction and use raw string matching on the pipe-delimited column — these are fragile.
+
+5 findings produced. See sub-documents:
+
+| # | Finding | Priority |
+|---|---------|----------|
+| 32 | Raw `Contains("Rip")` on `CompletedStages` bypasses abstraction | 🟡 Medium |
+| 33 | `EF.Functions.Like` on `CompletedStages` bypasses abstraction | 🟡 Medium |
+| 34 | No concurrency protection on `MarkStageComplete` writes | 🟡 Medium |
+| 35 | Misleading comment: "CompletedStages is not queryable via EF" | 🟢 Low |
+| 36 | Renaming `RipStage` silently breaks resume for old jobs | 🟢 Low |
+
+### What's working well
+
+- `IsStageComplete` handles null, empty, and malformed strings safely (silently returns `false`)
+- `MarkStageComplete` is idempotent via `OrdinalIgnoreCase` comparison
+- `ArmRipperService` properly uses the abstraction for Rip/Transcode stage skipping
+- Pipe delimiter (`|`) is safe since no stage name contains `|`
+- `StringSplitOptions.RemoveEmptyEntries` handles accidental `||` sequences
+- 256-char max length is ample for all 7 stages (~70 chars total)
 
 ---
 
