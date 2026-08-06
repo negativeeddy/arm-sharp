@@ -2,7 +2,7 @@
 
 **Priority:** 🟡 Medium
 **File(s):** `src/ArmRipper.WebUi/Controllers/SettingsController.cs`
-**Status:** 🔄 In Progress
+**Status:** ✅ Done
 
 ---
 
