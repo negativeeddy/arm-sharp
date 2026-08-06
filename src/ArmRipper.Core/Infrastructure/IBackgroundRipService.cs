@@ -10,6 +10,14 @@ public interface IBackgroundRipService
     /// (a pipeline was started) or rejected (with a reason).
     /// </summary>
     StartRipResult StartRip(string devPath, CancellationToken ct = default);
+
+    /// <summary>
+    /// Resumes a previously stopped/cancelled job from its last completed stage.
+    /// Unlike <see cref="StartRip"/>, this loads the existing job from the database
+    /// and skips already-completed pipeline stages. No new job is created.
+    /// </summary>
+    StartRipResult StartResumeRip(int jobId, CancellationToken ct = default);
+
     void StartForkedJob(int originalJobId, string rawFilePath, CancellationToken ct = default, DiscType? discType = null, VideoContentType? videoType = null);
 
     /// <summary>

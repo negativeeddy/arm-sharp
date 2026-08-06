@@ -6,6 +6,15 @@ namespace ArmRipper.Core.Rip;
 public interface IConductor
 {
     Task<int> RunAsync(string devicePath, CancellationToken ct = default);
+
+    /// <summary>
+    /// Resumes a previously stopped/cancelled job from its last completed stage.
+    /// Loads the existing job from the database and proceeds through the pipeline,
+    /// skipping stages already marked in <see cref="Job.CompletedStages"/>.
+    /// Does NOT create a new job — reuses the existing one.
+    /// </summary>
+    Task<int> RunResumeAsync(int jobId, CancellationToken ct = default);
+
     Task<int> RunForkedTranscodeAsync(int originalJobId, string rawFilePath, CancellationToken ct = default, DiscType? discType = null, VideoContentType? videoType = null, ArmSettings? effectiveSettings = null);
 
     /// <summary>

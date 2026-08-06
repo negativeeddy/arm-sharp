@@ -2,7 +2,7 @@
 
 **Priority:** 🔴 Critical
 **File(s):** `src/ArmRipper.Core/Rip/Conductor.cs`
-**Status:** ⬜ Todo
+**Status:** ✅ Done
 
 ---
 
