@@ -1003,7 +1003,7 @@ public sealed class Conductor(
             var inFlightDupe = await db.Jobs
                 .Where(j => j.Id != job.Id)
                 .Where(j => j.Status != JobState.Failure && j.Status != JobState.Cancelled)
-                .Where(j => !string.IsNullOrEmpty(j.CompletedStages) && j.CompletedStages.Contains("Rip"))
+                .Where(JobStageQueryHelper.HasCompletedStage(RipStage.Rip))
                 .Where(j => hasCrc ? j.CrcId == job.CrcId : j.DiscDbHash == job.DiscDbHash)
                 .Select(j => new { j.Title, j.Year, j.HasNiceTitle, j.VideoType, j.PosterUrl })
                 .FirstOrDefaultAsync(ct);

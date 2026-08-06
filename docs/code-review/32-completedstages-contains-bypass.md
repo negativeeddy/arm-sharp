@@ -2,7 +2,7 @@
 
 **Priority:** 🟡 Medium
 **File(s):** `src/ArmRipper.Core/Rip/Conductor.cs`
-**Status:** ⬜ Todo
+**Status:** 🔄 In Progress
 
 ---
 
