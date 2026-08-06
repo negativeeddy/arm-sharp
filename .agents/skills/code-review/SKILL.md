@@ -143,6 +143,50 @@ instructions: |
       - free of vague advice
       - structured exactly in the sections above
 
+  ── DELIVERABLE FORMAT (mandatory) ──────────────────────────────────────
+
+  Every code review MUST produce a persistent deliverable that can be
+  actioned incrementally over time.  Write the following files under
+  docs/code-review/ (create the directory if it does not exist):
+
+  A. README.md — root progress tracker
+     - Summary paragraph (one sentence)
+     - Index table with columns: #, Task, Priority (🔴🟡🟢), Status, Assignee
+     - Each row links to its sub-document
+     - Progress summary table at the bottom (Todo / In Progress / Done counts)
+     - "How to Use" instructions at the bottom
+
+  B. NN-short-slug.md — one file per finding
+     - File name: zero-padded two-digit number + kebab-case slug, e.g.
+       01-fix-sync-over-async.md
+     - Each file is a self-contained, actionable task.
+     - Structure every sub-document identically:
+         # Title (same as index row)
+         **Priority:** icon + label
+         **File(s):** affected file paths
+         **Status:** ⬜ Todo
+         ---
+         ## Problem
+         (code snippet showing the issue, explanation)
+         ## Proposed Fix
+         (code snippet showing the fix, rationale)
+         (optional ## Benefits, ## Verification, ## When to do this)
+     - Keep sub-documents concise — no more than ~60 lines each.
+
+  Rules:
+     - Critical findings become sub-documents.  Structural / performance /
+       best-practice findings become sub-documents.  Final recommendations
+       are the index rows in the README.
+     - Do NOT write a single monolithic review file.  Always split into
+       README + sub-documents.
+     - Number findings starting at 01.  Sort critical first, then medium,
+       then low.
+     - If a docs/code-review/README.md already exists, update it
+       incrementally: add new findings, bump completed items to ✅, do NOT
+       delete historical entries.
+     - After writing all files, tell the user how many findings were produced
+       and which file to open first.
+
 examples:
   - user: "Review this ripping service"
     assistant: |
