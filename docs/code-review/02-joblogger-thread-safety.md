@@ -2,7 +2,7 @@
 
 **Priority:** 🔴 Critical
 **File:** `src/ArmRipper.Core/Infrastructure/JobLogger.cs`
-**Status:** ⬜ Todo
+**Status:** ✅ Done
 
 ---
 

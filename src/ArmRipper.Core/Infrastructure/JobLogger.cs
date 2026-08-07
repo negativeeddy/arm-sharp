@@ -8,6 +8,8 @@ public sealed class JobLogger : ILogger
     private readonly string _logPath;
     private readonly StreamWriter _fileWriter;
     private readonly ILogger _inner;
+    private readonly object _writeLock = new();
+    private bool _disposed;
 
     public JobLogger(string jobId, string logDirectory, ILogger inner)
     {
@@ -21,7 +23,11 @@ public sealed class JobLogger : ILogger
     public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
     {
         var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [{logLevel}] {formatter(state, exception)}";
-        _fileWriter.WriteLine(line);
+        lock (_writeLock)
+        {
+            if (_disposed) return;
+            _fileWriter.WriteLine(line);
+        }
         _inner.Log(logLevel, eventId, state, exception, formatter);
     }
 
@@ -31,13 +37,18 @@ public sealed class JobLogger : ILogger
 
     public void Dispose()
     {
-        _fileWriter.Flush();
-        _fileWriter.Dispose();
+        lock (_writeLock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _fileWriter.Flush();
+            _fileWriter.Dispose();
+        }
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        await _fileWriter.FlushAsync();
-        await _fileWriter.DisposeAsync();
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 }
