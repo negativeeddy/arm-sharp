@@ -34,7 +34,7 @@ proposed fix.
 |---|------|----------|--------|----------|
 | 4 | [Convert `VideoType` from string to enum](04-videotype-enum.md) | 🟡 Medium | ✅ Done | — |
 | 5 | [Extract `ConfigSnapshot` factory from `Conductor`](05-config-snapshot-factory.md) | 🟡 Medium | ✅ Done | — |
-| 6 | [Add debug logging to empty `catch { }` blocks](06-empty-catch-logging.md) | 🟡 Medium | ⬜ Todo | — |
+| 6 | [Add debug logging to empty `catch { }` blocks](06-empty-catch-logging.md) | 🟡 Medium | ✅ Done | — |
 | 7 | [Fix `NotificationService` condition / comment mismatch](07-notification-condition.md) | 🟡 Medium | ⬜ Todo | — |
 | 8 | [Fix hardcoded `ffmpeg` binary name in test-mode path](08-hardcoded-ffmpeg.md) | 🟡 Medium | ⬜ Todo | — |
 | 9 | [Break up `RipVisualMediaAsync` into sub-phases](09-break-up-ripvisualmedia.md) | 🟡 Medium | ⬜ Todo | — |
@@ -84,9 +84,9 @@ proposed fix.
 
 | Status | Count |
 |--------|-------|
-| ⬜ Todo | 22 |
+| ⬜ Todo | 21 |
 | 🔄 In Progress | 0 |
-| ✅ Done | 14 |
+| ✅ Done | 15 |
 
 ---
 

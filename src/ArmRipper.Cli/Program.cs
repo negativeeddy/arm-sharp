@@ -139,6 +139,7 @@ using (var initScope = host.Services.CreateScope())
     initLogger.LogInformation("Config file: {YamlPath} ({Status})",
         yamlPath, File.Exists(yamlPath) ? "found" : "not found");
 
+    DatabaseHelper.Logger = initLogger;
     DatabaseHelper.EnsureMigrated(db);
     initLogger.LogInformation("Database migrated successfully");
 
@@ -209,6 +210,7 @@ static async Task<int> RunReidentifyJobAsync(IServiceProvider services, int jobI
     var scopedDb = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
 
     // Ensure schema is up to date (handle older DBs missing newer columns)
+    DatabaseHelper.Logger = logger;
     DatabaseHelper.EnsureMigrated(scopedDb);
 
     var job = await scopedDb.Jobs

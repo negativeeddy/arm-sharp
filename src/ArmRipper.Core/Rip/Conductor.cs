@@ -69,7 +69,7 @@ public sealed class Conductor(
                         await BroadcastJobUpdateAsync(job);
                     }
                 }
-                catch { /* best effort */ }
+                catch (Exception ex) { logger.LogDebug(ex, "Failed to persist Stopping status during shutdown for job {JobId}", job?.Id); }
             }
             return 1;
         }
@@ -81,7 +81,8 @@ public sealed class Conductor(
                 job.Status = JobState.Failure;
                 job.Errors = ex.Message;
                 job.ProgressMessage = null;
-                try { await db.SaveChangesAsync(CancellationToken.None); } catch { /* best effort */ }
+                try { await db.SaveChangesAsync(CancellationToken.None); }
+                catch (Exception ex2) { logger.LogDebug(ex2, "Failed to persist failure status for job {JobId}", job.Id); }
                 await BroadcastJobUpdateAsync(job);
             }
             return 1;
@@ -121,7 +122,8 @@ public sealed class Conductor(
                 job.Status = JobState.Stopping;
                 job.StopTime ??= DateTime.UtcNow;
                 job.ProgressMessage = "Cancelled — can be resumed";
-                try { await db.SaveChangesAsync(CancellationToken.None); } catch { /* best effort */ }
+                try { await db.SaveChangesAsync(CancellationToken.None); }
+                catch (Exception ex) { logger.LogDebug(ex, "Failed to persist Stopping status for resumed job {JobId}", job.Id); }
                 await BroadcastJobUpdateAsync(job);
             }
             return 1;
@@ -134,7 +136,8 @@ public sealed class Conductor(
                 job.Status = JobState.Failure;
                 job.Errors = ex.Message;
                 job.ProgressMessage = null;
-                try { await db.SaveChangesAsync(CancellationToken.None); } catch { /* best effort */ }
+                try { await db.SaveChangesAsync(CancellationToken.None); }
+                catch (Exception ex2) { logger.LogDebug(ex2, "Failed to persist failure status for resumed job {JobId}", job.Id); }
                 await BroadcastJobUpdateAsync(job);
             }
             return 1;
@@ -279,7 +282,8 @@ public sealed class Conductor(
             job.Status = JobState.Failure;
             job.Errors = ex.Message;
             job.ProgressMessage = null;
-            try { await db.SaveChangesAsync(ct); } catch { /* best effort */ }
+            try { await db.SaveChangesAsync(ct); }
+            catch (Exception ex2) { logger.LogDebug(ex2, "Failed to persist failure status for job {JobId}", job.Id); }
             await BroadcastJobUpdateAsync(job);
             return 1;
         }
@@ -411,7 +415,8 @@ public sealed class Conductor(
             job.Status = JobState.Failure;
             job.Errors = ex.Message;
             job.ProgressMessage = null;
-            try { await db.SaveChangesAsync(ct); } catch { /* best effort */ }
+            try { await db.SaveChangesAsync(ct); }
+            catch (Exception ex2) { logger.LogDebug(ex2, "Failed to persist failure status for job {JobId}", job.Id); }
             await BroadcastJobUpdateAsync(job);
             return 1;
         }
@@ -791,7 +796,8 @@ public sealed class Conductor(
             logger.LogError(err);
             job.Status = JobState.Failure;
             job.Errors = err;
-            try { File.Delete(incompleteFilename); } catch { }
+            try { File.Delete(incompleteFilename); }
+            catch (Exception ex2) { logger.LogDebug(ex2, "Failed to delete incomplete data-disc file {Path}", incompleteFilename); }
         }
 
         await db.SaveChangesAsync(ct);
@@ -802,7 +808,10 @@ public sealed class Conductor(
             if (Directory.Exists(rawPath))
                 Directory.Delete(rawPath, recursive: true);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to remove raw data-disc directory {Path}", rawPath);
+        }
     }
 
     private async Task<bool> IsCancelledAsync(Job job, CancellationToken ct)

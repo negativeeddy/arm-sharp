@@ -6,7 +6,7 @@
 - `src/ArmRipper.WebUi/Controllers/JobsController.cs` (1 empty catch block)
 - Any other files with `catch { }` or `catch { /* ... */ }`
 
-**Status:** ⬜ Todo
+**Status:** ✅ Done
 
 ---
 

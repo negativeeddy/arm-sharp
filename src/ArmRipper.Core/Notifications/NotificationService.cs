@@ -179,7 +179,7 @@ public sealed class NotificationService(
         await NotifyAsync(job, NotifyTitle, title, ct);
     }
 
-    private static string GetLocalIpAddress()
+    private string GetLocalIpAddress()
     {
         try
         {
@@ -200,7 +200,10 @@ public sealed class NotificationService(
             if (!string.IsNullOrEmpty(fallback))
                 return fallback;
         }
-        catch { }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to determine local IP address — falling back to loopback");
+        }
 
         return "127.0.0.1";
     }

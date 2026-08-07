@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ArmRipper.Core.Infrastructure.Data;
 
@@ -8,6 +10,12 @@ namespace ArmRipper.Core.Infrastructure.Data;
 /// </summary>
 public static class DatabaseHelper
 {
+    /// <summary>
+    /// Logger for startup DB-init diagnostics. Callers may assign it before calling
+    /// <see cref="EnsureMigrated"/>; defaults to a no-op logger so standalone use still works.
+    /// </summary>
+    public static ILogger Logger { get; set; } = NullLogger.Instance;
+
     /// <summary>
     /// Ensures the database is migrated or created. Tries EF Core migrations first;
     /// falls back to EnsureCreated + manual migration-history entries for environments
@@ -30,8 +38,9 @@ public static class DatabaseHelper
         {
             db.Database.Migrate();
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.LogDebug(ex, "EF migrations failed — falling back to EnsureCreated");
             db.Database.EnsureCreated();
             db.Database.ExecuteSql($"CREATE TABLE IF NOT EXISTS \"__EFMigrationsHistory\" (\"MigrationId\" TEXT NOT NULL, \"ProductVersion\" TEXT NOT NULL);");
         }
@@ -90,8 +99,9 @@ public static class DatabaseHelper
                 if (needClose) conn.Close();
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.LogDebug(ex, "ColumnExists check failed for {Table}.{Column}", table, column);
             return false;
         }
     }
@@ -125,7 +135,10 @@ public static class DatabaseHelper
                 $"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {(type ?? "TEXT")} NULL;");
 #pragma warning restore EF1002
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Failed to add column {Table}.{Column}", table, column);
+        }
     }
 
     private static void TryInsertMigration(ArmDbContext db, string migrationId)
@@ -137,6 +150,9 @@ public static class DatabaseHelper
                 $"INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('{migrationId}', '10.0.0');");
 #pragma warning restore EF1002
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Failed to record migration {MigrationId} in history", migrationId);
+        }
     }
 }

@@ -54,7 +54,10 @@ public sealed class JobFileLoggerProvider : ILoggerProvider, ISupportExternalSco
     {
         if (_writers.TryRemove(filePath, out var sw))
         {
-            try { sw.Flush(); sw.Dispose(); } catch { /* best effort */ }
+            // Best effort — this IS the logger; a flush/dispose failure here cannot be
+            // reported through ILogger without risking recursion. Errors are surfaced via
+            // the fallback file path on subsequent writes instead.
+            try { sw.Flush(); sw.Dispose(); } catch { }
         }
     }
 

@@ -7,6 +7,7 @@ using ArmRipper.Core.Rip;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace ArmRipper.WebUi.Controllers;
@@ -18,7 +19,8 @@ public partial class ApiController(
     ICliProcessRunner runner,
     ISettingsService settingsService,
     IDatabaseSubmitService databaseSubmitService,
-    IOvidSubmitService ovidSubmitService) : Controller
+    IOvidSubmitService ovidSubmitService,
+    ILogger<ApiController> logger) : Controller
 {
     [HttpGet("health")]
     public IActionResult Health()
@@ -162,7 +164,10 @@ public partial class ApiController(
             {
                 await runner.RunAsync("umount", job.DevPath, timeoutMs: 10_000, ct: ct);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Failed to umount {DevPath} for abandoned job {JobId}", job.DevPath, job.Id);
+            }
 
             // Only eject if media is present — on some drives the CDROMEJECT
             // ioctl toggles the tray (closes it when already open).
@@ -175,7 +180,10 @@ public partial class ApiController(
                     await runner.RunAsync("eject", job.DevPath, timeoutMs: 10_000, ct: ct);
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Failed to eject {DevPath} for abandoned job {JobId}", job.DevPath, job.Id);
+            }
         }
 
         await db.SaveChangesAsync(ct);

@@ -90,7 +90,10 @@ public partial class MakeMkvService : IMakeMkvService
                 if (!string.IsNullOrEmpty(key) && key.StartsWith("T-"))
                     return key;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "MakeMKV beta key fetch via Ayra API failed — will try forum scrape");
+            }
 
             // Fallback: scrape the MakeMKV forum
             var html = await httpClient.GetStringAsync(BetaKeyForum, ct);
@@ -98,7 +101,10 @@ public partial class MakeMkvService : IMakeMkvService
             if (match.Success)
                 return match.Groups[1].Value;
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "MakeMKV beta key fetch failed (both Ayra API and forum scrape)");
+        }
 
         return null;
     }

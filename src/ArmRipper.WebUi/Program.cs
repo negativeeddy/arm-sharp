@@ -173,6 +173,7 @@ using (var scope = app.Services.CreateScope())
     initLogger.LogInformation("Config file: {YamlPath} ({Status})",
         yamlPath, File.Exists(yamlPath) ? "found" : "not found");
 
+    DatabaseHelper.Logger = initLogger;
     DatabaseHelper.EnsureMigrated(db);
     initLogger.LogInformation("Database migrated successfully");
 
