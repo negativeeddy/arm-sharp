@@ -57,7 +57,7 @@ public static class TestHelpers
             Title = "Test Movie",
             TitleAuto = "Test Movie",
             Year = "2024",
-            VideoType = "movie",
+            VideoType = VideoContentType.Movie,
             DiscType = DiscType.Dvd,
             Status = JobState.Active,
             Config = config,

@@ -65,7 +65,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
 
     [HttpPost("update-identification")]
     public async Task<IActionResult> UpdateIdentification(
-        int jobId, string? title, string? year, string? videoType, string? imdbId, string? posterUrl,
+        int jobId, string? title, string? year, VideoContentType? videoType, string? imdbId, string? posterUrl,
         int? seasonNumber, int? discNumber, int? startingEpisodeNumber,
         CancellationToken ct = default)
     {
@@ -75,7 +75,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
 
         if (title is not null) { job.TitleManual = title; job.Title = title; }
         if (year is not null) { job.YearManual = year; job.Year = year; }
-        if (videoType is not null) { job.VideoTypeManual = videoType; job.VideoType = videoType; }
+        if (videoType is { } vt) { job.VideoTypeManual = vt; job.VideoType = vt; }
         if (imdbId is not null) { job.ImdbIdManual = imdbId; job.ImdbId = imdbId; }
         if (posterUrl is not null) { job.PosterUrlManual = posterUrl; job.PosterUrl = posterUrl; }
 
@@ -329,7 +329,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
     }
 
     [HttpPost("assign-movie")]
-    public async Task<IActionResult> AssignMovie(int jobId, string title, string? year, string? imdbId, string? posterUrl, string? videoType, CancellationToken ct = default)
+    public async Task<IActionResult> AssignMovie(int jobId, string title, string? year, string? imdbId, string? posterUrl, VideoContentType? videoType, CancellationToken ct = default)
     {
         var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job is null)
@@ -343,10 +343,10 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
         job.ImdbId = imdbId;
         job.PosterUrlManual = posterUrl;
         job.PosterUrl = posterUrl;
-        if (!string.IsNullOrEmpty(videoType))
+        if (videoType is { } vt)
         {
-            job.VideoTypeManual = videoType;
-            job.VideoType = videoType;
+            job.VideoTypeManual = vt;
+            job.VideoType = vt;
         }
 
         job.HasNiceTitle = true;

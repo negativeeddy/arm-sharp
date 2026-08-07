@@ -188,7 +188,7 @@ public sealed class Conductor(
             TitleAuto = originalJob.TitleAuto,
             Year = originalJob.Year,
             YearAuto = originalJob.YearAuto,
-            VideoType = videoType?.ToString()?.ToLowerInvariant() ?? originalJob.VideoType,
+            VideoType = videoType ?? originalJob.VideoType,
             VideoTypeAuto = originalJob.VideoTypeAuto,
             DiscType = resolvedDiscType,
             ImdbId = originalJob.ImdbId,
@@ -377,8 +377,8 @@ public sealed class Conductor(
             TitleAuto = title,
             Year = year ?? "0000",
             YearAuto = year ?? "0000",
-            VideoType = videoType?.ToString()?.ToLowerInvariant() ?? "movie",
-            VideoTypeAuto = videoType?.ToString()?.ToLowerInvariant() ?? "movie",
+            VideoType = videoType ?? VideoContentType.Movie,
+            VideoTypeAuto = videoType ?? VideoContentType.Movie,
             DiscType = parsedDiscType,
             Label = title,
             ManualStart = true
@@ -1045,7 +1045,8 @@ public sealed class Conductor(
             job.Title = job.TitleAuto = prev.Title ?? job.Label;
             job.Year = job.YearAuto = prev.Year;
             job.HasNiceTitle = prev.HasNiceTitle;
-            job.VideoType = job.VideoTypeAuto = prev.VideoType;
+            job.VideoTypeAuto = prev.VideoType;
+            job.VideoType = prev.VideoType;
             job.PosterUrl = job.PosterUrlAuto = prev.PosterUrl;
             await db.SaveChangesAsync(ct);
             return true;
@@ -1092,7 +1093,8 @@ public sealed class Conductor(
                 job.Title = job.TitleAuto = inFlightDupe.Title ?? job.Label;
                 job.Year = job.YearAuto = inFlightDupe.Year;
                 job.HasNiceTitle = inFlightDupe.HasNiceTitle;
-                job.VideoType = job.VideoTypeAuto = inFlightDupe.VideoType;
+                job.VideoTypeAuto = inFlightDupe.VideoType;
+                job.VideoType = inFlightDupe.VideoType;
                 job.PosterUrl = job.PosterUrlAuto = inFlightDupe.PosterUrl;
                 await db.SaveChangesAsync(ct);
                 return true;
@@ -1115,7 +1117,7 @@ public sealed class Conductor(
                 "mountpoint" => job.MountPoint,
                 "title" => job.Title,
                 "year" => job.Year,
-                "video_type" => job.VideoType,
+                "video_type" => job.VideoType.ToString().ToLowerInvariant(),
                 "hasnicetitle" => job.HasNiceTitle.ToString(),
                 "label" => job.Label,
                 "disctype" => job.DiscType.ToString(),

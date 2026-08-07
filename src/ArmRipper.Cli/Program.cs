@@ -222,7 +222,7 @@ static async Task<int> RunReidentifyJobAsync(IServiceProvider services, int jobI
     }
 
     // Only run on series/tv jobs
-    if (job.VideoType != "series" && job.VideoType != "tv")
+    if (job.VideoType is not VideoContentType.Series and not VideoContentType.Tv)
     {
         logger.LogError("Job {JobId} is not a TV series (type={Type}).", jobId, job.VideoType);
         return 1;

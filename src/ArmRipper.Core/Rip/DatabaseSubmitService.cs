@@ -56,6 +56,10 @@ public sealed class DatabaseSubmitService(
 
         try
         {
+            var videoTypeParam = job.VideoType == VideoContentType.Unknown
+                ? ""
+                : job.VideoType.ToString().ToLowerInvariant();
+
             var url = $"{ApiBaseUrl}/api/v1/?mode=p" +
                       $"&api_key={Uri.EscapeDataString(apiKey)}" +
                       $"&crc64={Uri.EscapeDataString(job.CrcId)}" +
@@ -64,7 +68,7 @@ public sealed class DatabaseSubmitService(
                       $"&imdb={Uri.EscapeDataString(job.ImdbId ?? "")}" +
                       $"&hnt={job.HasNiceTitle}" +
                       $"&l={Uri.EscapeDataString(job.Label ?? "")}" +
-                      $"&vt={Uri.EscapeDataString(job.VideoType ?? "")}";
+                      $"&vt={Uri.EscapeDataString(videoTypeParam)}";
 
             var httpClient = httpClientFactory.CreateClient("DatabaseSubmitService");
             var responseBody = await httpClient.GetStringAsync(url, ct);

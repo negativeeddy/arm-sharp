@@ -76,7 +76,7 @@ public sealed partial class IdentifyService(
 
         // ── Auto-populate season/disc from title normalization (series only) ──
         if (titleNormalizer is not null &&
-            job.VideoType is "series" or "tv" &&
+            job.VideoType is VideoContentType.Series or VideoContentType.Tv &&
             !string.IsNullOrWhiteSpace(job.Title))
         {
             var norm = titleNormalizer.Normalize(job.Title);
@@ -194,7 +194,7 @@ public sealed partial class IdentifyService(
                     (mapping.Type.Equals("tv", StringComparison.OrdinalIgnoreCase) ||
                      mapping.Type.Equals("Series", StringComparison.OrdinalIgnoreCase)))
                 {
-                    job.VideoType = "tv";
+                    job.VideoType = VideoContentType.Tv;
                 }
 
                 if (string.IsNullOrEmpty(job.YearAuto) && !string.IsNullOrEmpty(mapping.Year))
@@ -301,14 +301,17 @@ public sealed partial class IdentifyService(
         }
 
         // Map OVID content type to ARM video type
-        if (string.IsNullOrEmpty(job.VideoTypeAuto) && !string.IsNullOrEmpty(record.Release.ContentType))
+        if (job.VideoTypeAuto is null && !string.IsNullOrEmpty(record.Release.ContentType))
         {
-            job.VideoType = job.VideoTypeAuto = record.Release.ContentType switch
+            var videoType = record.Release.ContentType switch
             {
-                "movie" => "movie",
-                "tvshow" => "tv",
-                _ => null
+                "movie" => VideoContentType.Movie,
+                "tvshow" => VideoContentType.Tv,
+                _ => (VideoContentType?)null
             };
+            job.VideoTypeAuto = videoType;
+            if (videoType is { } vt)
+                job.VideoType = vt;
         }
 
         // Cache the raw API response for later provider pipeline use
@@ -610,8 +613,13 @@ public sealed partial class IdentifyService(
                     if (string.IsNullOrEmpty(job.ImdbIdAuto))
                         job.ImdbId = job.ImdbIdAuto = first.ImdbId;
 
-                    if (string.IsNullOrEmpty(job.VideoTypeAuto))
-                        job.VideoType = job.VideoTypeAuto = first.VideoType;
+                    if (job.VideoTypeAuto is null)
+                    {
+                        var videoType = ParseVideoType(first.VideoType);
+                        job.VideoTypeAuto = videoType;
+                        if (videoType is { } vt)
+                            job.VideoType = vt;
+                    }
 
                     if (string.IsNullOrEmpty(job.PosterUrlAuto) ||
                         job.PosterUrlAuto!.Equals("N/A", StringComparison.OrdinalIgnoreCase))
@@ -895,15 +903,18 @@ public sealed partial class IdentifyService(
                     var resultPoster = first.TryGetProperty("Poster", out var po) ? po.GetString() : null;
 
                     // Only set VideoType if not already determined by authoritative source
-                    if (!string.IsNullOrEmpty(resultType) && string.IsNullOrEmpty(job.VideoTypeAuto))
+                    if (!string.IsNullOrEmpty(resultType) && job.VideoTypeAuto is null)
                     {
-                        job.VideoType = job.VideoTypeAuto = resultType switch
+                        var videoType = resultType switch
                         {
-                            "movie" => "movie",
-                            "series" => "series",
-                            "episode" => "episode",
-                            _ => null
+                            "movie" => VideoContentType.Movie,
+                            "series" => VideoContentType.Series,
+                            "episode" => VideoContentType.Episode,
+                            _ => (VideoContentType?)null
                         };
+                        job.VideoTypeAuto = videoType;
+                        if (videoType is { } vt)
+                            job.VideoType = vt;
                     }
 
                     // Update title/year from search result if ARM API didn't provide them
@@ -1277,6 +1288,13 @@ public sealed partial class IdentifyService(
         public string ImdbId { get; init; } = "";
         public string VideoType { get; init; } = "";
         public string PosterUrl { get; init; } = "";
+    }
+
+    private static VideoContentType? ParseVideoType(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return null;
+        return Enum.TryParse<VideoContentType>(value, ignoreCase: true, out var parsed) ? parsed : null;
     }
 
     /// <summary>

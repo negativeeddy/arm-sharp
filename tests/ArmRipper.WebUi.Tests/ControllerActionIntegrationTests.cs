@@ -94,7 +94,7 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
                 Title = "Original Title",
                 TitleAuto = "Original Title",
                 Year = "2026",
-                VideoType = "movie",
+                VideoType = VideoContentType.Movie,
                 DiscType = DiscType.Dvd,
                 Status = JobState.Active,
                 StartTime = DateTime.UtcNow,
@@ -268,7 +268,7 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
                 Title = "DeleteTest",
                 TitleAuto = "DeleteTest",
                 Year = "2026",
-                VideoType = "movie",
+                VideoType = VideoContentType.Movie,
                 DiscType = DiscType.Dvd,
                 Status = JobState.Success,
                 StartTime = DateTime.UtcNow,
@@ -531,7 +531,7 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
                 Title = "Old Title",
                 TitleAuto = "Old Title",
                 Year = "2025",
-                VideoType = "series",
+                VideoType = VideoContentType.Series,
                 Status = JobState.Active,
                 StartTime = DateTime.UtcNow,
                 DevPath = "/dev/sr99",
@@ -562,8 +562,8 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
             Assert.Equal("New Title", job.Title);
             Assert.Equal("2026", job.YearManual);
             Assert.Equal("2026", job.Year);
-            Assert.Equal("movie", job.VideoTypeManual);
-            Assert.Equal("movie", job.VideoType);
+            Assert.Equal(VideoContentType.Movie, job.VideoTypeManual);
+            Assert.Equal(VideoContentType.Movie, job.VideoType);
         }
     }
 
@@ -755,7 +755,7 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
                 Title = "Detail Test",
                 TitleAuto = "Detail Test",
                 Year = "2026",
-                VideoType = "movie",
+                VideoType = VideoContentType.Movie,
                 DiscType = DiscType.Dvd,
                 Status = JobState.Active,
                 StartTime = DateTime.UtcNow,
@@ -794,7 +794,7 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
                 Title = "Active Rip",
                 TitleAuto = "Active Rip",
                 Year = "2026",
-                VideoType = "movie",
+                VideoType = VideoContentType.Movie,
                 DiscType = DiscType.Dvd,
                 Status = JobState.Active,
                 StartTime = DateTime.UtcNow,

@@ -17,9 +17,10 @@
                         @foreach (var job in jobs)
                         {
                             var label = $"Job {job.Id}: {job.Title}";
-                            if (!string.IsNullOrEmpty(job.VideoType))
+                            var vt = job.VideoType.ToString();
+                            if (vt != "Unknown")
                             {
-                                label += $" ({job.VideoType})";
+                                label += $" ({vt})";
                             }
                             if (job.SeasonNumber is not null)
                             {

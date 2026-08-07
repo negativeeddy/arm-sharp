@@ -208,7 +208,7 @@ public sealed class ConductorTests : IDisposable
                 job.Title = "Test Movie";
                 job.TitleAuto = "Test Movie";
                 job.Year = "2024";
-                job.VideoType = "movie";
+                job.VideoType = VideoContentType.Movie;
                 job.HasNiceTitle = true;
             }
             return Task.CompletedTask;

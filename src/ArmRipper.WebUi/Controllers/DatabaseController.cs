@@ -121,7 +121,7 @@ public class DatabaseController(ArmDbContext db, ISettingsService settingsServic
                 TitleAuto = title,
                 YearAuto = year,
                 Status = JobState.Success,
-                VideoType = "movie",
+                VideoType = VideoContentType.Movie,
                 HasNiceTitle = true,
                 Path = dir,
                 StartTime = Directory.GetCreationTimeUtc(dir)
