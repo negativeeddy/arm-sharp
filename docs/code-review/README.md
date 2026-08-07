@@ -24,7 +24,7 @@ proposed fix.
 
 | # | Task | Priority | Status | Assignee |
 |---|------|----------|--------|----------|
-| 1 | [Fix sync-over-async in `StartImportJob`](01-fix-sync-over-async.md) | 🔴 Critical | ⬜ Todo | — |
+| 1 | [Fix sync-over-async in `StartImportJob`](01-fix-sync-over-async.md) | 🔴 Critical | ✅ Done | — |
 | 2 | [Fix `JobLogger` thread-safety](02-joblogger-thread-safety.md) | 🔴 Critical | ⬜ Todo | — |
 | 3 | [Fix `CheckMediaPresent` async gap & missing failure state](03-checkmedia-async.md) | 🔴 Critical | ⬜ Todo | — |
 
@@ -84,9 +84,9 @@ proposed fix.
 
 | Status | Count |
 |--------|-------|
-| ⬜ Todo | 27 |
+| ⬜ Todo | 26 |
 | 🔄 In Progress | 0 |
-| ✅ Done | 9 |
+| ✅ Done | 10 |
 
 ---
 
