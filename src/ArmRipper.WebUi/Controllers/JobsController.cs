@@ -244,9 +244,8 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
         // Write to job log file
         AppendToJobLog(job, $"Job resumed by user (previous status: {prevStatus}, completed stages: {job.CompletedStages})");
 
-        // Kick off a new background rip — the Conductor will skip completed stages
-        var devPath = job.DevPath ?? $"resume-{jobId}";
-        var result = backgroundRip.StartRip(devPath);
+        // Kick off a background resume — the Conductor will skip completed stages
+        var result = backgroundRip.StartResumeRip(jobId);
 
         if (result.IsRejected)
         {

@@ -89,6 +89,59 @@ public sealed class Conductor(
     }
 
     /// <summary>
+    /// Resumes a previously stopped/cancelled job from its last completed stage.
+    /// Loads the existing job from the database and proceeds through the pipeline,
+    /// skipping stages already marked in <see cref="Job.CompletedStages"/>.
+    /// </summary>
+    public async Task<int> RunResumeAsync(int jobId, CancellationToken ct = default)
+    {
+        var job = await db.Jobs
+            .Include(j => j.Config)
+            .FirstOrDefaultAsync(j => j.Id == jobId, ct);
+
+        if (job is null)
+        {
+            logger.LogError("Cannot resume job {JobId} — not found in database", jobId);
+            return 1;
+        }
+
+        try
+        {
+            var effectiveSetupSettings = await settingsService.GetEffectiveAsync(ct);
+            Setup(effectiveSetupSettings);
+            logger.LogInformation("Resuming job {JobId} from completed stages: {Stages}",
+                job.Id, job.CompletedStages ?? "(none)");
+            return await ProcessJobAsync(job, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogWarning("Resumed job {JobId} cancelled (token)", job.Id);
+            if (!job.Status.IsTerminal() && job.Status != JobState.Stopping)
+            {
+                job.Status = JobState.Stopping;
+                job.StopTime ??= DateTime.UtcNow;
+                job.ProgressMessage = "Cancelled — can be resumed";
+                try { await db.SaveChangesAsync(CancellationToken.None); } catch { /* best effort */ }
+                await BroadcastJobUpdateAsync(job);
+            }
+            return 1;
+        }
+        catch (Exception ex)
+        {
+            logger.LogCritical(ex, "Fatal error resuming job {JobId}", job.Id);
+            if (job.Status != JobState.Stopping)
+            {
+                job.Status = JobState.Failure;
+                job.Errors = ex.Message;
+                job.ProgressMessage = null;
+                try { await db.SaveChangesAsync(CancellationToken.None); } catch { /* best effort */ }
+                await BroadcastJobUpdateAsync(job);
+            }
+            return 1;
+        }
+    }
+
+    /// <summary>
     /// Creates a new forked job from an existing job and starts from the transcode stage.
     /// The new job reuses the original's metadata (title, year, video type) and config,
     /// but skips the identify and rip stages — it jumps straight to transcoding the raw file(s).
@@ -614,116 +667,135 @@ public sealed class Conductor(
                 job.Warnings = string.IsNullOrEmpty(job.Warnings) ? msg : $"{job.Warnings}; {msg}";
             }
 
-            // Identify the disc
-        job.TransitionToStage(RipStage.Identify);
-        await db.SaveChangesAsync(ct);
-        await identifyService.IdentifyAsync(job, ct);
+            var cfg = job.Config ?? await db.ConfigSnapshots
+                .FirstOrDefaultAsync(c => c.JobId == job.Id, ct);
+            var isResume = job.IsStageComplete(RipStage.Identify);
 
-        // ── Identification determined this job should not proceed? ──
-        // DetectTrack99Async may have set job.Status = Failure (e.g. track 99
-        // detected with PREVENT_99 enabled).  Check *now* before the manual
-        // wait block (which defaults to true) overwrites the status.
-        if (job.Status == JobState.Failure)
-        {
-            job.MarkStageComplete(RipStage.Identify);
-            await db.SaveChangesAsync(ct);
-            await BroadcastJobUpdateAsync(job);
-            logger.LogError("Job {JobId} failed during identification: {Errors}", job.Id, job.Errors);
-            return 1;
-        }
-
-        job.MarkStageComplete(RipStage.Identify);
-        await db.SaveChangesAsync(ct);
-        await BroadcastJobUpdateAsync(job);
-
-        if (await IsCancelledAsync(job, ct))
-            return 1;
-
-        // Check for duplicates
-        var haveDupes = await JobDupeCheckAsync(job, ct);
-        logger.LogDebug("Value of have_dupes: {HaveDupes}", haveDupes);
-
-        // ── Duplicate disc: skip the rip entirely ──
-        // If this disc (identified by Label) has already been successfully ripped
-        // and AllowDuplicates is false, cleanly skip re-ripping to prevent the
-        // auto-detect loop: disc finishes → ejects → tray closes → disc detected
-        // → would start ripping again.
-        var cfg = job.Config ?? db.ConfigSnapshots.FirstOrDefault(c => c.JobId == job.Id);
-        var allowDupes = cfg?.AllowDuplicates ?? settings.Value.AllowDuplicates;
-        if (haveDupes && !allowDupes)
-        {
-            logger.LogInformation(
-                "Disc '{Label}' (job {JobId}) has already been ripped successfully. " +
-                "AllowDuplicates is disabled — marking job as completed without re-ripping.",
-                job.Label, job.Id);
-            job.Status = JobState.Success;
-            job.StopTime = DateTime.UtcNow;
-            job.ProgressMessage = $"Duplicate disc skipped — previously ripped as \"{job.Title}\"";
-            job.Path = job.Label;
-            await db.SaveChangesAsync(ct);
-            await BroadcastJobUpdateAsync(job);
-            fileLogProvider.RemoveWriter(job.GetLogFilePath());
-            return 0;
-        }
-
-        // Manual wait for title identification
-        if (cfg is { ManualWait: true } && string.IsNullOrEmpty(job.TitleManual) && !string.IsNullOrEmpty(job.Label))
-        {
-            var waitTime = cfg.ManualWaitTime > 0 ? cfg.ManualWaitTime : 60;
-            logger.LogInformation("Waiting {Time}s for manual title override", waitTime);
-            job.Status = JobState.ManualWaitStarted;
-            job.ProgressMessage = $"Manual wait: {waitTime}s remaining";
-            await db.SaveChangesAsync(ct);
-            await BroadcastJobUpdateAsync(job);
-
-            var waited = 0;
-            while (waited < waitTime)
+            if (isResume)
             {
-                await Task.Delay(5000, ct);
-                waited += 5;
+                logger.LogInformation("Resume: skipping Identify stage (already complete)");
+                job.TransitionToStage(RipStage.Rip);
+            }
+            else
+            {
+                // Identify the disc
+                job.TransitionToStage(RipStage.Identify);
+                await db.SaveChangesAsync(ct);
+                await identifyService.IdentifyAsync(job, ct);
 
-                // Refresh job to check for UI changes
-                await db.Entry(job).ReloadAsync(ct);
-
-                if (job.Status == JobState.Cancelled)
+                // ── Identification determined this job should not proceed? ──
+                // DetectTrack99Async may have set job.Status = Failure (e.g. track 99
+                // detected with PREVENT_99 enabled).  Check *now* before the manual
+                // wait block (which defaults to true) overwrites the status.
+                if (job.Status == JobState.Failure)
                 {
-                    logger.LogInformation("Job cancelled during manual wait");
+                    job.MarkStageComplete(RipStage.Identify);
+                    await db.SaveChangesAsync(ct);
+                    await BroadcastJobUpdateAsync(job);
+                    logger.LogError("Job {JobId} failed during identification: {Errors}", job.Id, job.Errors);
                     return 1;
                 }
 
-                if (!string.IsNullOrEmpty(job.TitleManual))
-                {
-                    logger.LogInformation("Manual title override found: {Title}", job.TitleManual);
-                    break;
-                }
+                job.MarkStageComplete(RipStage.Identify);
+                await db.SaveChangesAsync(ct);
+                await BroadcastJobUpdateAsync(job);
 
-                if (job.ManualWaitResume)
+                if (await IsCancelledAsync(job, ct))
+                    return 1;
+            }
+
+            // ── Duplicate check & manual wait — only on first run ──
+            bool haveDupes = false;
+            if (!isResume)
+            {
+                haveDupes = await JobDupeCheckAsync(job, ct);
+                logger.LogDebug("Value of have_dupes: {HaveDupes}", haveDupes);
+
+                // ── Duplicate disc: skip the rip entirely ──
+                // If this disc (identified by Label) has already been successfully ripped
+                // and AllowDuplicates is false, cleanly skip re-ripping to prevent the
+                // auto-detect loop: disc finishes → ejects → tray closes → disc detected
+                // → would start ripping again.
+                var allowDupes = cfg?.AllowDuplicates ?? settings.Value.AllowDuplicates;
+                if (haveDupes && !allowDupes)
                 {
-                    logger.LogInformation("Manual wait resumed by user");
-                    job.ManualWaitResume = false;
+                    logger.LogInformation(
+                        "Disc '{Label}' (job {JobId}) has already been ripped successfully. " +
+                        "AllowDuplicates is disabled — marking job as completed without re-ripping.",
+                        job.Label, job.Id);
+                    job.Status = JobState.Success;
+                    job.StopTime = DateTime.UtcNow;
+                    job.ProgressMessage = $"Duplicate disc skipped — previously ripped as \"{job.Title}\"";
+                    job.Path = job.Label;
                     await db.SaveChangesAsync(ct);
                     await BroadcastJobUpdateAsync(job);
-                    break;
+                    fileLogProvider.RemoveWriter(job.GetLogFilePath());
+                    return 0;
                 }
 
-                // Update countdown
-                var remaining = waitTime - waited;
-                if (remaining > 0)
+                // Manual wait for title identification
+                if (cfg is { ManualWait: true } && string.IsNullOrEmpty(job.TitleManual) && !string.IsNullOrEmpty(job.Label))
                 {
-                    job.ProgressMessage = $"Manual wait: {remaining}s remaining";
+                    var waitTime = cfg.ManualWaitTime > 0 ? cfg.ManualWaitTime : 60;
+                    logger.LogInformation("Waiting {Time}s for manual title override", waitTime);
+                    job.Status = JobState.ManualWaitStarted;
+                    job.ProgressMessage = $"Manual wait: {waitTime}s remaining";
+                    await db.SaveChangesAsync(ct);
+                    await BroadcastJobUpdateAsync(job);
+
+                    var waited = 0;
+                    while (waited < waitTime)
+                    {
+                        await Task.Delay(5000, ct);
+                        waited += 5;
+
+                        // Refresh job to check for UI changes
+                        await db.Entry(job).ReloadAsync(ct);
+
+                        if (job.Status == JobState.Cancelled)
+                        {
+                            logger.LogInformation("Job cancelled during manual wait");
+                            return 1;
+                        }
+
+                        if (!string.IsNullOrEmpty(job.TitleManual))
+                        {
+                            logger.LogInformation("Manual title override found: {Title}", job.TitleManual);
+                            break;
+                        }
+
+                        if (job.ManualWaitResume)
+                        {
+                            logger.LogInformation("Manual wait resumed by user");
+                            job.ManualWaitResume = false;
+                            await db.SaveChangesAsync(ct);
+                            await BroadcastJobUpdateAsync(job);
+                            break;
+                        }
+
+                        // Update countdown
+                        var remaining = waitTime - waited;
+                        if (remaining > 0)
+                        {
+                            job.ProgressMessage = $"Manual wait: {remaining}s remaining";
+                            await db.SaveChangesAsync(ct);
+                            await BroadcastJobUpdateAsync(job);
+                        }
+                    }
+
+                    if (string.IsNullOrEmpty(job.TitleManual))
+                        logger.LogInformation("Manual wait expired, continuing with auto-identified title");
+
+                    job.Status = JobState.Active;
+                    job.ProgressMessage = "Starting rip...";
                     await db.SaveChangesAsync(ct);
                     await BroadcastJobUpdateAsync(job);
                 }
             }
-
-            if (string.IsNullOrEmpty(job.TitleManual))
-                logger.LogInformation("Manual wait expired, continuing with auto-identified title");
-
-            job.Status = JobState.Active;
-            job.ProgressMessage = "Starting rip...";
-            await db.SaveChangesAsync(ct);
-            await BroadcastJobUpdateAsync(job);
-        }
+            else
+            {
+                logger.LogInformation("Resume: skipping duplicate check & manual wait");
+            }
 
         // Notify entry
         await notificationService.NotifyEntryAsync(job, ct);

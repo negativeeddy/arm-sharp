@@ -127,6 +127,43 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
         return StartRipResult.Accepted;
     }
 
+    public StartRipResult StartResumeRip(int jobId, CancellationToken ct = default)
+    {
+        var key = $"resume-{jobId}";
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        if (!_activeRips.TryAdd(key, cts))
+        {
+            logger.LogWarning("Resume already in progress for job {JobId}", jobId);
+            return StartRipResult.Rejected($"Job {jobId} is already being resumed");
+        }
+
+        _ = Task.Run(async () =>
+        {
+            using var scope = scopeFactory.CreateScope();
+            try
+            {
+                var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
+                await conductor.RunResumeAsync(jobId, cts.Token);
+                logger.LogInformation("Resume completed for job {JobId}", jobId);
+            }
+            catch (OperationCanceledException)
+            {
+                logger.LogWarning("Resume cancelled for job {JobId}", jobId);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Resume failed for job {JobId}", jobId);
+            }
+            finally
+            {
+                _activeRips.TryRemove(key, out _);
+                cts.Dispose();
+            }
+        }, cts.Token);
+
+        return StartRipResult.Accepted;
+    }
+
     public void StartForkedJob(int originalJobId, string rawFilePath, CancellationToken ct = default, DiscType? discType = null, VideoContentType? videoType = null)
     {
         var key = $"forked-{originalJobId}-{rawFilePath.GetHashCode()}";
