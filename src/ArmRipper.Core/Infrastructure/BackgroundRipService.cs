@@ -10,11 +10,12 @@ using Microsoft.Extensions.Options;
 
 namespace ArmRipper.Core.Infrastructure;
 
-public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILoggerFactory loggerFactory, IOptions<ArmSettings> settings)
+public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILoggerFactory loggerFactory, IOptions<ArmSettings> settings, Func<string, bool>? mediaPresenceChecker = null)
     : IBackgroundRipService
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("BackgroundRipService");
     private readonly IOptions<ArmSettings> _settings = settings;
+    private readonly Func<string, bool> _isMediaPresent = mediaPresenceChecker ?? IsMediaPresent;
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeRips = new();
     private readonly ConcurrentDictionary<string, DateTime> _ejectCooldowns = new();
 
@@ -88,7 +89,7 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
                 // that media is actually present before touching the
                 // drive.  This catches the edge case where sysfs
                 // reports stale cached data after cooldown expiry.
-                if (!IsMediaPresent(devPath))
+                if (!_isMediaPresent(devPath))
                 {
                     logger.LogInformation(
                         "Not starting rip for {DevPath} — no media detected via sysfs", devPath);

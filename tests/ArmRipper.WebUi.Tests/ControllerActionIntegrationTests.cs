@@ -823,12 +823,44 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
     [Fact]
     public async Task DatabaseImport_ReturnsJson()
     {
-        var client = await CreateAuthenticatedClientAsync();
-        var response = await client.GetAsync("/database/import");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        // Configure the completed path to a temp dir so the import scans
+        // real "Title (Year)" folders regardless of the host environment.
+        var tempDir = Path.Combine(Path.GetTempPath(), "armtest", Guid.NewGuid().ToString());
+        var completedPath = Path.Combine(tempDir, "completed");
+        Directory.CreateDirectory(Path.Combine(completedPath, "Test Movie (2024)"));
 
-        var json = await response.Content.ReadAsStringAsync();
-        Assert.Contains("added", json, StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            var client = _factory.WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureServices(services =>
+                {
+                    services.PostConfigure<ArmSettings>(a =>
+                    {
+                        a.CompletedPath = completedPath;
+                        a.DisableLogin = false;
+                    });
+                });
+            }).CreateClient();
+            client = await AuthenticateAsync(client);
+
+            var response = await client.GetAsync("/database/import");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            var json = await response.Content.ReadAsStringAsync();
+            Assert.Contains("added", json, StringComparison.OrdinalIgnoreCase);
+
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var imported = await db.Jobs.FirstOrDefaultAsync(j => j.Title == "Test Movie" && j.Year == "2024");
+            Assert.NotNull(imported);
+            Assert.Equal(completedPath + Path.DirectorySeparatorChar + "Test Movie (2024)", imported.Path);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
     }
 
     [Fact]

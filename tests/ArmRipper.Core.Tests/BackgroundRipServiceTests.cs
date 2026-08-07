@@ -103,7 +103,7 @@ public sealed class BackgroundRipServiceTests
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
-        var service = new BackgroundRipService(scopeFactory.Object, NullLoggerFactory.Instance, CreateSettings());
+        var service = new BackgroundRipService(scopeFactory.Object, NullLoggerFactory.Instance, CreateSettings(), _ => true);
         var result = service.StartRip("/dev/sr0");
         await WaitForBackgroundTaskAsync(() => conductorRun);
 
@@ -134,7 +134,7 @@ public sealed class BackgroundRipServiceTests
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
-        var service = new BackgroundRipService(scopeFactory.Object, NullLoggerFactory.Instance, CreateSettings());
+        var service = new BackgroundRipService(scopeFactory.Object, NullLoggerFactory.Instance, CreateSettings(), _ => true);
         var result = service.StartRip("/dev/sr0");
         await WaitForBackgroundTaskAsync(() => true);
 
@@ -163,7 +163,7 @@ public sealed class BackgroundRipServiceTests
         var scopeFactory = new Mock<IServiceScopeFactory>();
         scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
 
-        var service = new BackgroundRipService(scopeFactory.Object, NullLoggerFactory.Instance, CreateSettings());
+        var service = new BackgroundRipService(scopeFactory.Object, NullLoggerFactory.Instance, CreateSettings(), _ => true);
 
         using var cts = new CancellationTokenSource();
         cts.Cancel();
@@ -212,7 +212,7 @@ public sealed class BackgroundRipServiceTests
         // ── 2. Conductor: 1st call blocks, 2nd call recorded ──
         var fix = CreateBlockingConductor(db);
 
-        var service = new BackgroundRipService(fix.ScopeFactoryMock.Object, NullLoggerFactory.Instance, CreateSettings());
+        var service = new BackgroundRipService(fix.ScopeFactoryMock.Object, NullLoggerFactory.Instance, CreateSettings(), _ => true);
 
         // ── 3. First StartRip — adds to _activeRips, starts first pipeline ──
         var result1 = service.StartRip("/dev/sr0");
@@ -246,7 +246,7 @@ public sealed class BackgroundRipServiceTests
         // ── 2. Conductor: 1st call blocks, 2nd call should never happen ──
         var fix = CreateBlockingConductor(db);
 
-        var service = new BackgroundRipService(fix.ScopeFactoryMock.Object, NullLoggerFactory.Instance, CreateSettings());
+        var service = new BackgroundRipService(fix.ScopeFactoryMock.Object, NullLoggerFactory.Instance, CreateSettings(), _ => true);
 
         // ── 3. First StartRip — adds to _activeRips ──
         var result1 = service.StartRip("/dev/sr0");
@@ -279,7 +279,7 @@ public sealed class BackgroundRipServiceTests
         // ── 2. Conductor: 1st call blocks, 2nd call recorded ──
         var fix = CreateBlockingConductor(db);
 
-        var service = new BackgroundRipService(fix.ScopeFactoryMock.Object, NullLoggerFactory.Instance, CreateSettings());
+        var service = new BackgroundRipService(fix.ScopeFactoryMock.Object, NullLoggerFactory.Instance, CreateSettings(), _ => true);
 
         // ── 3. First StartRip ──
         var result1 = service.StartRip("/dev/sr0");
@@ -312,7 +312,7 @@ public sealed class BackgroundRipServiceTests
         // ── 2. Conductor: 1st call blocks, 2nd call recorded ──
         var fix = CreateBlockingConductor(db);
 
-        var service = new BackgroundRipService(fix.ScopeFactoryMock.Object, NullLoggerFactory.Instance, CreateSettings());
+        var service = new BackgroundRipService(fix.ScopeFactoryMock.Object, NullLoggerFactory.Instance, CreateSettings(), _ => true);
 
         // ── 3. First StartRip ──
         var result1 = service.StartRip("/dev/sr0");

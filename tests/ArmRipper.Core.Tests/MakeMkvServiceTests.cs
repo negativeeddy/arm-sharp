@@ -52,6 +52,22 @@ public sealed class MakeMkvServiceTests : IDisposable
         }
     }
 
+    private static async IAsyncEnumerable<(string? Line, bool IsStdErr, int? ExitCode)> ToStreamingAllAsync(params string[] lines)
+    {
+        foreach (var line in lines)
+        {
+            yield return (line, false, null);
+            await Task.CompletedTask;
+        }
+    }
+
+    private static async IAsyncEnumerable<(string? Line, bool IsStdErr, int? ExitCode)> ThrowingStreamingAllAsync()
+    {
+        yield return (null, false, null);
+        await Task.CompletedTask;
+        throw new OperationCanceledException();
+    }
+
 
 
     // ── ParseLine tests ──────────────────────────────────────────
@@ -246,13 +262,12 @@ public sealed class MakeMkvServiceTests : IDisposable
     public async Task GetTrackInfoAsync_TimedOut_ReturnsEmptyList()
     {
         _runnerMock
-            .Setup(r => r.RunAsync(
+            .Setup(r => r.RunStreamingAllAsync(
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
-                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CliResult(0, "", "", TimedOut: true));
+            .Returns(ThrowingStreamingAllAsync());
 
         var job = TestHelpers.CreateTestJob();
         var tracks = await _service.GetTrackInfoAsync(job, "base");
@@ -284,13 +299,12 @@ public sealed class MakeMkvServiceTests : IDisposable
             """;
 
         _runnerMock
-            .Setup(r => r.RunAsync(
+            .Setup(r => r.RunStreamingAllAsync(
                 "makemkvcon",
-                It.Is<string>(a => a.Contains("info")),
+                It.IsAny<string>(),
                 It.IsAny<string?>(),
-                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CliResult(0, output, "", false));
+            .Returns(ToStreamingAllAsync(output.Split('\n')));
 
         var job = TestHelpers.CreateTestJob();
         var tracks = await _service.GetTrackInfoAsync(job, "base");
@@ -319,13 +333,12 @@ public sealed class MakeMkvServiceTests : IDisposable
     public async Task GetTrackInfoAsync_WithNoOutput_ReturnsEmptyList()
     {
         _runnerMock
-            .Setup(r => r.RunAsync(
+            .Setup(r => r.RunStreamingAllAsync(
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
-                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CliResult(0, "", "", false));
+            .Returns(ToStreamingAllAsync());
 
         var job = TestHelpers.CreateTestJob();
         var tracks = await _service.GetTrackInfoAsync(job, "base");
@@ -347,13 +360,12 @@ public sealed class MakeMkvServiceTests : IDisposable
             """;
 
         _runnerMock
-            .Setup(r => r.RunAsync(
+            .Setup(r => r.RunStreamingAllAsync(
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
-                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CliResult(0, output, "", false));
+            .Returns(ToStreamingAllAsync(output.Split('\n')));
 
         var job = TestHelpers.CreateTestJob(j => j.DiscFingerprint = "VOL::12345");
         var tracks = await _service.GetTrackInfoAsync(job, "base");
@@ -423,13 +435,12 @@ public sealed class MakeMkvServiceTests : IDisposable
     public async Task GetTrackInfoWithCacheAsync_CacheMiss_CallsGetTrackInfo()
     {
         _runnerMock
-            .Setup(r => r.RunAsync(
+            .Setup(r => r.RunStreamingAllAsync(
                 "makemkvcon",
-                It.Is<string>(a => a.Contains("info")),
+                It.IsAny<string>(),
                 It.IsAny<string?>(),
-                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CliResult(0, "TCOUNT:1\nTINFO:0,9,0,\"00:30:00\"\nTINFO:0,27,0,\"title00.mkv\"\n", "", false));
+            .Returns(ToStreamingAllAsync("TCOUNT:1", "TINFO:0,9,0,\"00:30:00\"", "TINFO:0,27,0,\"title00.mkv\""));
 
         var job = TestHelpers.CreateTestJob(j => j.DiscFingerprint = "UNIQUE::999");
         var tracks = await _service.GetTrackInfoWithCacheAsync(job, "base");
@@ -442,13 +453,12 @@ public sealed class MakeMkvServiceTests : IDisposable
     public async Task GetTrackInfoWithCacheAsync_NoFingerprint_CallsGetTrackInfo()
     {
         _runnerMock
-            .Setup(r => r.RunAsync(
+            .Setup(r => r.RunStreamingAllAsync(
                 "makemkvcon",
-                It.Is<string>(a => a.Contains("info")),
+                It.IsAny<string>(),
                 It.IsAny<string?>(),
-                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CliResult(0, "TCOUNT:1\nTINFO:0,9,0,\"00:10:00\"\nTINFO:0,27,0,\"title00.mkv\"\n", "", false));
+            .Returns(ToStreamingAllAsync("TCOUNT:1", "TINFO:0,9,0,\"00:10:00\"", "TINFO:0,27,0,\"title00.mkv\""));
 
         var job = TestHelpers.CreateTestJob(j => j.DiscFingerprint = null);
         var tracks = await _service.GetTrackInfoWithCacheAsync(job, "base");
@@ -570,10 +580,7 @@ public sealed class MakeMkvServiceTests : IDisposable
     [InlineData("", "")]
     public void StripQuotes_RemovesSurroundingQuotes(string input, string expected)
     {
-        var mi = typeof(MakeMkvService).GetMethod("StripQuotes",
-            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-        var result = mi!.Invoke(null, [input]);
-        Assert.Equal(expected, result);
+        Assert.Equal(expected, MakeMkvOutputParser.StripQuotes(input));
     }
 
     [Theory]
@@ -583,10 +590,7 @@ public sealed class MakeMkvServiceTests : IDisposable
     [InlineData("02:00:00", 7200)]
     public void HmsToSeconds_ConvertsCorrectly(string hms, int expected)
     {
-        var mi = typeof(MakeMkvService).GetMethod("HmsToSeconds",
-            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-        var result = mi!.Invoke(null, [hms]);
-        Assert.Equal(expected, result);
+        Assert.Equal(expected, MakeMkvOutputParser.HmsToSeconds(hms));
     }
 
     [Theory]
@@ -596,11 +600,7 @@ public sealed class MakeMkvServiceTests : IDisposable
     [InlineData("single", new[] { "single" })]
     public void SplitCsv_SplitsCorrectly(string input, string[] expected)
     {
-        var mi = typeof(MakeMkvService).GetMethod("SplitCsv",
-            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-        var result = mi!.Invoke(null, [input]) as string[];
-        Assert.NotNull(result);
-        Assert.Equal(expected, result);
+        Assert.Equal(expected, MakeMkvOutputParser.SplitCsv(input));
     }
 
     [Theory]
@@ -643,7 +643,7 @@ public sealed class MakeMkvServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task RipTrackAsync_NoProgress_DoesNotReport()
+    public async Task RipTrackAsync_NoProgressLines_ReportsOnlyCompletion()
     {
         _runnerMock
             .Setup(r => r.RunStreamingAsync(
@@ -661,6 +661,8 @@ public sealed class MakeMkvServiceTests : IDisposable
 
         await _service.RipTrackAsync(job, "0", "/out", "", 0, progress);
 
-        Assert.Empty(reported);
+        // Non-progress lines must not report intermediate values, but the
+        // service reports 100% once the rip completes.
+        Assert.Equal([100], reported);
     }
 }
