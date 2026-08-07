@@ -15,14 +15,12 @@ public sealed class ArmRipperServiceLogicTests
     }
 
     [Theory]
-    [InlineData("movie", "movies")]
-    [InlineData("series", "tv")]
-    [InlineData("MOVIE", "movies")]
-    [InlineData("SERIES", "tv")]
-    [InlineData("unknown", "unidentified")]
-    [InlineData(null, "unidentified")]
-    [InlineData("", "unidentified")]
-    public void ConvertJobType_VariousInputs_ReturnsCorrectFolder(string? input, string expected)
+    [InlineData(VideoContentType.Movie, "movies")]
+    [InlineData(VideoContentType.Series, "tv")]
+    [InlineData(VideoContentType.Tv, "unidentified")]
+    [InlineData(VideoContentType.Episode, "unidentified")]
+    [InlineData(VideoContentType.Unknown, "unidentified")]
+    public void ConvertJobType_VariousInputs_ReturnsCorrectFolder(VideoContentType input, string expected)
     {
         var method = GetStaticMethod("ConvertJobType");
         var result = method.Invoke(null, [input]);

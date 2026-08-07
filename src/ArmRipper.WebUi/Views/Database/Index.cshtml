@@ -76,7 +76,7 @@ else
                         }
                     </td>
                     <td>@job.Year</td>
-                    <td>@(job.VideoType ?? job.DiscType.ToString())</td>
+                    <td>@(job.VideoType == VideoContentType.Unknown ? job.DiscType.ToString() : job.VideoType.ToString())</td>
                     <td>@job.Status</td>
                     <td class="text-nowrap">@job.StartTime.ToLocalTime().ToString("g")</td>
                     <td class="text-nowrap">

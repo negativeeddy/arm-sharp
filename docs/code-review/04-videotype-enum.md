@@ -6,7 +6,7 @@
 - `src/ArmRipper.Core/Models/VideoContentType.cs`
 - All call sites comparing `VideoType` to `"series"`, `"tv"`, `"movie"`
 
-**Status:** ⬜ Todo
+**Status:** ✅ Done
 
 ---
 

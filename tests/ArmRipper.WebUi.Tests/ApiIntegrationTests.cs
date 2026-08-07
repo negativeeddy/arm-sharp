@@ -50,7 +50,7 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
                 {
                     Title = "Test Movie",
                     Year = "2026",
-                    VideoType = "movie",
+                    VideoType = VideoContentType.Movie,
                     DiscType = DiscType.Dvd,
                     Status = JobState.Active,
                     StartTime = DateTime.UtcNow,

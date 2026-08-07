@@ -1,5 +1,6 @@
 using ArmRipper.Core.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace ArmRipper.Core.Infrastructure.Data;
 
@@ -23,6 +24,16 @@ public class ArmDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        // VideoType is stored as its lowercase enum name (e.g. "movie", "series")
+        // to remain compatible with legacy lowercase data. Reads are case-insensitive.
+        var videoTypeToString = new ValueConverter<VideoContentType, string>(
+            v => v.ToString().ToLowerInvariant(),
+            v => ParseVideoType(v));
+
+        var nullableVideoTypeToString = new ValueConverter<VideoContentType?, string?>(
+            v => v.HasValue ? v.Value.ToString().ToLowerInvariant() : null,
+            v => string.IsNullOrEmpty(v) ? null : ParseVideoType(v));
+
         modelBuilder.Entity<Job>(entity =>
         {
             entity.ToTable("jobs");
@@ -38,9 +49,9 @@ public class ArmDbContext : DbContext
             entity.Property(e => e.Year).HasMaxLength(4);
             entity.Property(e => e.YearAuto).HasMaxLength(4);
             entity.Property(e => e.YearManual).HasMaxLength(4);
-            entity.Property(e => e.VideoType).HasMaxLength(20);
-            entity.Property(e => e.VideoTypeAuto).HasMaxLength(20);
-            entity.Property(e => e.VideoTypeManual).HasMaxLength(20);
+            entity.Property(e => e.VideoType).HasConversion(videoTypeToString).HasMaxLength(20);
+            entity.Property(e => e.VideoTypeAuto).HasConversion(nullableVideoTypeToString).HasMaxLength(20);
+            entity.Property(e => e.VideoTypeManual).HasConversion(nullableVideoTypeToString).HasMaxLength(20);
             entity.Property(e => e.ImdbId).HasMaxLength(15);
             entity.Property(e => e.ImdbIdAuto).HasMaxLength(15);
             entity.Property(e => e.ImdbIdManual).HasMaxLength(15);
@@ -182,4 +193,9 @@ public class ArmDbContext : DbContext
             entity.Property(e => e.TrackMappingsJson);
         });
     }
+
+    private static VideoContentType ParseVideoType(string value) =>
+        Enum.TryParse<VideoContentType>(value, ignoreCase: true, out var parsed)
+            ? parsed
+            : VideoContentType.Unknown;
 }

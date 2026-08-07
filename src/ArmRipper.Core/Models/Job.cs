@@ -22,9 +22,9 @@ public class Job
     public string? Year { get; set; }
     public string? YearAuto { get; set; }
     public string? YearManual { get; set; }
-    public string? VideoType { get; set; }
-    public string? VideoTypeAuto { get; set; }
-    public string? VideoTypeManual { get; set; }
+    public VideoContentType VideoType { get; set; } = VideoContentType.Unknown;
+    public VideoContentType? VideoTypeAuto { get; set; }
+    public VideoContentType? VideoTypeManual { get; set; }
     public string? ImdbId { get; set; }
     public string? ImdbIdAuto { get; set; }
     public string? ImdbIdManual { get; set; }

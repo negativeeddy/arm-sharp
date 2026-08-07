@@ -97,7 +97,7 @@ public sealed class ArmRipperService(
         // transcode and move steps can use episode numbers/titles.
         await db.Entry(job).Collection(j => j.Tracks).LoadAsync(ct);
         if (episodeOrchestrator is not null &&
-            (job.VideoType == "series" || job.VideoType == "tv"))
+            (job.VideoType is VideoContentType.Series or VideoContentType.Tv))
         {
             await RunEpisodeIdentificationAsync(job, makeMkvOutPath, ct);
         }
@@ -593,7 +593,7 @@ public sealed class ArmRipperService(
                 logger.LogDebug("ffmpeg_mkv: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
                 await ffmpeg.TranscodeMkvAsync(job, rawInPath, transcodeOutPath, TranscodeProgress(job, "Transcoding MKV files", ct), ct);
             }
-            else if ((job.VideoType == "movie" || job.VideoType is null) && (job.Config?.MainFeature ?? settings.Value.MainFeature))
+            else if ((job.VideoType is VideoContentType.Unknown or VideoContentType.Movie) && (job.Config?.MainFeature ?? settings.Value.MainFeature))
             {
                 logger.LogDebug("ffmpeg_main_feature: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
                 await ffmpeg.TranscodeMainFeatureAsync(job, rawInPath, transcodeOutPath, TranscodeProgress(job, "Transcoding main feature", ct), ct);
@@ -619,7 +619,7 @@ public sealed class ArmRipperService(
                 logger.LogDebug("handbrake_mkv: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
                 await handBrake.TranscodeMkvAsync(job, rawInPath, transcodeOutPath, TranscodeProgress(job, "Transcoding MKV files", ct), ct);
             }
-            else if ((job.VideoType == "movie" || job.VideoType is null) && (job.Config?.MainFeature ?? settings.Value.MainFeature))
+            else if ((job.VideoType is VideoContentType.Unknown or VideoContentType.Movie) && (job.Config?.MainFeature ?? settings.Value.MainFeature))
             {
                 logger.LogDebug("handbrake_main_feature: {RawInPath}, {TranscodeOutPath}", rawInPath, transcodeOutPath);
                 await handBrake.TranscodeMainFeatureAsync(job, rawInPath, transcodeOutPath, TranscodeProgress(job, "Transcoding main feature", ct), ct);
@@ -900,7 +900,7 @@ public sealed class ArmRipperService(
         // based on physical track order so output files get proper SxxExx names.
         // Parses disc number from the label (e.g., "_D2" → disc 2) so multi-disc
         // sets don't restart at episode 1 on every disc.
-        if (job.VideoType == "series" || job.VideoType == "tv")
+        if (job.VideoType is VideoContentType.Series or VideoContentType.Tv)
         {
             int discNumber = ParseDiscNumber(job.Label);
 
@@ -948,7 +948,7 @@ public sealed class ArmRipperService(
             }
             else
             {
-                if (track.Source == "MakeMKV" && job.VideoType == "movie")
+                if (track.Source == "MakeMKV" && job.VideoType == VideoContentType.Movie)
                 {
                     SkipTranscodeMovie(Directory.GetFiles(transcodeOutPath).Select(Path.GetFileName).Cast<string>().ToList(), job, transcodeOutPath);
                     break;
@@ -961,7 +961,7 @@ public sealed class ArmRipperService(
         //     {completed}/tv/Series Name/Season XX/ instead of the flat
         //     {completed}/tv/DISC_LABEL/ directory that was set at startup.
         //     The Conductor uses job.Path for the final output verification.
-        if (job.VideoType == "series" || job.VideoType == "tv")
+        if (job.VideoType is VideoContentType.Series or VideoContentType.Tv)
         {
             var cleanSeries = CleanSeriesTitle(job.Title ?? "Unknown Series");
             var completedBase = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value);
@@ -990,7 +990,7 @@ public sealed class ArmRipperService(
     {
         logger.LogDebug("Videotype: {VideoType}", job.VideoType);
 
-        if (job.VideoType != "movie") return;
+        if (job.VideoType != VideoContentType.Movie) return;
 
         logger.LogDebug("Finding largest file");
         var largestFileName = FindLargestFile(files, rawPath);
@@ -1061,7 +1061,7 @@ public sealed class ArmRipperService(
 
         // ── TV episode naming (DiscDb-mapped) ──
         var useEpisodeNaming = track?.EpisodeNumber is not null &&
-                               (job.VideoType == "series" || job.VideoType == "tv");
+                               (job.VideoType is VideoContentType.Series or VideoContentType.Tv);
 
         if (useEpisodeNaming)
         {
@@ -1132,7 +1132,7 @@ public sealed class ArmRipperService(
         }
         else
         {
-            var extrasPath = job.VideoType != "series" && !string.IsNullOrEmpty(job.Config?.ExtrasSub)
+            var extrasPath = job.VideoType != VideoContentType.Series && !string.IsNullOrEmpty(job.Config?.ExtrasSub)
                 ? Path.Combine(moviePath, job.Config.ExtrasSub)
                 : moviePath;
 
@@ -1281,12 +1281,12 @@ public sealed class ArmRipperService(
         return job.TitleManual ?? job.Title ?? "unknown";
     }
 
-    internal static string ConvertJobType(string? videoType)
+    internal static string ConvertJobType(VideoContentType videoType)
     {
-        return videoType?.ToLowerInvariant() switch
+        return videoType switch
         {
-            "movie" => "movies",
-            "series" => "tv",
+            VideoContentType.Movie => "movies",
+            VideoContentType.Series => "tv",
             _ => "unidentified"
         };
     }

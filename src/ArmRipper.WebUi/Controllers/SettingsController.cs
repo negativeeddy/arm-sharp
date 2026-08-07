@@ -63,8 +63,8 @@ public class SettingsController(
 
         var totalJobs = await db.Jobs.CountAsync(ct);
         var failedJobs = await db.Jobs.CountAsync(j => j.Status == JobState.Failure, ct);
-        var movies = await db.Jobs.CountAsync(j => j.VideoType == "movie", ct);
-        var series = await db.Jobs.CountAsync(j => j.VideoType == "series", ct);
+        var movies = await db.Jobs.CountAsync(j => j.VideoType == VideoContentType.Movie, ct);
+        var series = await db.Jobs.CountAsync(j => j.VideoType == VideoContentType.Series, ct);
 
         ViewBag.Stats = new Dictionary<string, object>
         {

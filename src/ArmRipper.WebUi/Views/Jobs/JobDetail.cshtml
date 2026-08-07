@@ -263,16 +263,16 @@
                                 <td><strong>@Model.Year</strong></td>
                             </tr>
                             <tr>
-                                <td>Video Type</td><td>@(Model.VideoTypeAuto ?? "—")</td>
+                                <td>Video Type</td><td>@(Model.VideoTypeAuto?.ToString() ?? "—")</td>
                                 <td>
                                     <select name="videoType" class="form-select form-select-sm">
                                         <option value="">—</option>
-                                        <option value="movie" selected="@(Model.VideoTypeManual == "movie")">movie</option>
-                                        <option value="series" selected="@(Model.VideoTypeManual == "series")">series</option>
-                                        <option value="episode" selected="@(Model.VideoTypeManual == "episode")">episode</option>
+                                        <option value="movie" selected="@(Model.VideoTypeManual == VideoContentType.Movie)">movie</option>
+                                        <option value="series" selected="@(Model.VideoTypeManual == VideoContentType.Series)">series</option>
+                                        <option value="episode" selected="@(Model.VideoTypeManual == VideoContentType.Episode)">episode</option>
                                     </select>
                                 </td>
-                                <td><strong>@Model.VideoType</strong></td>
+                                <td><strong>@(Model.VideoType == VideoContentType.Unknown ? "—" : Model.VideoType.ToString())</strong></td>
                             </tr>
                             <tr>
                                 <td>IMDb ID</td><td>@(Model.ImdbIdAuto ?? "—")</td>

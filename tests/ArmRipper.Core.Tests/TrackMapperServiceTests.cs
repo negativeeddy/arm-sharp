@@ -40,7 +40,7 @@ public class TrackMapperServiceTests
     public async Task MapTracksAsync_ExactIndexMatch_MapsEpisodeData()
     {
         var (service, db) = CreateService();
-        var job = new Job { Title = "Test Series", VideoType = "series" };
+        var job = new Job { Title = "Test Series", VideoType = VideoContentType.Series };
         var track = new Track
         {
             TrackNumber = "1",
@@ -126,7 +126,7 @@ public class TrackMapperServiceTests
     public async Task MapTracksAsync_TrackIndexMismatchButDurationMatch_MapsWithLowerConfidence()
     {
         var (service, db) = CreateService();
-        var job = new Job { Title = "Test Movie", VideoType = "movie" };
+        var job = new Job { Title = "Test Movie", VideoType = VideoContentType.Movie };
         var track = new Track
         {
             TrackNumber = "5", // Different from DiscDb index 2
@@ -213,7 +213,7 @@ public class TrackMapperServiceTests
     public async Task MapTracksAsync_MultipleTracks_MapsAllMatching()
     {
         var (service, db) = CreateService();
-        var job = new Job { Title = "TV Show S1", VideoType = "series" };
+        var job = new Job { Title = "TV Show S1", VideoType = VideoContentType.Series };
         var track1 = new Track { TrackNumber = "1", Length = 45 * 60, FileName = "title_t00.mkv" };
         var track2 = new Track { TrackNumber = "2", Length = 46 * 60, FileName = "title_t01.mkv" };
         var track3 = new Track { TrackNumber = "3", Length = 44 * 60, FileName = "title_t02.mkv" };

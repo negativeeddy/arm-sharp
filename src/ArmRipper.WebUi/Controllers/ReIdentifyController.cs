@@ -43,7 +43,7 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
             return Json(new { error = "Job is not completed; only completed jobs can be re-identified." });
 
         // Only process series/tv jobs
-        if (job.VideoType != "series" && job.VideoType != "tv")
+        if (job.VideoType is not VideoContentType.Series and not VideoContentType.Tv)
             return Json(new { error = $"Job is not a TV series (type={job.VideoType})." });
 
         var rippedTracks = job.Tracks
@@ -262,7 +262,7 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
             originalSeason    = job.SeasonNumber,
             seasonOverridden  = seasonOverride.HasValue && seasonOverride != job.SeasonNumber,
             discLabel         = job.Label,
-            videoType         = job.VideoType,
+            videoType         = job.VideoType.ToString(),
             trackCount        = rippedTracks.Count,
             startingEpisodeNumber,
             comparison,
