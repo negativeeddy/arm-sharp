@@ -54,7 +54,7 @@ proposed fix.
 
 | # | Task | Priority | Status | Assignee |
 |---|------|----------|--------|----------|
-| 14 | [Audit & fix null-forgiving operators (`!`)](14-null-forgiving-audit.md) | 🔴 Critical | ⬜ Todo | — |
+| 14 | [Audit & fix null-forgiving operators (`!`)](14-null-forgiving-audit.md) | 🔴 Critical | ✅ Done | — |
 | 15 | [Deep-review `Conductor.ProcessJobAsync`](15-deep-review-processjobasync.md) | 🔴 Critical | ✅ Done | — |
 | 16 | [Deep-review `CompletedStages` resume logic](16-deep-review-completedstages.md) | 🔴 Critical | ✅ Done | — |
 | 17 | [Deep-review `MakeMkvOutputParser`](17-deep-review-makemkv-parser.md) | 🟡 Medium | ⬜ Todo | — |
@@ -84,9 +84,9 @@ proposed fix.
 
 | Status | Count |
 |--------|-------|
-| ⬜ Todo | 21 |
+| ⬜ Todo | 20 |
 | 🔄 In Progress | 0 |
-| ✅ Done | 15 |
+| ✅ Done | 16 |
 
 ---
 

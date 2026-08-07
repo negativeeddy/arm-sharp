@@ -107,6 +107,10 @@ public sealed class ArmRipperService(
         // via WebUI during episode identification.
         await db.Entry(job).ReloadAsync(ct);
 
+        // transcodeInPath must be set by this point — either from DevPath or MakeMKV output
+        if (transcodeInPath is null)
+            throw new InvalidOperationException($"Job {job.Id}: transcodeInPath is null — DevPath may not have been set");
+
         // Track whether the transcode phase completed successfully so we can
         // decide later whether it is safe to delete the raw source files.
         var transcodeSucceeded = job.IsStageComplete(RipStage.Transcode);
@@ -117,7 +121,7 @@ public sealed class ArmRipperService(
         }
         else
         {
-            await StartTranscodeAsync(job, logFile, transcodeInPath!, transcodeOutPath, protection, ct);
+            await StartTranscodeAsync(job, logFile, transcodeInPath, transcodeOutPath, protection, ct);
             transcodeSucceeded = job.Status != JobState.Failure;
             if (transcodeSucceeded)
             {
@@ -147,7 +151,7 @@ public sealed class ArmRipperService(
         if ((job.Config?.SkipTranscode ?? settings.Value.SkipTranscode) && useMakeMkv)
         {
             DeleteRawFiles(new[] { transcodeOutPath });
-            transcodeOutPath = transcodeInPath!;
+            transcodeOutPath = transcodeInPath;
         }
 
         logger.LogDebug("Job title manual status: [{TitleManual}]", job.TitleManual);
@@ -460,7 +464,11 @@ public sealed class ArmRipperService(
             {
                 var firstTrack = eligibleTracks.FirstOrDefault();
                 if (firstTrack is not null)
-                    await makeMkv.RipTrackAsync(job, firstTrack.TrackNumber!, makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping track 0", ct), ct);
+                {
+                    var trackNum = firstTrack.TrackNumber ?? throw new InvalidOperationException(
+                        $"Track {firstTrack.Id} has no TrackNumber — cannot rip");
+                    await makeMkv.RipTrackAsync(job, trackNum, makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping track 0", ct), ct);
+                }
                 else
                     await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping track 0", ct), ct);
             }
@@ -474,7 +482,9 @@ public sealed class ArmRipperService(
                 {
                     // We already identified the exact track (the longest one), so pass
                     // minLength=0 to prevent MakeMKV from filtering it out with --minlength.
-                    await makeMkv.RipTrackAsync(job, main.TrackNumber!, makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping main feature", ct), ct);
+                    var trackNum = main.TrackNumber ?? throw new InvalidOperationException(
+                        $"Main-feature track {main.Id} has no TrackNumber — cannot rip");
+                    await makeMkv.RipTrackAsync(job, trackNum, makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping main feature", ct), ct);
                     ripCount = 1;
                 }
             }
@@ -495,8 +505,13 @@ public sealed class ArmRipperService(
                     // DiscDb-promoted tracks (with EpisodeTitle) may be shorter than the
                     // configured minLength — we already decided to rip them, so tell MakeMKV
                     // not to filter them out by passing minLength=0.
+                    if (track.TrackNumber is null)
+                    {
+                        logger.LogWarning("Track {TrackId} has no TrackNumber — skipping", track.Id);
+                        continue;
+                    }
                     var trackMinLength = !string.IsNullOrEmpty(track.EpisodeTitle) ? 0 : minLengthCfg;
-                    await makeMkv.RipTrackAsync(job, track.TrackNumber!, makeMkvOutPath, mkvArgs, trackMinLength, MkvProgress(job, $"Ripping track {trackNum} of {eligibleTracks.Count}", ct), ct);
+                    await makeMkv.RipTrackAsync(job, track.TrackNumber, makeMkvOutPath, mkvArgs, trackMinLength, MkvProgress(job, $"Ripping track {trackNum} of {eligibleTracks.Count}", ct), ct);
                     ripCount++;
                 }
             }
@@ -945,9 +960,15 @@ public sealed class ArmRipperService(
 
         foreach (var track in tracks)
         {
+            if (track.FileName is null)
+            {
+                logger.LogWarning("Track {TrackId} has no FileName — skipping move", track.Id);
+                continue;
+            }
+
             if (tracks.Count == 1)
             {
-                MoveFiles(transcodeOutPath, track.FileName!, job, true, track);
+                MoveFiles(transcodeOutPath, track.FileName, job, true, track);
             }
             else
             {
@@ -956,7 +977,7 @@ public sealed class ArmRipperService(
                     SkipTranscodeMovie(Directory.GetFiles(transcodeOutPath).Select(Path.GetFileName).Cast<string>().ToList(), job, transcodeOutPath);
                     break;
                 }
-                MoveFiles(transcodeOutPath, track.FileName!, job, track.MainFeature, track);
+                MoveFiles(transcodeOutPath, track.FileName, job, track.MainFeature, track);
             }
         }
 
@@ -1014,9 +1035,12 @@ public sealed class ArmRipperService(
         }
 
         // Build a lookup from filename to Track so we can pass DiscDb metadata
-        var trackByFileName = job.Tracks
-            .Where(t => !string.IsNullOrEmpty(t.FileName))
-            .ToDictionary(t => t.FileName!, StringComparer.OrdinalIgnoreCase);
+        var trackByFileName = new Dictionary<string, Track>(StringComparer.OrdinalIgnoreCase);
+        foreach (var t in job.Tracks)
+        {
+            if (!string.IsNullOrEmpty(t.FileName))
+                trackByFileName[t.FileName] = t;
+        }
 
         foreach (var file in files)
         {
@@ -1098,13 +1122,12 @@ public sealed class ArmRipperService(
 
         // ── Extras routing by content type (DiscDb-mapped) ──
         var contentType = track?.ContentType;
-        var useContentBasedExtras = !string.IsNullOrEmpty(contentType) &&
-                                    contentType != "main" &&
-                                    contentType != "unknown";
-
-        if (useContentBasedExtras)
+        if (!string.IsNullOrEmpty(contentType) &&
+            contentType != "main" &&
+            contentType != "unknown")
         {
-            var extrasSubFolder = GetExtrasSubFolder(contentType!, job);
+            // contentType is non-null here because the if-condition guards against null/empty
+            var extrasSubFolder = GetExtrasSubFolder(contentType, job);
             var extrasPath = Path.Combine(moviePath, extrasSubFolder);
             EnsureDirectory(extrasPath);
 

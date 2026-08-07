@@ -395,7 +395,7 @@ public sealed class DiscPollingService(
                     await broadcaster.BroadcastAsync(new Notification
                     {
                         EventType = "rip_rejected",
-                        Message = ripResult.RejectionReason!,
+                        Message = ripResult.RejectionReason ?? "Rip rejected (unknown reason)",
                         Timestamp = DateTime.UtcNow,
                     });
                 }

@@ -198,7 +198,8 @@ public sealed class OmdbProvider : IEpisodeIdentificationProvider
             .Select(e => new OmdbEpisode
             {
                 Title         = e.Title ?? "Untitled",
-                EpisodeNumber = int.Parse(e.Episode!),
+                // Safe: Where clause above ensures Episode can be parsed as int
+                EpisodeNumber = int.Parse(e.Episode ?? "0"),
                 ImdbId        = e.ImdbId
             })
             .OrderBy(e => e.EpisodeNumber)

@@ -174,7 +174,7 @@ public sealed partial class HandBrakeService(
                         t.TrackNumberInt.Value <= (job.NoOfTitles ?? 0) &&
                         (t.Length ?? 0) >= minLength &&
                         (t.Length ?? 0) <= maxLength)
-            .Select(t => (Track: t, TrackNo: t.TrackNumberInt!.Value))
+            .Select(t => (Track: t, TrackNo: t.TrackNumberInt!.Value)) // safe: Where above requires HasValue
             .ToList();
         var processedCount = 0;
         foreach (var eligible in eligibleTracks)
@@ -316,16 +316,17 @@ public sealed partial class HandBrakeService(
             if (isErr)
             {
                 logger.LogWarning("HandBrake stderr: {Line}", line);
-                stderrLines.Add(line!);
+                if (line is not null) stderrLines.Add(line);
             }
             else
             {
                 logger.LogInformation("HandBrake: {Line}", line);
-                lines.Add(line!);
+                if (line is not null) lines.Add(line);
             }
 
             // Progress lines can come through either stdout or stderr depending on 2>&1
-            ParseHandBrakeProgress(line!, progress);
+            if (line is not null)
+                ParseHandBrakeProgress(line, progress);
         }
 
         var result = new CliResult(exitCode, string.Join("\n", lines), string.Join("\n", stderrLines), exitCode != 0);

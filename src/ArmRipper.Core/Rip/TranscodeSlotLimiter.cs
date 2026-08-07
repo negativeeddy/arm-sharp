@@ -36,7 +36,9 @@ public sealed class TranscodeSlotLimiter : ITranscodeSlotLimiter
             {
                 waiter.Cancellation = ct.Register(static state =>
                 {
-                    var w = (Waiter)state!;
+                    // TimerCallback always passes a non-null state when set via Register
+                    var w = state as Waiter ?? throw new InvalidOperationException(
+                        "TranscodeSlotLimiter callback received unexpected state type");
                     // Atomically mark as done; if ReleaseOne hasn't claimed it yet, cancel the TCS.
                     if (Interlocked.Exchange(ref w.Done, 1) == 0)
                         w.Tcs.TrySetCanceled();

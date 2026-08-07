@@ -55,7 +55,9 @@ public sealed class DiscDbHashService(ILogger<DiscDbHashService> logger) : IDisc
             }
             hash.TransformFinalBlock([], 0, 0);
 
-            var hex = Convert.ToHexString(hash.Hash!);
+            var hashBytes = hash.Hash ?? throw new InvalidOperationException(
+                "MD5.Hash was null after TransformFinalBlock — this should never happen");
+            var hex = Convert.ToHexString(hashBytes);
             logger.LogInformation(
                 "DiscDb hash: {Hash} from {FileCount} files in {SearchPath}",
                 hex, files.Count, searchPath);

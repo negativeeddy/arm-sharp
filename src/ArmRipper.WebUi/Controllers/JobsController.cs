@@ -111,7 +111,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
         job.HasNiceTitle = true;
         await db.SaveChangesAsync(ct);
 
-        return Redirect(returnUrl ?? Url.Action("TitleSearch")!);
+        return Redirect(returnUrl ?? Url.Action("TitleSearch") ?? "/jobs/titlesearch");
     }
 
     [HttpGet("log-tail")]

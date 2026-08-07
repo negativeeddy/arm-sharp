@@ -32,7 +32,7 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardware
         ViewBag.ActiveJobDevPaths = activeRips
             .Where(j => !string.IsNullOrEmpty(j.DevPath) && j.Status.IsRippingState())
             .Select(j => j.DevPath!)
-            .ToHashSet();
+            .ToHashSet(); // safe: Where filters null/empty, but compiler can't prove across LINQ
 
         ViewBag.Hostname = Environment.MachineName;
         ViewBag.CpuCount = Environment.ProcessorCount;
@@ -55,7 +55,7 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardware
             var tempPath = Directory.GetFiles("/sys/class/thermal", "thermal_zone*")
                 .Select(d => Path.Combine(d, "temp"))
                 .FirstOrDefault(f => System.IO.File.Exists(f)
-                    && System.IO.File.ReadAllText(Path.Combine(Path.GetDirectoryName(f)!, "type")).Trim() == "x86_pkg_temp");
+                    && System.IO.File.ReadAllText(Path.Combine(Path.GetDirectoryName(f) ?? "", "type")).Trim() == "x86_pkg_temp");
             if (tempPath is not null)
             {
                 var raw = await System.IO.File.ReadAllTextAsync(tempPath, ct);
