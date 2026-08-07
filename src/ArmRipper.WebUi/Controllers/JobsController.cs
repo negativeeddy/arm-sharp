@@ -362,7 +362,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
     /// TitleSearch page to identify them.
     /// </summary>
     [HttpPost("import-from-search")]
-    public IActionResult ImportFromSearch(string title, string? year, VideoContentType? videoType, DiscType? discType, string? filePath, CancellationToken ct)
+    public async Task<IActionResult> ImportFromSearch(string title, string? year, VideoContentType? videoType, DiscType? discType, string? filePath, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(title))
         {
@@ -382,7 +382,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
             return RedirectToAction("TitleSearch");
         }
 
-        backgroundRip.StartImportJob(filePath, title, year, videoType ?? VideoContentType.Movie, discType, ct);
+        await backgroundRip.StartImportJobAsync(filePath, title, year, videoType ?? VideoContentType.Movie, discType, ct);
 
         TempData["SuccessMessage"] = $"Import transcode started for \"{title}\" – job queued in the background.";
         return RedirectToAction("Index", "Home");

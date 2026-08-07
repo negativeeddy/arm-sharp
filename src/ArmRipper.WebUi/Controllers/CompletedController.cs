@@ -319,7 +319,7 @@ public class CompletedController(ArmDbContext db, ISettingsService settingsServi
                 ? System.Text.RegularExpressions.Regex.Match(dirName, @"^(.+?) \((\d{4})\)$")
                 : null;
             var importYear = importMatch?.Success == true ? importMatch.Groups[2].Value : null;
-            var newJobId = backgroundRip.StartImportJob(filePath, importTitle, importYear, videoType, discType, ct);
+            var newJobId = await backgroundRip.StartImportJobAsync(filePath, importTitle, importYear, videoType, discType, ct);
             return RedirectToAction("JobDetail", "Jobs", new { jobId = newJobId });
         }
 

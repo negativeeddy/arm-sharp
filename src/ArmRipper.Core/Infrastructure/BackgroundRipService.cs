@@ -204,7 +204,7 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
         }, cts.Token);
     }
 
-    public int StartImportJob(string rawFilePath, string title, string? year, VideoContentType? videoType, DiscType? discType, CancellationToken ct = default)
+    public async Task<int> StartImportJobAsync(string rawFilePath, string title, string? year, VideoContentType? videoType, DiscType? discType, CancellationToken ct = default)
     {
         // ── Load effective settings (YAML + DB overrides) so the config snapshot
         //     gets the user's current GPU, preset, and argument choices. ──
@@ -213,13 +213,12 @@ public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILog
         {
             var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
             var settingsService = scope.ServiceProvider.GetRequiredService<ISettingsService>();
-            var effectiveSettings = settingsService.GetEffectiveAsync(ct).GetAwaiter().GetResult();
+            var effectiveSettings = await settingsService.GetEffectiveAsync(ct);
 
             var conductor = scope.ServiceProvider.GetRequiredService<IConductor>();
             try
             {
-                var job = conductor.CreateImportJobAsync(rawFilePath, title, year, videoType, discType, effectiveSettings, ct)
-                    .GetAwaiter().GetResult();
+                var job = await conductor.CreateImportJobAsync(rawFilePath, title, year, videoType, discType, effectiveSettings, ct);
                 jobId = job.Id;
             }
             catch (Exception ex)

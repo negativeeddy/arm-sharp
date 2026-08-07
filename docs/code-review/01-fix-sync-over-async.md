@@ -2,7 +2,7 @@
 
 **Priority:** 🔴 Critical
 **File:** `src/ArmRipper.Core/Infrastructure/BackgroundRipService.cs`
-**Status:** ⬜ Todo
+**Status:** ✅ Done
 
 ---
 
