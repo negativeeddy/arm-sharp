@@ -7,13 +7,14 @@ using ArmRipper.Core.Rip;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("reidentify")]
-public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchestrator orchestrator, ISettingsService settingsService) : Controller
+public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchestrator orchestrator, ISettingsService settingsService, ILogger<ReIdentifyController> logger) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken ct = default)
@@ -374,7 +375,7 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
     /// Renames a file on disk from <paramref name="oldPath"/> to <paramref name="newPath"/>.
     /// Returns a result object with status information.
     /// </summary>
-    private static object RenameFileOnDisk(string oldPath, string newPath, int trackIndex)
+    private object RenameFileOnDisk(string oldPath, string newPath, int trackIndex)
     {
         if (!System.IO.File.Exists(oldPath))
         {
@@ -397,7 +398,8 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
         var dir = Path.GetDirectoryName(newPath);
         if (dir is not null && !Directory.Exists(dir))
         {
-            try { Directory.CreateDirectory(dir); } catch { }
+            try { Directory.CreateDirectory(dir); }
+            catch (Exception ex) { logger.LogDebug(ex, "Failed to create target directory {Dir}", dir); }
         }
 
         // Check if destination already exists
@@ -439,7 +441,7 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
     }
 
     /// <summary>Recursively removes empty directories under the given path.</summary>
-    private static void RemoveEmptyDirectories(string directory)
+    private void RemoveEmptyDirectories(string directory)
     {
         if (!Directory.Exists(directory))
             return;
@@ -453,7 +455,8 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
         var name = Path.GetFileName(directory);
         if ((name.StartsWith("Season ", StringComparison.OrdinalIgnoreCase) || !Directory.GetFileSystemEntries(directory).Any()))
         {
-            try { Directory.Delete(directory); } catch { }
+            try { Directory.Delete(directory); }
+            catch (Exception ex) { logger.LogDebug(ex, "Failed to remove empty directory {Path}", directory); }
         }
     }
 }

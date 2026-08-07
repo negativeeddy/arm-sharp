@@ -6,12 +6,13 @@ using ArmRipper.WebUi.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("")]
-public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardwareEncoderInfoService hardwareEncoderInfoService) : Controller
+public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardwareEncoderInfoService hardwareEncoderInfoService, ILogger<HomeController> logger) : Controller
 {
     [HttpGet("")]
     [HttpGet("index")]
@@ -44,7 +45,10 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardware
                 ?.Split(':')[1]
                 ?.Trim();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to read CPU model from /proc/cpuinfo");
+        }
 
         try
         {
@@ -59,7 +63,10 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardware
                     ViewBag.CpuTemp = millideg / 1000.0;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to read CPU temperature from /sys/class/thermal");
+        }
 
         try
         {
@@ -76,7 +83,10 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardware
                 }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to read CPU usage via top");
+        }
 
         try
         {
@@ -96,21 +106,27 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardware
             ViewBag.MemFree = freeKb * 1024;
             ViewBag.MemUsed = (totalKb - availKb) * 1024;
         }
-        catch { }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to read memory stats from /proc/meminfo");
+        }
 
         try
         {
             ViewBag.StorageTranscode = GetDriveInfo(ArmPaths.DefaultTranscodePath);
             ViewBag.StorageCompleted = GetDriveInfo(ArmPaths.DefaultCompletedPath);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to query storage info for transcode/completed paths");
+        }
 
         ViewBag.HardwareEncoders = await hardwareEncoderInfoService.GetHardwareEncoderInfoAsync();
 
         return View(activeRips);
     }
 
-    private static Dictionary<string, object>? GetDriveInfo(string path)
+    private Dictionary<string, object>? GetDriveInfo(string path)
     {
         try
         {
@@ -141,7 +157,11 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardware
                 ["used_pct"] = total > 0 ? Math.Round((double)used / total * 100, 1) : 0
             };
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to get drive info for {Path}", path);
+            return null;
+        }
     }
 
     [AllowAnonymous]

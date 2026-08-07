@@ -2,10 +2,11 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using ArmRipper.Core.Infrastructure;
+using Microsoft.Extensions.Logging;
 
 namespace ArmRipper.WebUi.Services;
 
-public class HardwareEncoderInfoService(ICliProcessRunner runner) : IHardwareEncoderInfoService
+public class HardwareEncoderInfoService(ICliProcessRunner runner, ILogger<HardwareEncoderInfoService> logger) : IHardwareEncoderInfoService
 {
     public async Task<IReadOnlyList<(int Index, string Name)>> GetGpuListAsync()
     {
@@ -24,8 +25,9 @@ public class HardwareEncoderInfoService(ICliProcessRunner runner) : IHardwareEnc
             }
             return gpus;
         }
-        catch
+        catch (Exception ex)
         {
+            logger.LogDebug(ex, "Failed to enumerate GPUs via nvidia-smi");
             return [];
         }
     }
@@ -120,7 +122,10 @@ public class HardwareEncoderInfoService(ICliProcessRunner runner) : IHardwareEnc
                 encoders.Add(nv);
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to query NVIDIA encoder info via nvidia-smi");
+        }
     }
 
     private async Task AddFfmpegEncodersAsync(List<Dictionary<string, object>> encoders)
@@ -164,7 +169,10 @@ public class HardwareEncoderInfoService(ICliProcessRunner runner) : IHardwareEnc
                 }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to enumerate ffmpeg hardware encoders");
+        }
     }
 
     private static void AddOrUpdateFfmpegEncoder(

@@ -727,7 +727,10 @@ public sealed partial class IdentifyService(
                 }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to save DVD poster for job {JobId}", job.Id);
+        }
     }
 
     private async Task ComputeOvidFingerprintAsync(Job job, CancellationToken ct)
@@ -963,7 +966,7 @@ public sealed partial class IdentifyService(
                                 }
                             }
                         }
-                        catch { /* non-critical */ }
+                        catch (Exception ex) { logger.LogDebug(ex, "Failed to parse metadata detail result"); }
                     }
                 }
             }

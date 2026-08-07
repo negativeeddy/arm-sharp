@@ -6,13 +6,14 @@ using ArmRipper.Core.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("jobs")]
-public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService settingsService, IBackgroundRipService backgroundRip) : Controller
+public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService settingsService, IBackgroundRipService backgroundRip, ILogger<JobsController> logger) : Controller
 {
     [HttpGet("jobdetail")]
     public async Task<IActionResult> JobDetail(int jobId, CancellationToken ct = default)
@@ -32,7 +33,10 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
                 var metadata = await omdb.LookupByImdbAsync(job.ImdbId, apiKey, plot: "full");
                 ViewBag.Metadata = metadata;
             }
-            catch { /* non-critical */ }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "OMDB metadata lookup failed for job {JobId}", job.Id);
+            }
         }
 
         return View(job);

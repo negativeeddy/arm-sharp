@@ -683,7 +683,10 @@ public sealed class ArmRipperService(
                         logger.LogWarning(t.Exception, "Broadcast failed for job {JobId}", job.Id);
                 }, TaskContinuationOptions.OnlyOnFaulted);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Failed to start broadcast for job {JobId}", job.Id);
+            }
         }
     }
 
@@ -1005,7 +1008,10 @@ public sealed class ArmRipperService(
             if (fileInfo.Length <= 1)
                 logger.LogInformation("{RawPath} is empty or very small size. - Folder size: {Size}", rawPath, fileInfo.Length);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to stat raw file {Path}", tempPath);
+        }
 
         // Build a lookup from filename to Track so we can pass DiscDb metadata
         var trackByFileName = job.Tracks
@@ -1313,7 +1319,7 @@ public sealed class ArmRipperService(
         throw new InvalidOperationException("Duplicate rips are disabled");
     }
 
-    private static string FindLargestFile(List<string> files, string mkvOutPath)
+    private string FindLargestFile(List<string> files, string mkvOutPath)
     {
         var largestFileName = "";
         long largestSize = -1;
@@ -1330,7 +1336,10 @@ public sealed class ArmRipperService(
                     largestFileName = file;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Failed to stat rip output file {Path}", fullPath);
+            }
         }
 
         return largestFileName;

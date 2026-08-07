@@ -35,7 +35,8 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
 
         using var _ = ct.Register(() =>
         {
-            try { process.Kill(entireProcessTree: true); } catch { }
+            try { process.Kill(entireProcessTree: true); }
+            catch (Exception ex) { logger.LogDebug(ex, "Failed to kill cancelled process ({Name}) — likely already exited", fileName); }
             logger.LogWarning("Process cancelled ({Name})", fileName);
         });
 
@@ -46,7 +47,8 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
 
         if (!exited)
         {
-            try { process.Kill(entireProcessTree: true); } catch { }
+            try { process.Kill(entireProcessTree: true); }
+            catch (Exception ex) { logger.LogDebug(ex, "Failed to kill timed-out process ({Name}) — likely already exited", fileName); }
             logger.LogWarning("Process timed out after {Timeout}ms: {FileName}", timeoutMs, fileName);
             return new CliResult(-1, string.Join("\n", await stdout), string.Join("\n", await stderr), true);
         }
@@ -116,7 +118,8 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
 
         using var ctReg = ct.Register(() =>
         {
-            try { process.Kill(entireProcessTree: true); } catch { }
+            try { process.Kill(entireProcessTree: true); }
+            catch (Exception ex) { logger.LogDebug(ex, "Failed to kill cancelled process ({Name}) — likely already exited", fileName); }
             logger.LogWarning("Process cancelled ({Name})", fileName);
         });
 
@@ -132,7 +135,8 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
         {
             if (!process.HasExited)
             {
-                try { process.Kill(entireProcessTree: true); } catch { }
+                try { process.Kill(entireProcessTree: true); }
+                catch (Exception ex) { logger.LogDebug(ex, "Failed to kill process ({Name}) during cleanup — likely already exited", fileName); }
             }
         }
 
@@ -179,7 +183,8 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
 
         using var ctReg = ct.Register(() =>
         {
-            try { process.Kill(entireProcessTree: true); } catch { }
+            try { process.Kill(entireProcessTree: true); }
+            catch (Exception ex) { logger.LogDebug(ex, "Failed to kill cancelled process ({Name}) — likely already exited", fileName); }
         });
 
         var channel = System.Threading.Channels.Channel.CreateUnbounded<(string?, bool)>();
@@ -209,7 +214,8 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
         {
             if (!process.HasExited)
             {
-                try { process.Kill(entireProcessTree: true); } catch { }
+                try { process.Kill(entireProcessTree: true); }
+                catch (Exception ex) { logger.LogDebug(ex, "Failed to kill process ({Name}) during cleanup — likely already exited", fileName); }
             }
         }
 
