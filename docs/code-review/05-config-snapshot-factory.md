@@ -5,7 +5,7 @@
 - `src/ArmRipper.Core/Rip/Conductor.cs` (primary)
 - `src/ArmRipper.Core/Models/ConfigSnapshot.cs` (add factory)
 
-**Status:** ⬜ Todo
+**Status:** ✅ Done
 
 ---
 
