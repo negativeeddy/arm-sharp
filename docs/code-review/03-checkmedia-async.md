@@ -2,7 +2,7 @@
 
 **Priority:** 🔴 Critical
 **File:** `src/ArmRipper.Core/Rip/IdentifyService.cs`
-**Status:** ⬜ Todo
+**Status:** ✅ Done
 
 ---
 

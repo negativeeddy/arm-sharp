@@ -53,9 +53,12 @@ public sealed partial class IdentifyService(
             // CheckMountAsync already verified no media — don't bother with
             // fallback detection.  Mark the job as failed immediately;
             // there is no disc to identify.
-            if (!CheckMediaPresent(job.DevPath!))
+            if (!await CheckMediaPresentAsync(job.DevPath!, ct))
             {
                 job.DiscType = DiscType.Unknown;
+                job.Status = JobState.Failure;
+                job.Errors = "No media detected on device";
+                await db.SaveChangesAsync(ct);
                 logger.LogWarning(
                     "No media detected on {DevPath} — skipping identification", job.DevPath);
                 return;
@@ -325,7 +328,7 @@ public sealed partial class IdentifyService(
         // never block — unlike running external commands such as findmnt
         // that may hang indefinitely when the USB bus is suspended (e.g.
         // laptop lid closed, drive in autosuspend).
-        if (!CheckMediaPresent(job.DevPath!))
+        if (!await CheckMediaPresentAsync(job.DevPath!, ct))
         {
             logger.LogWarning(
                 "Skipping mount for {DevPath} — no media detected (sysfs returned 0 sectors)",
@@ -1184,7 +1187,7 @@ public sealed partial class IdentifyService(
         // Don't call `eject` if no media is present — on some drives the
         // CDROMEJECT ioctl toggles the tray (closes it when already open)
         // or returns a confusing success code for an already-open tray.
-        if (!CheckMediaPresent(job.DevPath!))
+        if (!await CheckMediaPresentAsync(job.DevPath!, ct))
         {
             logger.LogDebug(
                 "Skipping EjectAsync for {DevPath} — no media detected", job.DevPath);
@@ -1225,9 +1228,9 @@ public sealed partial class IdentifyService(
     /// Check whether sysfs reports readable media on the device.
     /// Reads <c>/sys/block/{devName}/size</c> which is kernel-cached and
     /// does NOT issue SCSI commands — safe to call without closing the tray.
-    /// Returns <c>true</c> if the sector count is > 0 (media present).
+    /// Returns <c>true</c> if the sector count is &gt; 0 (media present).
     /// </summary>
-    private static bool CheckMediaPresent(string devPath)
+    private static async Task<bool> CheckMediaPresentAsync(string devPath, CancellationToken ct)
     {
         try
         {
@@ -1236,7 +1239,7 @@ public sealed partial class IdentifyService(
             if (!File.Exists(sysfsPath))
                 return false;
 
-            var content = File.ReadAllText(sysfsPath).Trim();
+            var content = (await File.ReadAllTextAsync(sysfsPath, ct)).Trim();
             if (long.TryParse(content, out var size))
                 return size > 0;
 
