@@ -1,3 +1,5 @@
+using ArmRipper.Core.Configuration;
+
 namespace ArmRipper.Core.Models;
 
 public class ConfigSnapshot
@@ -76,4 +78,79 @@ public class ConfigSnapshot
     public bool DiscDbRequireConfirmation { get; set; } = false;
 
     public Job Job { get; set; } = null!;
+
+    /// <summary>
+    /// Creates a snapshot from the given settings, carrying forward any disc-specific
+    /// behavioural overrides (<see cref="MainFeature"/>, <see cref="Prevent99"/>,
+    /// <see cref="RipMethod"/>, <see cref="MkvArgs"/>, <see cref="AutoEject"/>) from a
+    /// previous snapshot when one is supplied. Call sites that need a different value for
+    /// a property (e.g. <see cref="AutoEject"/> = false for jobs with no physical disc)
+    /// override it on the returned snapshot.
+    /// </summary>
+    public static ConfigSnapshot FromSettings(
+        ArmSettings settings,
+        int jobId,
+        ConfigSnapshot? carryForward = null)
+    {
+        return new ConfigSnapshot
+        {
+            JobId = jobId,
+            SkipTranscode     = settings.SkipTranscode,
+            MainFeature       = carryForward?.MainFeature ?? settings.MainFeature,
+            UseFfmpeg         = settings.UseFfmpeg,
+            ManualWait        = settings.ManualWait,
+            ManualWaitTime    = settings.ManualWaitTime,
+            AllowDuplicates   = settings.AllowDuplicates,
+            Prevent99         = carryForward?.Prevent99 ?? settings.Prevent99,
+            GetVideoTitle     = settings.GetVideoTitle,
+            GetAudioTitle     = settings.GetAudioTitle,
+            AutoEject         = carryForward?.AutoEject ?? settings.AutoEject,
+            DelRawFiles       = settings.DelRawFiles,
+            RawPath           = settings.RawPath,
+            TranscodePath     = settings.TranscodePath,
+            CompletedPath     = settings.CompletedPath,
+            LogPath           = settings.LogPath,
+            RipMethod         = carryForward?.RipMethod ?? settings.RipMethod,
+            MkvArgs           = carryForward?.MkvArgs ?? settings.MkvArgs,
+            MinLength         = settings.MinLength,
+            MaxLength         = settings.MaxLength,
+            GpuIndex          = settings.GpuIndex,
+            HbPresetDvd       = settings.HbPresetDvd,
+            HbPresetBd        = settings.HbPresetBd,
+            HbArgsDvd         = settings.HbArgsDvd,
+            HbArgsBd          = settings.HbArgsBd,
+            DestExt           = settings.DestExt,
+            FfmpegCli         = settings.FfmpegCli,
+            FfmpegPreFileArgs = settings.FfmpegPreFileArgs,
+            FfmpegPostFileArgs = settings.FfmpegPostFileArgs,
+            ExtrasSub         = settings.ExtrasSub,
+            InstallPath       = settings.InstallPath,
+            DbFile            = settings.DbFile,
+            NotifyRip         = settings.NotifyRip,
+            NotifyTranscode   = settings.NotifyTranscode,
+            PbKey             = settings.PbKey,
+            IftttKey          = settings.IftttKey,
+            PoUserKey         = settings.PoUserKey,
+            BashScript        = settings.BashScript,
+            JsonUrl           = settings.JsonUrl,
+            Apprise           = settings.Apprise,
+            OmdbApiKey        = settings.OmdbApiKey,
+            TmdbApiKey        = settings.TmdbApiKey,
+            ArmApiKey         = settings.ArmApiKey,
+            MetadataProvider  = settings.MetadataProvider,
+            WebServerPort     = settings.WebServerPort,
+            WebServerIp       = settings.WebServerIp,
+            UiBaseUrl         = settings.UiBaseUrl,
+            EmbyRefresh       = settings.EmbyRefresh,
+            EmbyServer        = settings.EmbyServer,
+            EmbyPort          = settings.EmbyPort,
+            EmbyApiKey        = settings.EmbyApiKey,
+            MaxConcurrentTranscodes  = settings.MaxConcurrentTranscodes,
+            MaxConcurrentMakemkvInfo = settings.MaxConcurrentMakemkvInfo,
+            DiscDbEnabled             = settings.DiscDbEnabled,
+            DiscDbApiBaseUrl          = settings.DiscDbApiBaseUrl,
+            DiscDbMinConfidence       = settings.DiscDbMinConfidence,
+            DiscDbRequireConfirmation = settings.DiscDbRequireConfirmation,
+        };
+    }
 }

@@ -214,72 +214,12 @@ public sealed class Conductor(
         var armSettings = effectiveSettings ?? settings.Value;
         var sourceConfig = originalJob.Config;
 
-        var config = new ConfigSnapshot
-        {
-            JobId = job.Id,
-            // ── Current user settings (takes precedence over original job) ──
-            SkipTranscode      = armSettings.SkipTranscode,
-            UseFfmpeg           = armSettings.UseFfmpeg,
-            ManualWait          = armSettings.ManualWait,
-            ManualWaitTime      = armSettings.ManualWaitTime,
-            AllowDuplicates     = armSettings.AllowDuplicates,
-            GetVideoTitle       = armSettings.GetVideoTitle,
-            GetAudioTitle       = armSettings.GetAudioTitle,
-            AutoEject           = false, // Don't eject — no physical disc
-            DelRawFiles         = armSettings.DelRawFiles,
-            RawPath             = armSettings.RawPath,
-            TranscodePath       = armSettings.TranscodePath,
-            CompletedPath       = armSettings.CompletedPath,
-            LogPath             = armSettings.LogPath,
-            MinLength           = armSettings.MinLength,
-            MaxLength           = armSettings.MaxLength,
-            HbPresetDvd         = armSettings.HbPresetDvd,
-            HbPresetBd          = armSettings.HbPresetBd,
-            HbArgsDvd           = armSettings.HbArgsDvd,
-            HbArgsBd            = armSettings.HbArgsBd,
-            GpuIndex            = armSettings.GpuIndex,
-            DestExt             = armSettings.DestExt,
-            FfmpegCli           = armSettings.FfmpegCli,
-            FfmpegPreFileArgs   = armSettings.FfmpegPreFileArgs,
-            FfmpegPostFileArgs  = armSettings.FfmpegPostFileArgs,
-            ExtrasSub           = armSettings.ExtrasSub,
-            InstallPath         = armSettings.InstallPath,
-            DbFile              = armSettings.DbFile,
-            NotifyRip           = false, // Skip rip notifications
-            NotifyTranscode     = armSettings.NotifyTranscode,
-            PbKey               = armSettings.PbKey,
-            IftttKey            = armSettings.IftttKey,
-            PoUserKey           = armSettings.PoUserKey,
-            BashScript          = armSettings.BashScript,
-            JsonUrl             = armSettings.JsonUrl,
-            Apprise             = armSettings.Apprise,
-            OmdbApiKey          = armSettings.OmdbApiKey,
-            TmdbApiKey          = armSettings.TmdbApiKey,
-            ArmApiKey           = armSettings.ArmApiKey,
-            MetadataProvider    = armSettings.MetadataProvider,
-            WebServerPort       = armSettings.WebServerPort,
-            WebServerIp         = armSettings.WebServerIp,
-            UiBaseUrl           = armSettings.UiBaseUrl,
-            EmbyRefresh         = armSettings.EmbyRefresh,
-            EmbyServer          = armSettings.EmbyServer,
-            EmbyPort            = armSettings.EmbyPort,
-            EmbyApiKey          = armSettings.EmbyApiKey,
-            MaxConcurrentTranscodes   = armSettings.MaxConcurrentTranscodes,
-            MaxConcurrentMakemkvInfo  = armSettings.MaxConcurrentMakemkvInfo,
-            DiscDbEnabled              = armSettings.DiscDbEnabled,
-            DiscDbApiBaseUrl           = armSettings.DiscDbApiBaseUrl,
-            DiscDbMinConfidence        = armSettings.DiscDbMinConfidence,
-            DiscDbRequireConfirmation  = armSettings.DiscDbRequireConfirmation,
-        };
-
-        // ── Carry forward disc-specific overrides from the original job ──
-        if (sourceConfig is not null)
-        {
-            config.MainFeature = sourceConfig.MainFeature;
-            config.Prevent99   = sourceConfig.Prevent99;
-            config.RipMethod   = sourceConfig.RipMethod;
-            config.MkvArgs     = sourceConfig.MkvArgs;
-        }
+        // Disc-specific overrides from the original job are carried forward
+        // via the carryForward parameter; current settings take precedence
+        // for everything else.
+        var config = ConfigSnapshot.FromSettings(armSettings, job.Id, sourceConfig);
+        config.AutoEject = false; // Don't eject — no physical disc
+        config.NotifyRip = false; // Skip rip notifications
 
         db.ConfigSnapshots.Add(config);
         job.MarkStageComplete(RipStage.Setup);
@@ -391,66 +331,12 @@ public sealed class Conductor(
         job.TransitionToStage(RipStage.Setup);
 
         // ── 4. Create config snapshot from current settings ──
-        var config = new ConfigSnapshot
-        {
-            JobId = job.Id,
-            SkipTranscode = armSettings.SkipTranscode,
-            MainFeature = armSettings.MainFeature,
-            UseFfmpeg = armSettings.UseFfmpeg,
-            ManualWait = false,
-            AllowDuplicates = armSettings.AllowDuplicates,
-            Prevent99 = armSettings.Prevent99,
-            GetVideoTitle = false,
-            GetAudioTitle = armSettings.GetAudioTitle,
-            AutoEject = false,
-            DelRawFiles = false, // Never auto-delete imported raw files
-            RawPath = armSettings.RawPath,
-            TranscodePath = armSettings.TranscodePath,
-            CompletedPath = armSettings.CompletedPath,
-            LogPath = armSettings.LogPath,
-            RipMethod = armSettings.RipMethod,
-            MinLength = armSettings.MinLength,
-            MaxLength = armSettings.MaxLength,
-            HbPresetDvd = armSettings.HbPresetDvd,
-            HbPresetBd = armSettings.HbPresetBd,
-            HbArgsDvd = armSettings.HbArgsDvd,
-            HbArgsBd = armSettings.HbArgsBd,
-            GpuIndex = armSettings.GpuIndex,
-            DestExt = armSettings.DestExt,
-            FfmpegCli = armSettings.FfmpegCli,
-            FfmpegPreFileArgs = armSettings.FfmpegPreFileArgs,
-            FfmpegPostFileArgs = armSettings.FfmpegPostFileArgs,
-            MkvArgs = armSettings.MkvArgs,
-            ExtrasSub = armSettings.ExtrasSub,
-            InstallPath = armSettings.InstallPath,
-            DbFile = armSettings.DbFile,
-            NotifyRip = false,
-            NotifyTranscode = armSettings.NotifyTranscode,
-            PbKey = armSettings.PbKey,
-            IftttKey = armSettings.IftttKey,
-            PoUserKey = armSettings.PoUserKey,
-            BashScript = armSettings.BashScript,
-            JsonUrl = armSettings.JsonUrl,
-            Apprise = armSettings.Apprise,
-            OmdbApiKey = armSettings.OmdbApiKey,
-            TmdbApiKey = armSettings.TmdbApiKey,
-            ArmApiKey = armSettings.ArmApiKey,
-            MetadataProvider = armSettings.MetadataProvider,
-            WebServerPort = armSettings.WebServerPort,
-            WebServerIp = armSettings.WebServerIp,
-            UiBaseUrl = armSettings.UiBaseUrl,
-            EmbyRefresh = armSettings.EmbyRefresh,
-            EmbyServer = armSettings.EmbyServer,
-            EmbyPort = armSettings.EmbyPort,
-            EmbyApiKey = armSettings.EmbyApiKey,
-
-            MaxConcurrentTranscodes = armSettings.MaxConcurrentTranscodes,
-            MaxConcurrentMakemkvInfo = armSettings.MaxConcurrentMakemkvInfo,
-            DiscDbEnabled = armSettings.DiscDbEnabled,
-            DiscDbApiBaseUrl = armSettings.DiscDbApiBaseUrl,
-            DiscDbMinConfidence = armSettings.DiscDbMinConfidence,
-            DiscDbRequireConfirmation = armSettings.DiscDbRequireConfirmation
-        };
+        var config = ConfigSnapshot.FromSettings(armSettings, job.Id);
+        config.ManualWait = false;
+        config.GetVideoTitle = false;
+        config.AutoEject = false;
+        config.DelRawFiles = false; // Never auto-delete imported raw files
+        config.NotifyRip = false;
 
         db.ConfigSnapshots.Add(config);
         job.MarkStageComplete(RipStage.Setup);
@@ -575,66 +461,7 @@ public sealed class Conductor(
 
         // Create config snapshot from effective settings (file + DB override)
         var armSettings = await settingsService.GetEffectiveAsync(ct);
-        var config = new ConfigSnapshot
-        {
-            JobId = job.Id,
-            SkipTranscode = armSettings.SkipTranscode,
-            MainFeature = armSettings.MainFeature,
-            UseFfmpeg = armSettings.UseFfmpeg,
-            ManualWait = armSettings.ManualWait,
-            ManualWaitTime = armSettings.ManualWaitTime,
-            AllowDuplicates = armSettings.AllowDuplicates,
-            Prevent99 = armSettings.Prevent99,
-            GetVideoTitle = armSettings.GetVideoTitle,
-            GetAudioTitle = armSettings.GetAudioTitle,
-            AutoEject = armSettings.AutoEject,
-            DelRawFiles = armSettings.DelRawFiles,
-            RawPath = armSettings.RawPath,
-            TranscodePath = armSettings.TranscodePath,
-            CompletedPath = armSettings.CompletedPath,
-            LogPath = armSettings.LogPath,
-            RipMethod = armSettings.RipMethod,
-            MinLength = armSettings.MinLength,
-            MaxLength = armSettings.MaxLength,
-            HbPresetDvd = armSettings.HbPresetDvd,
-            HbPresetBd = armSettings.HbPresetBd,
-            HbArgsDvd = armSettings.HbArgsDvd,
-            HbArgsBd = armSettings.HbArgsBd,
-            GpuIndex = armSettings.GpuIndex,
-            DestExt = armSettings.DestExt,
-            FfmpegCli = armSettings.FfmpegCli,
-            FfmpegPreFileArgs = armSettings.FfmpegPreFileArgs,
-            FfmpegPostFileArgs = armSettings.FfmpegPostFileArgs,
-            MkvArgs = armSettings.MkvArgs,
-            ExtrasSub = armSettings.ExtrasSub,
-            InstallPath = armSettings.InstallPath,
-            DbFile = armSettings.DbFile,
-            NotifyRip = armSettings.NotifyRip,
-            NotifyTranscode = armSettings.NotifyTranscode,
-            PbKey = armSettings.PbKey,
-            IftttKey = armSettings.IftttKey,
-            PoUserKey = armSettings.PoUserKey,
-            BashScript = armSettings.BashScript,
-            JsonUrl = armSettings.JsonUrl,
-            Apprise = armSettings.Apprise,
-            OmdbApiKey = armSettings.OmdbApiKey,
-            TmdbApiKey = armSettings.TmdbApiKey,
-            ArmApiKey = armSettings.ArmApiKey,
-            MetadataProvider = armSettings.MetadataProvider,
-            WebServerPort = armSettings.WebServerPort,
-            WebServerIp = armSettings.WebServerIp,
-            UiBaseUrl = armSettings.UiBaseUrl,
-            EmbyRefresh = armSettings.EmbyRefresh,
-            EmbyServer = armSettings.EmbyServer,
-            EmbyPort = armSettings.EmbyPort,
-            EmbyApiKey = armSettings.EmbyApiKey,
-            MaxConcurrentTranscodes = armSettings.MaxConcurrentTranscodes,
-            MaxConcurrentMakemkvInfo = armSettings.MaxConcurrentMakemkvInfo,
-            DiscDbEnabled = armSettings.DiscDbEnabled,
-            DiscDbApiBaseUrl = armSettings.DiscDbApiBaseUrl,
-            DiscDbMinConfidence = armSettings.DiscDbMinConfidence,
-            DiscDbRequireConfirmation = armSettings.DiscDbRequireConfirmation
-        };
+        var config = ConfigSnapshot.FromSettings(armSettings, job.Id);
 
         db.ConfigSnapshots.Add(config);
         job.MarkStageComplete(RipStage.Setup);
