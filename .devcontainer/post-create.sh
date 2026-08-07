@@ -44,6 +44,23 @@ fi
 # echo "=== Fixing workspace permissions ==="
 # chown vscode:vscode /workspaces
 
+echo "=== Creating ARM default media directories ==="
+# Tests (e.g. DatabaseImport_ReturnsJson) and app code expect the default
+# ArmPaths directories to exist. Create them if missing.
+for dir in \
+    "/home/arm/media" \
+    "/home/arm/media/completed" \
+    "/home/arm/media/raw" \
+    "/home/arm/media/transcode" \
+    "/home/arm/logs"; do
+    if [ ! -d "$dir" ]; then
+        sudo mkdir -p "$dir"
+        echo "Created $dir"
+    else
+        echo "Already exists: $dir"
+    fi
+done
+
 echo "=== Cloning original ARM Python reference ==="
 if [ ! -d "/workspaces/automatic-ripping-machine" ]; then
     git clone https://github.com/automatic-ripping-machine/automatic-ripping-machine.git /workspaces/automatic-ripping-machine

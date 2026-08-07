@@ -1,4 +1,5 @@
 using ArmRipper.Core.Configuration;
+using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -9,7 +10,7 @@ namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("database")]
-public class DatabaseController(ArmDbContext db) : Controller
+public class DatabaseController(ArmDbContext db, ISettingsService settingsService) : Controller
 {
     private const int PageSize = 20;
 
@@ -85,7 +86,10 @@ public class DatabaseController(ArmDbContext db) : Controller
     [HttpGet("import")]
     public async Task<IActionResult> Import(CancellationToken ct = default)
     {
-        var completedPath = ArmPaths.DefaultCompletedPath;
+        // Use the effective configured completed path (DB overrides win) so the
+        // import scans the real media directory, not just the default.
+        var effective = await settingsService.GetEffectiveAsync(ct);
+        var completedPath = ArmPaths.GetCompletedPath(effective);
         if (!Directory.Exists(completedPath))
             return Json(new { message = "Completed path does not exist", path = completedPath });
 

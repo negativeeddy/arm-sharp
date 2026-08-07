@@ -44,14 +44,18 @@ public sealed class OmdbServiceTests
     }
 
     [Fact]
-    public async Task SearchAsync_WhenApiReturnsError_ReturnsNull()
+    public async Task SearchAsync_WhenApiReturnsError_ReturnsErrorResult()
     {
         var client = TestHelpers.CreateMockHttpClient(ErrorResponse);
         var service = new OmdbService(NullLoggerFactory.Instance, client);
 
         var result = await service.SearchAsync("fake_key", "NonExistentMovie");
 
-        Assert.Null(result);
+        // SearchAsync intentionally returns the error payload so callers can
+        // surface the API's Error message to the user.
+        Assert.NotNull(result);
+        Assert.Equal("False", result.Response);
+        Assert.Equal("Movie not found!", result.Error);
     }
 
     [Fact]

@@ -179,12 +179,13 @@ public sealed class ConductorTests : IDisposable
     [Fact]
     public async Task RunAsync_JobHasConfigSnapshot_WithExpectedDefaults()
     {
+        var tmpDir = Path.Combine(Path.GetTempPath(), "arm-test", Guid.NewGuid().ToString());
         var options = TestHelpers.CreateOptions(a =>
         {
-            a.RawPath = "/opt/arm/raw";
-            a.TranscodePath = "/opt/arm/transcode";
-            a.CompletedPath = "/opt/arm/completed";
-            a.LogPath = "/opt/arm/logs";
+            a.RawPath = Path.Combine(tmpDir, "raw");
+            a.TranscodePath = Path.Combine(tmpDir, "transcode");
+            a.CompletedPath = Path.Combine(tmpDir, "completed");
+            a.LogPath = Path.Combine(tmpDir, "logs");
         });
         var conductor = CreateConductor(options: options);
         await conductor.RunAsync("/dev/sr0");
@@ -192,8 +193,8 @@ public sealed class ConductorTests : IDisposable
         var job = _db.Jobs.Single();
         var config = job.Config;
         Assert.NotNull(config);
-        Assert.Equal("/opt/arm/raw", config.RawPath);
-        Assert.Equal("/opt/arm/completed", config.CompletedPath);
+        Assert.Equal(Path.Combine(tmpDir, "raw"), config.RawPath);
+        Assert.Equal(Path.Combine(tmpDir, "completed"), config.CompletedPath);
     }
 
     private sealed class MockIdentifyService(DiscType resultType = DiscType.Dvd, string? label = null) : IIdentifyService
