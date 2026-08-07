@@ -32,7 +32,7 @@ proposed fix.
 
 | # | Task | Priority | Status | Assignee |
 |---|------|----------|--------|----------|
-| 4 | [Convert `VideoType` from string to enum](04-videotype-enum.md) | 🟡 Medium | ⬜ Todo | — |
+| 4 | [Convert `VideoType` from string to enum](04-videotype-enum.md) | 🟡 Medium | ✅ Done | — |
 | 5 | [Extract `ConfigSnapshot` factory from `Conductor`](05-config-snapshot-factory.md) | 🟡 Medium | ⬜ Todo | — |
 | 6 | [Add debug logging to empty `catch { }` blocks](06-empty-catch-logging.md) | 🟡 Medium | ⬜ Todo | — |
 | 7 | [Fix `NotificationService` condition / comment mismatch](07-notification-condition.md) | 🟡 Medium | ⬜ Todo | — |
@@ -84,9 +84,9 @@ proposed fix.
 
 | Status | Count |
 |--------|-------|
-| ⬜ Todo | 24 |
+| ⬜ Todo | 23 |
 | 🔄 In Progress | 0 |
-| ✅ Done | 12 |
+| ✅ Done | 13 |
 
 ---
 
