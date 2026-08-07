@@ -36,7 +36,7 @@ public class SettingsController(
         ViewBag.ActiveJobDevPaths = (await db.Jobs
             .Where(j => j.Status != JobState.Success && j.Status != JobState.Failure && j.Status != JobState.Cancelled && !string.IsNullOrEmpty(j.DevPath))
             .Select(j => j.DevPath!)
-            .ToListAsync(ct))
+            .ToListAsync(ct)) // safe: Where filters null/empty, but compiler can't prove across LINQ
             .ToHashSet();
         ViewBag.SystemInfo = systemInfo;
         ViewBag.UiSettings = uiCfg;
@@ -393,7 +393,7 @@ public class SettingsController(
 
         if (result.IsRejected)
         {
-            SetError(result.RejectionReason!);
+            SetError(result.RejectionReason ?? "Rip rejected (unknown reason)");
             return fallback;
         }
 

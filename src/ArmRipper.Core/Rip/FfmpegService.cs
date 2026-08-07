@@ -199,7 +199,7 @@ public sealed partial class FfmpegService(
                         t.TrackNumberInt.Value <= (job.NoOfTitles ?? 0) &&
                         (t.Length ?? 0) >= minLength &&
                         (t.Length ?? 0) <= maxLength)
-            .Select(t => (Track: t, TrackNo: t.TrackNumberInt!.Value))
+            .Select(t => (Track: t, TrackNo: t.TrackNumberInt!.Value)) // safe: Where above requires HasValue
             .ToList();
         var processedCount = 0;
         foreach (var eligible in eligibleTracks)
@@ -276,17 +276,17 @@ public sealed partial class FfmpegService(
 
             if (isStdErr)
             {
-                stdErr.Add(line!);
-                if (progress is not null && totalSeconds.HasValue)
+                if (line is not null) stdErr.Add(line);
+                if (progress is not null && totalSeconds.HasValue && line is not null)
                 {
-                    var pct = ParseFfProgress(line!, totalSeconds.Value);
+                    var pct = ParseFfProgress(line, totalSeconds.Value);
                     if (pct.HasValue)
                         progress.Report(pct.Value);
                 }
             }
             else
             {
-                stdOut.Add(line!);
+                if (line is not null) stdOut.Add(line);
             }
         }
 

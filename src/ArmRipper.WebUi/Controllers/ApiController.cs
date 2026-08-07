@@ -113,7 +113,7 @@ public partial class ApiController(
         ViewBag.ActiveJobDevPaths = activeRips
             .Where(j => !string.IsNullOrEmpty(j.DevPath) && j.Status.IsRippingState())
             .Select(j => j.DevPath!)
-            .ToHashSet();
+            .ToHashSet(); // safe: Where filters null/empty, but compiler can't prove across LINQ
 
         var drives = await db.SystemDrives.ToListAsync(ct);
         return PartialView("~/Views/Shared/_Drives.cshtml", drives);

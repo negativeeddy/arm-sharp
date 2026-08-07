@@ -21,7 +21,8 @@ public sealed partial class MusicBrainzService(
     private readonly ISettingsService _settingsService = settingsService ?? new SettingsService(db, settings);
     public async Task<string> IdentifyAsync(Job job, CancellationToken ct = default)
     {
-        var discId = await GetDiscIdAsync(job.DevPath!, ct);
+        var devPath = job.DevPath ?? throw new InvalidOperationException($"Job {job.Id} has no DevPath");
+        var discId = await GetDiscIdAsync(devPath, ct);
         if (string.IsNullOrEmpty(discId))
             return "";
 
@@ -121,7 +122,9 @@ public sealed partial class MusicBrainzService(
         else
         {
             logger.LogInformation("Processing as a cdstub");
-            musicData = ProcessCdStub(job, cdstub!, ns, ct);
+            var stub = cdstub ?? throw new InvalidOperationException(
+                "MusicBrainz returned a cdstub response but cdstub element is null");
+            musicData = ProcessCdStub(job, stub, ns, ct);
         }
 
         return musicData;

@@ -37,6 +37,8 @@ public sealed partial class IdentifyService(
 
     public async Task IdentifyAsync(Job job, CancellationToken ct = default)
     {
+        var devPath = job.DevPath ?? throw new InvalidOperationException($"Job {job.Id} has no DevPath");
+
         job.ProgressMessage = "Mounting disc...";
         await db.SaveChangesAsync(ct);
 
@@ -46,14 +48,15 @@ public sealed partial class IdentifyService(
         {
             job.ProgressMessage = "Detecting disc type...";
             await db.SaveChangesAsync(ct);
-            job.DiscType = GetDiscType(job.MountPoint!);
+            var mountPoint = job.MountPoint ?? throw new InvalidOperationException($"Job {job.Id} has no MountPoint after successful mount");
+            job.DiscType = GetDiscType(mountPoint);
         }
         else
         {
             // CheckMountAsync already verified no media — don't bother with
             // fallback detection.  Mark the job as failed immediately;
             // there is no disc to identify.
-            if (!await CheckMediaPresentAsync(job.DevPath!, ct))
+            if (!await CheckMediaPresentAsync(devPath, ct))
             {
                 job.DiscType = DiscType.Unknown;
                 job.Status = JobState.Failure;
@@ -155,7 +158,8 @@ public sealed partial class IdentifyService(
         job.ProgressMessage = "Querying TheDiscDb...";
         await db.SaveChangesAsync(ct);
 
-        var hash = await discDbHashService.ComputeHashAsync(job.MountPoint!, job.DiscType, ct);
+        // MountPoint is already validated non-null by the guard above
+        var hash = await discDbHashService.ComputeHashAsync(job.MountPoint, job.DiscType, ct);
         if (hash is not null)
         {
             job.DiscDbHash = hash;
@@ -326,26 +330,28 @@ public sealed partial class IdentifyService(
 
     private async Task<bool> CheckMountAsync(Job job, CancellationToken ct)
     {
+        var devPath = job.DevPath ?? throw new InvalidOperationException($"Job {job.Id} has no DevPath");
+
         // Check whether media is actually present BEFORE any device I/O.
         // Reading sysfs (/sys/block/*/size) is purely in-kernel and can
         // never block — unlike running external commands such as findmnt
         // that may hang indefinitely when the USB bus is suspended (e.g.
         // laptop lid closed, drive in autosuspend).
-        if (!await CheckMediaPresentAsync(job.DevPath!, ct))
+        if (!await CheckMediaPresentAsync(devPath, ct))
         {
             logger.LogWarning(
                 "Skipping mount for {DevPath} — no media detected (sysfs returned 0 sectors)",
-                job.DevPath);
+                devPath);
             return false;
         }
 
         // Check if the disc is already mounted by reading /proc/self/mountinfo
         // directly.  This is a purely in-memory virtual file and cannot block,
         // unlike the findmnt command which can hang on suspended USB devices.
-        var mountPoint = FindMountFromProc(job.DevPath!);
+        var mountPoint = FindMountFromProc(devPath);
         if (mountPoint is not null)
         {
-            logger.LogInformation("Found disc {DevPath} mounted at {MountPoint}", job.DevPath, mountPoint);
+            logger.LogInformation("Found disc {DevPath} mounted at {MountPoint}", devPath, mountPoint);
             job.MountPoint = mountPoint;
             await ExtractDiscLabelAsync(job, ct);
             return true;
@@ -354,17 +360,17 @@ public sealed partial class IdentifyService(
         // Try to mount the disc with simple retries.
         for (var attempt = 0; attempt < 3; attempt++)
         {
-            logger.LogInformation("Mount attempt {Attempt}: trying to mount disc at {DevPath}...", attempt + 1, job.DevPath);
-            var devName = Path.GetFileName(job.DevPath);
+            logger.LogInformation("Mount attempt {Attempt}: trying to mount disc at {DevPath}...", attempt + 1, devPath);
+            var devName = Path.GetFileName(devPath);
             var mountTarget = $"/mnt/dev/{devName}";
             Directory.CreateDirectory(mountTarget);
 
             var mountResult = await runner.RunAsync("mount",
-                $"--source {job.DevPath!} --target {mountTarget}", timeoutMs: 30_000, ct: ct);
+                $"--source {devPath} --target {mountTarget}", timeoutMs: 30_000, ct: ct);
 
             if (mountResult.ExitCode == 0)
             {
-                mountPoint = FindMountFromProc(job.DevPath!);
+                mountPoint = FindMountFromProc(devPath);
                 if (mountPoint is not null)
                 {
                     logger.LogInformation("Successfully mounted disc to {MountPoint}", mountPoint);
@@ -1182,10 +1188,11 @@ public sealed partial class IdentifyService(
 
     private async Task UnmountAsync(Job job, CancellationToken ct)
     {
+        var devPath = job.DevPath ?? throw new InvalidOperationException($"Job {job.Id} has no DevPath");
         try
         {
-            await runner.RunAsync("umount", job.DevPath!, timeoutMs: 10_000, ct: ct);
-            logger.LogInformation("Disc unmounted from {DevPath}", job.DevPath);
+            await runner.RunAsync("umount", devPath, timeoutMs: 10_000, ct: ct);
+            logger.LogInformation("Disc unmounted from {DevPath}", devPath);
         }
         catch (Exception ex)
         {
@@ -1195,22 +1202,24 @@ public sealed partial class IdentifyService(
 
     public async Task EjectAsync(Job job, CancellationToken ct)
     {
+        var devPath = job.DevPath ?? throw new InvalidOperationException($"Job {job.Id} has no DevPath");
+
         if (!settings.Value.AutoEject)
             return;
 
         // Don't call `eject` if no media is present — on some drives the
         // CDROMEJECT ioctl toggles the tray (closes it when already open)
         // or returns a confusing success code for an already-open tray.
-        if (!await CheckMediaPresentAsync(job.DevPath!, ct))
+        if (!await CheckMediaPresentAsync(devPath, ct))
         {
             logger.LogDebug(
-                "Skipping EjectAsync for {DevPath} — no media detected", job.DevPath);
+                "Skipping EjectAsync for {DevPath} — no media detected", devPath);
             return;
         }
 
         try
         {
-            await runner.RunAsync("umount", job.DevPath!, timeoutMs: 10_000, ct: ct);
+            await runner.RunAsync("umount", devPath, timeoutMs: 10_000, ct: ct);
         }
         catch (Exception ex)
         {
@@ -1219,12 +1228,12 @@ public sealed partial class IdentifyService(
 
         try
         {
-            await runner.RunAsync("eject", job.DevPath!, timeoutMs: 10_000, ct: ct);
-            logger.LogInformation("Disc ejected from {DevPath}", job.DevPath);
+            await runner.RunAsync("eject", devPath, timeoutMs: 10_000, ct: ct);
+            logger.LogInformation("Disc ejected from {DevPath}", devPath);
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Failed to eject disc from {DevPath}", job.DevPath);
+            logger.LogWarning(ex, "Failed to eject disc from {DevPath}", devPath);
         }
         finally
         {
@@ -1234,7 +1243,7 @@ public sealed partial class IdentifyService(
             // cooldown would only be set in BackgroundRipService.StartRip's
             // finally block, which runs after the entire pipeline finishes
             // (including transcode, which can take hours).
-            backgroundRipService.RecordManualEject(job.DevPath!);
+            backgroundRipService.RecordManualEject(devPath);
         }
     }
 
