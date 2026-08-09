@@ -1,14 +1,23 @@
 using System.Runtime.CompilerServices;
 using ArmRipper.Core.Configuration;
-using ArmRipper.Core.Infrastructure.Data;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace ArmRipper.WebUi.Hubs;
 
-public class NotificationHub(ISettingsService settingsService) : Hub
+public class NotificationHub(IOptions<ArmSettings> settings) : Hub
 {
+    private string LogPath => ArmPaths.GetLogPath(settings.Value);
+
+    /// <summary>
+    /// Streams log file content over SignalR.  Yields in ~16 KB chunks so large
+    /// files don't exceed the default SignalR message size limit (32 KB).
+    /// </summary>
+    /// <param name="fileName">Log file name (e.g. "arm.log", "42.log").</param>
+    /// <param name="mode">
+    /// "full" — send the entire file from the start, then stream new lines.
+    /// "tail" — send only the last ~4 KB, then stream new lines.
+    /// </param>
     public async IAsyncEnumerable<string> StreamLog(
         string fileName,
         string mode,
@@ -18,42 +27,38 @@ public class NotificationHub(ISettingsService settingsService) : Hub
         if (string.IsNullOrEmpty(safeFileName))
             yield break;
 
-        // Resolve from effective DB settings (DB RipperSettings overrides appsettings).
-        var effective = await settingsService.GetEffectiveAsync(cancellationToken);
-        var logPath = ArmPaths.GetLogPath(effective);
-        var fullPath = Path.Combine(logPath, safeFileName);
+        var fullPath = Path.Combine(LogPath, safeFileName);
         if (!System.IO.File.Exists(fullPath))
             yield break;
 
-        long lastPos = 0;
-        const int bufferSize = 8192; // 8 KB chunks – safe for SignalR message size limits
+        // Determine starting position based on mode
+        var fi = new FileInfo(fullPath);
+        long lastPos = mode == "tail"
+            ? Math.Max(0, fi.Length - 4096)  // last ~4 KB for "tail"
+            : 0;                              // entire file for "full"
 
-        do
+        while (!cancellationToken.IsCancellationRequested)
         {
-            var fi = new FileInfo(fullPath);
+            fi.Refresh();
             if (fi.Exists && fi.Length > lastPos)
             {
                 await using var fs = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 fs.Seek(lastPos, SeekOrigin.Begin);
                 using var reader = new StreamReader(fs);
 
-                var buffer = new char[bufferSize];
-                int charsRead;
-                while ((charsRead = await reader.ReadAsync(buffer, 0, bufferSize)) > 0)
+                // Yield in ~16 KB chunks to stay well within SignalR's 32 KB limit
+                var buffer = new char[16 * 1024];
+                int bytesRead;
+                while ((bytesRead = await reader.ReadAsync(buffer, 0, buffer.Length)) > 0)
                 {
-                    yield return new string(buffer, 0, charsRead);
+                    yield return new string(buffer, 0, bytesRead);
                 }
+
                 lastPos = fi.Length;
             }
 
-            // "full" mode: send the entire file content once and stop
-            if (mode == "full")
-                break;
-
-            // "tail" mode: poll for new content every second
             await Task.Delay(1000, cancellationToken);
         }
-        while (!cancellationToken.IsCancellationRequested);
     }
 
     /// <summary>Ping the hub to verify connectivity.</summary>

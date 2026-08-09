@@ -191,6 +191,27 @@ public sealed partial class DvdCompareProvider : IEpisodeIdentificationProvider
             "[DvdCompareProvider] Matched {Matched}/{Total} tracks from dvdcompare.net.",
             results.Count, context.Tracks.Count);
 
+        // ── Step 5: Validate match quality ─────────────────────────────────
+        // When the dvdcompare.net disc split doesn't match the physical
+        // disc (different region/release), runtime matching can assign
+        // wrong episode numbers. Check that matched episodes are in
+        // sequential order by track index — if they're out of order,
+        // the dvdcompare data is unreliable for this disc.
+        if (!AreMatchedEpisodesSequential(results))
+        {
+            var orderedByTrack = results.OrderBy(r => r.TrackIndex).ToList();
+            _logger.LogWarning(
+                "[DvdCompareProvider] Matched episodes are not in sequential order " +
+                "(got [{Episodes}]) — dvdcompare.net disc layout likely differs from physical disc. " +
+                "Reducing confidence to Low so sequential providers (Omdb/Tmdb/Tvdb) take precedence.",
+                string.Join(", ", orderedByTrack.Select(r => r.Episodes[0])));
+
+            for (int i = 0; i < results.Count; i++)
+            {
+                results[i] = results[i] with { Confidence = Confidence.Low };
+            }
+        }
+
         return results.ToArray();
     }
 
@@ -445,6 +466,36 @@ public sealed partial class DvdCompareProvider : IEpisodeIdentificationProvider
         }
 
         return discs;
+    }
+
+    /// <summary>
+    /// Checks whether <see cref="ProviderResult"/> instances (matched by runtime)
+    /// have monotonically increasing episode numbers when sorted by track index.
+    /// Non-sequential results indicate that the dvdcompare.net disc layout
+    /// doesn't match the physical disc (different region/release).
+    /// </summary>
+    /// <returns><c>true</c> if episodes are sequential; <c>false</c> otherwise
+    /// (or if there are fewer than 2 results).</returns>
+    public static bool AreMatchedEpisodesSequential(List<ProviderResult> results)
+    {
+        if (results.Count < 2)
+            return true;
+
+        var ordered = results.OrderBy(r => r.TrackIndex).ToList();
+
+        for (int i = 1; i < ordered.Count; i++)
+        {
+            var prevEp = ordered[i - 1].Episodes;
+            var curEp = ordered[i].Episodes;
+
+            if (prevEp.Length == 0 || curEp.Length == 0)
+                return false;
+
+            if (curEp[0] <= prevEp[0])
+                return false;
+        }
+
+        return true;
     }
 }
 
