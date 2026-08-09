@@ -290,4 +290,104 @@ public sealed class DvdCompareProviderTests
         // No season info parsed, falls back to first title match
         Assert.Equal("https://dvdcompare.net/comparisons/film.php?fid=123", url);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TC-DC-12: AreMatchedEpisodesSequential — sequential results
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void AreMatchedEpisodesSequential_SequentialResults_ReturnsTrue()
+    {
+        var results = new List<ProviderResult>
+        {
+            new() { TrackIndex = 0, Episodes = [6], Season = 4, Confidence = Confidence.High, ProviderName = "DvdCompare" },
+            new() { TrackIndex = 1, Episodes = [7], Season = 4, Confidence = Confidence.High, ProviderName = "DvdCompare" },
+            new() { TrackIndex = 2, Episodes = [8], Season = 4, Confidence = Confidence.High, ProviderName = "DvdCompare" },
+            new() { TrackIndex = 3, Episodes = [9], Season = 4, Confidence = Confidence.High, ProviderName = "DvdCompare" },
+        };
+
+        Assert.True(DvdCompare.DvdCompareProvider.AreMatchedEpisodesSequential(results));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TC-DC-13: AreMatchedEpisodesSequential — non-sequential (bug case)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void AreMatchedEpisodesSequential_NonSequentialResults_ReturnsFalse()
+    {
+        // Simulates the Weeds S4D2 bug: runtime matching gives [12, 11, 8, 10]
+        // which are not monotonically increasing by track index
+        var results = new List<ProviderResult>
+        {
+            new() { TrackIndex = 0, Episodes = [12], Season = 4, Confidence = Confidence.High, ProviderName = "DvdCompare" },
+            new() { TrackIndex = 1, Episodes = [11], Season = 4, Confidence = Confidence.High, ProviderName = "DvdCompare" },
+            new() { TrackIndex = 2, Episodes = [8],  Season = 4, Confidence = Confidence.High, ProviderName = "DvdCompare" },
+            new() { TrackIndex = 3, Episodes = [10], Season = 4, Confidence = Confidence.High, ProviderName = "DvdCompare" },
+        };
+
+        Assert.False(DvdCompare.DvdCompareProvider.AreMatchedEpisodesSequential(results));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TC-DC-14: AreMatchedEpisodesSequential — single result
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void AreMatchedEpisodesSequential_SingleResult_ReturnsTrue()
+    {
+        var results = new List<ProviderResult>
+        {
+            new() { TrackIndex = 0, Episodes = [5], Season = 4, Confidence = Confidence.High, ProviderName = "DvdCompare" },
+        };
+
+        Assert.True(DvdCompare.DvdCompareProvider.AreMatchedEpisodesSequential(results));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TC-DC-15: AreMatchedEpisodesSequential — empty results
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void AreMatchedEpisodesSequential_EmptyResults_ReturnsTrue()
+    {
+        var results = new List<ProviderResult>();
+        Assert.True(DvdCompare.DvdCompareProvider.AreMatchedEpisodesSequential(results));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TC-DC-16: AreMatchedEpisodesSequential — duplicate episode numbers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void AreMatchedEpisodesSequential_DuplicateEpisode_ReturnsFalse()
+    {
+        var results = new List<ProviderResult>
+        {
+            new() { TrackIndex = 0, Episodes = [5], Season = 4, Confidence = Confidence.High, ProviderName = "DvdCompare" },
+            new() { TrackIndex = 1, Episodes = [5], Season = 4, Confidence = Confidence.High, ProviderName = "DvdCompare" },
+        };
+
+        Assert.False(DvdCompare.DvdCompareProvider.AreMatchedEpisodesSequential(results));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TC-DC-17: AreMatchedEpisodesSequential — results not ordered by track
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void AreMatchedEpisodesSequential_OutOfOrderTracks_ButSequentialEpisodes_ReturnsTrue()
+    {
+        // Track order in the list doesn't match episode order, but when
+        // sorted by TrackIndex, episodes should be sequential
+        var results = new List<ProviderResult>
+        {
+            new() { TrackIndex = 3, Episodes = [9], Season = 4, Confidence = Confidence.High, ProviderName = "DvdCompare" },
+            new() { TrackIndex = 1, Episodes = [7], Season = 4, Confidence = Confidence.High, ProviderName = "DvdCompare" },
+            new() { TrackIndex = 0, Episodes = [6], Season = 4, Confidence = Confidence.High, ProviderName = "DvdCompare" },
+            new() { TrackIndex = 2, Episodes = [8], Season = 4, Confidence = Confidence.High, ProviderName = "DvdCompare" },
+        };
+
+        Assert.True(DvdCompare.DvdCompareProvider.AreMatchedEpisodesSequential(results));
+    }
 }

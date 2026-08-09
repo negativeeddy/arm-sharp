@@ -365,8 +365,13 @@ public sealed partial class IdentifyService(
             var mountTarget = $"/mnt/dev/{devName}";
             Directory.CreateDirectory(mountTarget);
 
+            // Optical discs must be mounted read-only (-o ro).  Without it,
+            // the kernel rejects the mount with "Can't mount, would change RO
+            // state" (dmesg) → "already mounted or mount point busy" in userspace.
+            // -t udf,iso9660 tells the kernel to try UDF first (Blu-ray/DVD-Video)
+            // with ISO9660 as fallback, instead of relying on auto-detection.
             var mountResult = await runner.RunAsync("mount",
-                $"--source {devPath} --target {mountTarget}", timeoutMs: 30_000, ct: ct);
+                $"-t udf,iso9660 -o ro --source {devPath} --target {mountTarget}", timeoutMs: 30_000, ct: ct);
 
             if (mountResult.ExitCode == 0)
             {

@@ -115,7 +115,21 @@ public partial class MakeMkvService : IMakeMkvService
         if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
             Directory.CreateDirectory(dir);
 
-        await File.WriteAllTextAsync(SettingsPath, $"app_Key = \"{key}\"\n", ct);
+        // Preserve non-app_Key lines (e.g. sdf_Stop) when rewriting settings.conf.
+        // File.WriteAllTextAsync would wipe them, breaking workarounds for older
+        // drives that need SDF download suppression.  See docs/makemkv-sdf-stop.md.
+        var existingLines = Array.Empty<string>();
+        if (File.Exists(SettingsPath))
+        {
+            existingLines = await File.ReadAllLinesAsync(SettingsPath, ct);
+        }
+
+        var kept = existingLines
+            .Where(line => !line.StartsWith("app_Key", StringComparison.OrdinalIgnoreCase))
+            .Append($"app_Key = \"{key}\"")
+            .Select(line => line + "\n");
+
+        await File.WriteAllTextAsync(SettingsPath, string.Concat(kept), ct);
         _logger.LogInformation("MakeMKV key saved to {Path}", SettingsPath);
     }
 

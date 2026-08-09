@@ -26,6 +26,53 @@ else
     fi
 fi
 
+# ─────────────────────────────────────────────────────────────────
+# MakeMKV SDF download workaround for older BD-ROM drives
+# ─────────────────────────────────────────────────────────────────
+# When the local sdf.bin (bundled with makemkv-bin) lacks an entry for
+# an older drive, makemkvcon tries to auto-download an updated SDF from
+# makemkv.com.  If the site is unreachable, it hangs at 99% CPU
+# indefinitely.  The sdf_Stop setting tells MakeMKV to skip the network
+# lookup for a specific drive and fall back to direct disc access.
+#
+# Drive IDs can be obtained from:
+#   makemkvcon --debug --robot --messages=-stdout info dev:/dev/sr0
+#   (look for "No SDF …" in /root/MakeMKV_log.txt)
+#
+# Add each unrecognised drive as:
+#   sdf_Stop = "<VENDOR_MODEL_FIRMWARE_MFG_DATE_SERIAL>"
+#
+# When makemkv.com is reachable, remove these lines to let MakeMKV
+# download an updated sdf.bin that may natively support the drive.
+# ─────────────────────────────────────────────────────────────────
+makemkv_settings_dir="$HOME/.MakeMKV"
+makemkv_settings_file="$makemkv_settings_dir/settings.conf"
+
+# Known older drives that need direct disc access
+declare -A sdf_stop_drives=(
+    # LG GBC-H20N — Blu-ray / HD-DVD combo (Dell/Acer OEM)
+    ["HL-DT-ST_DVDRWBD_GBC-H20N_B101_20070911123456_K187A8F5120"]=1
+)
+
+if command -v makemkvcon >/dev/null 2>&1; then
+    mkdir -p "$makemkv_settings_dir"
+    # settings.conf may not exist yet if makemkvcon has never run;
+    # create it if missing.
+    if [[ ! -f "$makemkv_settings_file" ]]; then
+        touch "$makemkv_settings_file"
+    fi
+
+    for drive_id in "${!sdf_stop_drives[@]}"; do
+        line="sdf_Stop = \"$drive_id\""
+        if grep -qF "$line" "$makemkv_settings_file" 2>/dev/null; then
+            echo "SDF stop already configured for drive: $drive_id"
+        else
+            echo "$line" >> "$makemkv_settings_file"
+            echo "Added SDF stop for drive: $drive_id"
+        fi
+    done
+fi
+
 echo "=== Installing opencode (if missing) ==="
 if ! command -v opencode >/dev/null 2>&1; then
     echo "opencode not found — installing..."

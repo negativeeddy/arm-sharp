@@ -246,9 +246,16 @@ public sealed partial class HandBrakeService(
     private string BuildCommand(string inputPath, string outputPath, Job job, int? trackNumber, bool mainFeature)
     {
         // HandBrake CLI has no --gpu flag; use CUDA_VISIBLE_DEVICES env var
-        // to target a specific GPU for NVENC/NVDEC.
+        // to target a specific GPU for NVENC/NVDEC.  Validate that the
+        // requested GPU device node exists — if a GPU was removed since the
+        // job was created, silently fall back to HandBrake auto-detect
+        // instead of failing with CUDA_ERROR_NO_DEVICE.
         var gpuIndex = job.Config?.GpuIndex ?? settings.Value.GpuIndex;
-        var gpuPrefix = gpuIndex.HasValue ? $"CUDA_VISIBLE_DEVICES={gpuIndex.Value} " : "";
+        var (gpuPrefix, gpuMissing) = GetGpuPrefix(gpuIndex);
+        if (gpuMissing)
+            logger.LogWarning(
+                "GPU index {GpuIndex} not found — falling back to HandBrake auto-detect",
+                gpuIndex!.Value);
 
         var cmd = $"{gpuPrefix}nice HandBrakeCLI -i \"{inputPath}\" -o \"{outputPath}\"";
 
@@ -443,6 +450,35 @@ public sealed partial class HandBrakeService(
         };
 
         db.Tracks.Add(track);
+    }
+
+    /// <summary>
+    /// Returns the CUDA_VISIBLE_DEVICES prefix for a HandBrake command
+    /// and whether the requested GPU was missing (so the caller can log a warning).
+    /// </summary>
+    /// <param name="gpuIndex">GPU index from job config or settings (<c>null</c> = auto).</param>
+    /// <param name="deviceExists">
+    /// Optional override for the device-existence check (used in tests).
+    /// Defaults to <see cref="File.Exists"/> on <c>/dev/nvidia{N}</c>.
+    /// </param>
+    /// <returns>
+    /// (<c>prefix</c>, <c>missing</c>): the env-var prefix (or <c>""</c>)
+    /// and <c>true</c> when a GPU was requested but not found.
+    /// </returns>
+    internal static (string Prefix, bool Missing) GetGpuPrefix(
+        int? gpuIndex,
+        Func<string, bool>? deviceExists = null)
+    {
+        if (!gpuIndex.HasValue)
+            return ("", false);
+
+        var exists = deviceExists?.Invoke($"/dev/nvidia{gpuIndex.Value}")
+                  ?? File.Exists($"/dev/nvidia{gpuIndex.Value}");
+
+        if (exists)
+            return ($"CUDA_VISIBLE_DEVICES={gpuIndex.Value} ", false);
+
+        return ("", true);
     }
 
     [GeneratedRegex(@"scan: (BD|DVD) has (\d{1,3}) title\(s\)")]
