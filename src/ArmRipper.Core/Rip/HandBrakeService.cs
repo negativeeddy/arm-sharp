@@ -246,9 +246,21 @@ public sealed partial class HandBrakeService(
     private string BuildCommand(string inputPath, string outputPath, Job job, int? trackNumber, bool mainFeature)
     {
         // HandBrake CLI has no --gpu flag; use CUDA_VISIBLE_DEVICES env var
-        // to target a specific GPU for NVENC/NVDEC.
+        // to target a specific GPU for NVENC/NVDEC.  Validate that the
+        // requested GPU device node exists — if a GPU was removed since the
+        // job was created, silently fall back to HandBrake auto-detect
+        // instead of failing with CUDA_ERROR_NO_DEVICE.
         var gpuIndex = job.Config?.GpuIndex ?? settings.Value.GpuIndex;
-        var gpuPrefix = gpuIndex.HasValue ? $"CUDA_VISIBLE_DEVICES={gpuIndex.Value} " : "";
+        var gpuPrefix = "";
+        if (gpuIndex.HasValue)
+        {
+            if (File.Exists($"/dev/nvidia{gpuIndex.Value}"))
+                gpuPrefix = $"CUDA_VISIBLE_DEVICES={gpuIndex.Value} ";
+            else
+                logger.LogWarning(
+                    "GPU index {GpuIndex} not found — falling back to HandBrake auto-detect",
+                    gpuIndex.Value);
+        }
 
         var cmd = $"{gpuPrefix}nice HandBrakeCLI -i \"{inputPath}\" -o \"{outputPath}\"";
 
