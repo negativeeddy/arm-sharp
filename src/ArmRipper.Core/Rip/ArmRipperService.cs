@@ -226,7 +226,8 @@ public sealed class ArmRipperService(
                 Directory.CreateDirectory(makeMkvOutPath);
 
             var mkvArgs = job.Config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
-            await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping track 0", ct), ct);
+            var testRipResult = await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping track 0", ct), ct);
+            LogMakeMkvIssues(testRipResult, "test-mode rip");
             logger.LogInformation("Ripped track 0 in test mode");
             return makeMkvOutPath;
         }
@@ -276,12 +277,15 @@ public sealed class ArmRipperService(
                     Directory.CreateDirectory(makeMkvOutPath);
 
                 var mkvArgs = config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
-                await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, "Ripping all titles", ct), ct);
+                var fallbackRipResult = await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, "Ripping all titles", ct), ct);
+                LogMakeMkvIssues(fallbackRipResult, "0-track fallback rip");
                 logger.LogInformation("Ripped all titles from disc (0-track fallback)");
 
                 if (!Directory.EnumerateFileSystemEntries(makeMkvOutPath).Any())
                 {
-                    var msg = "MakeMKV rip produced no output files";
+                    var msg = fallbackRipResult.HadSkippedTitles || fallbackRipResult.HadReadError
+                        ? $"MakeMKV rip produced no output files (disc read or title skip errors reported: {DescribeMakeMkvIssues(fallbackRipResult)})"
+                        : "MakeMKV rip produced no output files";
                     logger.LogError(msg);
                     throw new InvalidOperationException(msg);
                 }
@@ -459,6 +463,7 @@ public sealed class ArmRipperService(
             var eligibleTracks = tracks.Where(t => t.Process).ToList();
             var mkvArgs = config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
             var ripCount = 0;
+            var ripResults = new List<MakeMkvRipResult>();
 
             if (settings.Value.TestMode)
             {
@@ -467,10 +472,10 @@ public sealed class ArmRipperService(
                 {
                     var trackNum = firstTrack.TrackNumber ?? throw new InvalidOperationException(
                         $"Track {firstTrack.Id} has no TrackNumber — cannot rip");
-                    await makeMkv.RipTrackAsync(job, trackNum, makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping track 0", ct), ct);
+                    ripResults.Add(await makeMkv.RipTrackAsync(job, trackNum, makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping track 0", ct), ct));
                 }
                 else
-                    await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping track 0", ct), ct);
+                    ripResults.Add(await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping track 0", ct), ct));
             }
             else if (config?.MainFeature ?? settings.Value.MainFeature)
             {
@@ -484,7 +489,7 @@ public sealed class ArmRipperService(
                     // minLength=0 to prevent MakeMKV from filtering it out with --minlength.
                     var trackNum = main.TrackNumber ?? throw new InvalidOperationException(
                         $"Main-feature track {main.Id} has no TrackNumber — cannot rip");
-                    await makeMkv.RipTrackAsync(job, trackNum, makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping main feature", ct), ct);
+                    ripResults.Add(await makeMkv.RipTrackAsync(job, trackNum, makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping main feature", ct), ct));
                     ripCount = 1;
                 }
             }
@@ -493,7 +498,7 @@ public sealed class ArmRipperService(
                 // Fast path: rip everything >= minLength in a single MakeMKV pass.
                 // Only safe when NO tracks have been DiscDb-promoted (no EpisodeTitle),
                 // otherwise individual iteration is needed to respect Process flags.
-                await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, "Ripping all titles", ct), ct);
+                ripResults.Add(await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, "Ripping all titles", ct), ct));
                 ripCount = eligibleTracks.Count;
             }
             else
@@ -511,10 +516,13 @@ public sealed class ArmRipperService(
                         continue;
                     }
                     var trackMinLength = !string.IsNullOrEmpty(track.EpisodeTitle) ? 0 : minLengthCfg;
-                    await makeMkv.RipTrackAsync(job, track.TrackNumber, makeMkvOutPath, mkvArgs, trackMinLength, MkvProgress(job, $"Ripping track {trackNum} of {eligibleTracks.Count}", ct), ct);
+                    ripResults.Add(await makeMkv.RipTrackAsync(job, track.TrackNumber, makeMkvOutPath, mkvArgs, trackMinLength, MkvProgress(job, $"Ripping track {trackNum} of {eligibleTracks.Count}", ct), ct));
                     ripCount++;
                 }
             }
+
+            foreach (var result in ripResults)
+                LogMakeMkvIssues(result, "rip");
 
             logger.LogInformation("Ripped {Count} titles", ripCount);
         }
@@ -528,6 +536,10 @@ public sealed class ArmRipperService(
         if (Directory.Exists(makeMkvOutPath))
         {
             var dbTracks = await db.Tracks.Where(t => t.JobId == job.Id).ToListAsync(ct);
+
+            string? mainFeatureFailure = null;
+            var undersizedWarnings = new List<string>();
+
             foreach (var file in Directory.EnumerateFiles(makeMkvOutPath, "*.mkv"))
             {
                 var fileName = Path.GetFileName(file);
@@ -542,11 +554,47 @@ public sealed class ArmRipperService(
 
                 if (track is not null)
                 {
+                    // Capture the info-scan estimate BEFORE overwriting it with the
+                    // actual file length so undersized rips can be detected.
+                    var expectedSize = track.FileSize ?? 0;
+
                     track.FileName = fileName;
                     track.FileSize = fileInfo.Length;
                     track.Ripped = true;
+
+                    if (IsRipUndersized(expectedSize, fileInfo.Length, MinRipSizeRatio))
+                    {
+                        var sizeDetail = expectedSize > 0
+                            ? $"{fileInfo.Length:N0} bytes vs expected {expectedSize:N0} ({fileInfo.Length * 100.0 / expectedSize:F1}%)"
+                            : $"{fileInfo.Length:N0} bytes vs no expected size";
+
+                        if (track.MainFeature)
+                        {
+                            mainFeatureFailure =
+                                $"Main feature rip is grossly undersized — track {track.TrackNumber} produced {sizeDetail}. " +
+                                "The intended title was likely skipped (damaged disc / navigation error) and the saved file is wrong.";
+                        }
+                        else
+                        {
+                            undersizedWarnings.Add(
+                                $"track {track.TrackNumber} produced {sizeDetail}");
+                        }
+                    }
                 }
             }
+
+            foreach (var warning in undersizedWarnings)
+                logger.LogWarning("Rip produced undersized output: {Detail}", warning);
+
+            if (mainFeatureFailure is not null)
+            {
+                logger.LogError(mainFeatureFailure);
+                job.Status = JobState.Failure;
+                job.Errors = mainFeatureFailure;
+                await db.SaveChangesAsync(ct);
+                throw new InvalidOperationException(mainFeatureFailure);
+            }
+
             await db.SaveChangesAsync(ct);
 
             if (dbTracks.Count > 0 && !dbTracks.Any(t => t.Ripped))
@@ -1318,6 +1366,51 @@ public sealed class ArmRipperService(
             VideoContentType.Series => "tv",
             _ => "unidentified"
         };
+    }
+
+    /// <summary>
+    /// Minimum ratio of actual rip output size to the MakeMKV info-scan estimate
+    /// before a rip target is considered grossly undersized. MakeMKV's FileSize
+    /// estimate (TINFO field 11) is close to the output size for a healthy rip;
+    /// a target landing far below it (e.g. a 9s file where a ~2h feature was
+    /// expected) means the intended title was skipped or the disc is damaged.
+    /// </summary>
+    internal const double MinRipSizeRatio = 0.30;
+
+    internal static bool IsRipUndersized(long expectedSize, long actualSize, double minRatio)
+        => expectedSize > 0 && actualSize < expectedSize * minRatio;
+
+    /// <summary>
+    /// Logs warnings for notable MakeMKV rip-phase messages (read errors, corrupt
+    /// source sectors, skipped titles) that MakeMKV otherwise swallows.
+    /// </summary>
+    private void LogMakeMkvIssues(MakeMkvRipResult result, string context)
+    {
+        if (result is null) return;
+
+        if (result.HadReadError)
+            logger.LogWarning("MakeMKV reported read errors during {Context}", context);
+
+        if (result.HadCorruptSource)
+            logger.LogWarning("MakeMKV reported corrupt source sectors during {Context}", context);
+
+        if (result.HadSkippedTitles)
+            logger.LogWarning("MakeMKV skipped {Count} title(s) during {Context}: {Titles}",
+                result.SkippedTitles.Count, context, DescribeMakeMkvIssues(result));
+    }
+
+    private static string DescribeMakeMkvIssues(MakeMkvRipResult result)
+    {
+        var parts = new List<string>();
+
+        if (result.HadReadError)
+            parts.Add("read errors");
+        if (result.HadCorruptSource)
+            parts.Add("corrupt source");
+        if (result.HadSkippedTitles)
+            parts.Add($"skipped: {string.Join("; ", result.SkippedTitles)}");
+
+        return parts.Count > 0 ? string.Join(", ", parts) : "none";
     }
 
     private string CheckForDupeFolder(bool hasDupes, string hbOutPath, Job job)

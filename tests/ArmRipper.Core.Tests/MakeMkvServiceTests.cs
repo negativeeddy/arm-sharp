@@ -665,4 +665,94 @@ public sealed class MakeMkvServiceTests : IDisposable
         // service reports 100% once the rip completes.
         Assert.Equal([100], reported);
     }
+
+    // ── MakeMkvRipResult capture tests ───────────────────────────
+
+    [Fact]
+    public async Task RipTrackAsync_CapturesReadErrorSkippedTitleAndCorruptSource()
+    {
+        _runnerMock
+            .Setup(r => r.RunStreamingAsync(
+                "makemkvcon",
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(ToAsyncStream(
+                "MSG:1005,0,1,\"MakeMKV v1.18.3\",\"\",",
+                "MSG:2003,0,3,\"Error 'Scsi error - MEDIUM ERROR:UNRECOVERED READ ERROR' occurred while reading 'DVD' at offset '2381783040'\",\"Error '%1' occurred while reading '%2' at offset '%3'\",\"Scsi error - MEDIUM ERROR:UNRECOVERED READ ERROR\",\"DVD\",\"2381783040\"",
+                "MSG:3015,0,2,\"Title #1 (1:49:15) was skipped due to navigation error\",\"Title #%1 (%2) was skipped due to navigation error\",\"1\",\"1:49:15\"",
+                "MSG:3028,0,3,\"Title #2 was added (1 cell(s), 0:00:09)\",\"Title #%1 was added (%2 cell(s), %3)\",\"2\",\"1\",\"0:00:09\"",
+                "MSG:4004,0,2,\"The source file '/VIDEO_TS/VTS_07_1.VOB' is corrupt or invalid at offset 4096, attempting to work around\",\"The source file '%1' is corrupt or invalid at offset %2, attempting to work around\",\"/VIDEO_TS/VTS_07_1.VOB\",\"4096\""));
+
+        var job = TestHelpers.CreateTestJob();
+        var result = await _service.RipTrackAsync(job, "0", "/out", "", 0);
+
+        Assert.True(result.HadReadError);
+        Assert.True(result.HadCorruptSource);
+        Assert.True(result.HadSkippedTitles);
+        Assert.Contains(result.SkippedTitles, s => s.Contains("navigation error"));
+        Assert.Equal(1, result.TitlesSaved);
+    }
+
+    [Fact]
+    public async Task RipTrackAsync_CleanRip_ReportsNoIssues()
+    {
+        _runnerMock
+            .Setup(r => r.RunStreamingAsync(
+                "makemkvcon",
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(ToAsyncStream(
+                "MSG:1005,0,1,\"MakeMKV v1.18.3\",\"\",",
+                "PRGC:100,100",
+                "TCOUNT:1"));
+
+        var job = TestHelpers.CreateTestJob();
+        var result = await _service.RipTrackAsync(job, "0", "/out", "", 0);
+
+        Assert.False(result.HadReadError);
+        Assert.False(result.HadCorruptSource);
+        Assert.Empty(result.SkippedTitles);
+        Assert.Equal(0, result.TitlesSaved);
+    }
+
+    [Fact]
+    public async Task RipAllTitlesAsync_CapturesSkippedTitles()
+    {
+        _runnerMock
+            .Setup(r => r.RunStreamingAsync(
+                "makemkvcon",
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(ToAsyncStream(
+                "MSG:3015,0,2,\"Title #3 (0:12:34) was skipped due to navigation error\",\"Title #%1 (%2) was skipped due to navigation error\",\"3\",\"0:12:34\""));
+
+        var job = TestHelpers.CreateTestJob();
+        var result = await _service.RipAllTitlesAsync(job, "/out", "", 0);
+
+        Assert.True(result.HadSkippedTitles);
+        Assert.Single(result.SkippedTitles);
+    }
+
+    [Fact]
+    public void MakeMkvRipResult_Merge_CombinesFlagsAndCounts()
+    {
+        var a = new MakeMkvRipResult();
+        a.Capture(new MakeMkvMessage(2003, 0, 1, "read error", "read error", []));
+        a.Capture(new MakeMkvMessage(3028, 0, 1, "added", "added", []));
+
+        var b = new MakeMkvRipResult();
+        b.Capture(new MakeMkvMessage(3015, 0, 1, "Title #2 skipped", "Title #%1 skipped", ["2"]));
+        b.Capture(new MakeMkvMessage(4004, 0, 1, "corrupt", "corrupt", []));
+        b.Capture(new MakeMkvMessage(3028, 0, 1, "added", "added", []));
+
+        a.Merge(b);
+
+        Assert.True(a.HadReadError);
+        Assert.True(a.HadCorruptSource);
+        Assert.True(a.HadSkippedTitles);
+        Assert.Equal(2, a.TitlesSaved);
+    }
 }

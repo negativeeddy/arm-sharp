@@ -158,4 +158,31 @@ public sealed class ArmRipperServiceLogicTests
         var result = InvokeCleanSeriesTitle(input ?? "");
         Assert.Equal("Unknown Series", result);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // IsRipUndersized / MinRipSizeRatio
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(100_000, 10_000, 0.30, true)]   // ~10% of expected — grossly undersized
+    [InlineData(100_000, 29_999, 0.30, true)]   // just under the 30% threshold
+    [InlineData(100_000, 30_000, 0.30, false)]  // exactly at the threshold
+    [InlineData(100_000, 99_000, 0.30, false)]  // healthy rip
+    [InlineData(0, 10_000, 0.30, false)]        // no expected size — cannot validate
+    public void IsRipUndersized_VariousSizes_ReturnsExpected(long expected, long actual, double minRatio, bool expectedResult)
+    {
+        var method = GetStaticMethod("IsRipUndersized");
+        var result = method.Invoke(null, [expected, actual, minRatio]);
+        Assert.Equal(expectedResult, result);
+    }
+
+    [Fact]
+    public void MinRipSizeRatio_IsThirtyPercent()
+    {
+        var field = typeof(ArmRipper.Core.Rip.ArmRipperService)
+            .GetField("MinRipSizeRatio",
+                BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static);
+        Assert.NotNull(field);
+        Assert.Equal(0.30, (double)field.GetValue(null)!);
+    }
 }
