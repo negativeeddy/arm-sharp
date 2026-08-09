@@ -73,10 +73,12 @@ public enum MessageId
     WriteError = 2019,
     ComplexMultiplex = 3024,
     TitleSkipped = 3025,
+    TitleSkippedNavigation = 3015,
     TitleAdded = 3028,
     SubtitleSkippedIdentical = 3030,
     AudioSkippedEmpty = 3034,
     FileAdded = 3307,
+    CorruptSource = 4004,
     RipTitleError = 5003,
     RipCompleted = 5004,
     RipDiscOpenError = 5010,
@@ -115,3 +117,52 @@ public record DriveInfo(int Index, bool Visible, bool Enabled, int Flags, string
 public record PrgV(int CurrentTitle, int TotalTitles, int CurrentProgress, int TotalProgress);
 public record PrgC(int CurrentProgress, int TotalProgress);
 public record PrgT(int TotalProgress);
+
+/// <summary>
+/// Aggregates notable MakeMKV messages observed during a rip phase so the caller
+/// can detect problems that MakeMKV does not surface via its exit code or the
+/// presence of output files (e.g. a title skipped due to a navigation/read
+/// error on a damaged disc, or corrupt source sectors that were worked around).
+/// </summary>
+public sealed class MakeMkvRipResult
+{
+    public bool HadReadError { get; private set; }
+
+    public bool HadCorruptSource { get; private set; }
+
+    /// <summary>Titles reported as skipped (MSG 3015 / 3025).</summary>
+    public List<string> SkippedTitles { get; } = [];
+
+    /// <summary>Number of titles MakeMKV reported as added/saved (MSG 3028).</summary>
+    public int TitlesSaved { get; private set; }
+
+    public bool HadSkippedTitles => SkippedTitles.Count > 0;
+
+    public void Capture(MakeMkvMessage msg)
+    {
+        switch ((MessageId)msg.Code)
+        {
+            case MessageId.ReadError:
+                HadReadError = true;
+                break;
+            case MessageId.CorruptSource:
+                HadCorruptSource = true;
+                break;
+            case MessageId.TitleSkipped:
+            case MessageId.TitleSkippedNavigation:
+                SkippedTitles.Add(msg.Message);
+                break;
+            case MessageId.TitleAdded:
+                TitlesSaved++;
+                break;
+        }
+    }
+
+    public void Merge(MakeMkvRipResult other)
+    {
+        if (other.HadReadError) HadReadError = true;
+        if (other.HadCorruptSource) HadCorruptSource = true;
+        SkippedTitles.AddRange(other.SkippedTitles);
+        TitlesSaved += other.TitlesSaved;
+    }
+}
