@@ -12,7 +12,7 @@ namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("")]
-public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardwareEncoderInfoService hardwareEncoderInfoService, ILogger<HomeController> logger) : Controller
+public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardwareEncoderInfoService hardwareEncoderInfoService, ISettingsService settingsService, ILogger<HomeController> logger) : Controller
 {
     [HttpGet("")]
     [HttpGet("index")]
@@ -24,6 +24,18 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardware
             .OrderByDescending(j => j.StartTime)
             .Take(10)
             .ToListAsync(ct);
+
+        // Recent completed jobs (with final status) for the collapsible section
+        // beneath the in-progress jobs. Count is configurable in the settings.
+        var effective = await settingsService.GetEffectiveAsync(ct);
+        var recentCount = Math.Max(0, effective.RecentCompletedJobsCount);
+        var recentCompleted = await db.Jobs
+            .Include(j => j.Config)
+            .Where(j => j.Status == JobState.Success || j.Status == JobState.Failure || j.Status == JobState.Cancelled)
+            .OrderByDescending(j => j.StopTime ?? j.StartTime)
+            .Take(recentCount)
+            .ToListAsync(ct);
+        ViewBag.RecentCompletedJobs = recentCompleted;
 
         // Pass drives and active job device paths for the Drives widget.
         // Only jobs that are still using the optical drive (ripping states)

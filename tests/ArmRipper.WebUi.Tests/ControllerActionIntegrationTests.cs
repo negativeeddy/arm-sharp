@@ -349,6 +349,28 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
     }
 
     [Fact]
+    public async Task SaveRipper_SavesRecentCompletedJobsCount()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.PostAsync("/settings/save-ripper",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                { "RecentCompletedJobsCount", "5" }
+            }));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var settings = await db.RipperSettings.FirstOrDefaultAsync();
+            Assert.NotNull(settings);
+            var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(settings.SettingsJson);
+            Assert.NotNull(dict);
+            Assert.Equal(5, dict["RecentCompletedJobsCount"].GetInt32());
+        }
+    }
+
+    [Fact]
     public async Task SaveRipper_DoesNotOverwriteTranscodeFields()
     {
         var client = await CreateAuthenticatedClientAsync();

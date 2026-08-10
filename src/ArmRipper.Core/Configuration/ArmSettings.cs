@@ -104,6 +104,11 @@ public class ArmSettings
     /// while the disc is still physically ejecting. Default: 15.
     /// </summary>
     public int EjectCooldownSeconds { get; set; } = 15;
+    /// <summary>
+    /// Number of most-recent completed jobs to show on the main page beneath the
+    /// in-progress section. Default: 10.
+    /// </summary>
+    public int RecentCompletedJobsCount { get; set; } = 10;
 
     // ── TheDiscDb Integration ──
     public bool DiscDbEnabled { get; set; } = true;
