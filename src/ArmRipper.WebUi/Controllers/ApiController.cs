@@ -264,6 +264,12 @@ public partial class ApiController(
             job.Title = title;
         }
 
+        // The output path is only needed once the transcode completes — refresh it
+        // as soon as the title is identified after the rip has started.
+        var effective = await settingsService.GetEffectiveAsync(ct);
+        var completedPath = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(effective);
+        job.Path = ArmRipperService.ComputeOutputPath(job, completedPath);
+
         job.ManualWaitResume = true;
         await db.SaveChangesAsync(ct);
 

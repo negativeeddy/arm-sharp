@@ -331,4 +331,45 @@ public sealed class ArmRipperServiceLogicTests
             minLength: 0);
         Assert.Equal(ArmRipperService.RipVerificationVerdict.Pass, result);
     }
+
+    [Fact]
+    public void ComputeOutputPath_MovieTitleAndYear_ReturnsMoviesFolder()
+    {
+        var job = TestHelpers.CreateTestJob();
+        Assert.Equal(
+            "/home/arm/media/completed/movies/Test Movie (2024)",
+            ArmRipperService.ComputeOutputPath(job, null));
+    }
+
+    [Fact]
+    public void ComputeOutputPath_SeriesManualTitle_ReturnsTvFolder()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.TitleManual = "My Series";
+            j.Year = "2001";
+        });
+        Assert.Equal(
+            "/home/arm/media/completed/tv/My Series (2001)",
+            ArmRipperService.ComputeOutputPath(job, null));
+    }
+
+    [Fact]
+    public void ComputeOutputPath_UnknownType_ReturnsUnidentifiedFolder()
+    {
+        var job = TestHelpers.CreateTestJob(j => j.VideoType = VideoContentType.Unknown);
+        Assert.Equal(
+            "/home/arm/media/completed/unidentified/Test Movie (2024)",
+            ArmRipperService.ComputeOutputPath(job, null));
+    }
+
+    [Fact]
+    public void ComputeOutputPath_CustomCompletedPath_IsUsed()
+    {
+        var job = TestHelpers.CreateTestJob();
+        Assert.Equal(
+            "/custom/media/completed/movies/Test Movie (2024)",
+            ArmRipperService.ComputeOutputPath(job, "/custom/media/completed"));
+    }
 }
