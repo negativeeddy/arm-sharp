@@ -672,6 +672,7 @@ public sealed class Conductor(
             default:
                 logger.LogCritical("Couldn't identify the disc type. Exiting without any action.");
                 job.Status = JobState.Failure;
+                job.Errors = "Couldn't identify the disc type. Exiting without any action.";
                 await db.SaveChangesAsync(ct);
                 await BroadcastJobUpdateAsync(job);
                 return 1;
