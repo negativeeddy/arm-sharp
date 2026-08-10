@@ -555,30 +555,42 @@ public sealed class ArmRipperService(
                 if (track is not null)
                 {
                     // Capture the info-scan estimate BEFORE overwriting it with the
-                    // actual file length so undersized rips can be detected.
+                    // actual file length so undersized/truncated rips can be detected.
                     var expectedSize = track.FileSize ?? 0;
+                    var expectedDuration = track.Length is int l && l > 0 ? (double?)l : null;
 
                     track.FileName = fileName;
                     track.FileSize = fileInfo.Length;
                     track.Ripped = true;
 
-                    if (IsRipUndersized(expectedSize, fileInfo.Length, MinRipSizeRatio))
-                    {
-                        var sizeDetail = expectedSize > 0
-                            ? $"{fileInfo.Length:N0} bytes vs expected {expectedSize:N0} ({fileInfo.Length * 100.0 / expectedSize:F1}%)"
-                            : $"{fileInfo.Length:N0} bytes vs no expected size";
+                    // Probe the output with ffprobe — the authoritative post-rip
+                    // check that depends only on the file MakeMKV actually wrote,
+                    // never on MakeMKV's internal title numbering. Cheap (<1 s per
+                    // file); a null duration means "cannot verify" and the size gate
+                    // remains the only check for that file.
+                    var actualDuration = await ffmpeg.ProbeDurationAsync(file, ct);
 
-                        if (track.MainFeature)
-                        {
-                            mainFeatureFailure =
-                                $"Main feature rip is grossly undersized — track {track.TrackNumber} produced {sizeDetail}. " +
-                                "The intended title was likely skipped (damaged disc / navigation error) and the saved file is wrong.";
-                        }
-                        else
-                        {
-                            undersizedWarnings.Add(
-                                $"track {track.TrackNumber} produced {sizeDetail}");
-                        }
+                    // DiscDb-promoted tracks were deliberately ripped with
+                    // minLength=0 because they may legitimately be shorter than the
+                    // configured floor — do not re-impose the floor on them.
+                    var trackMinLength = string.IsNullOrEmpty(track.EpisodeTitle) ? minLengthCfg : 0;
+
+                    var verdict = VerifyRipOutput(
+                        track.MainFeature,
+                        expectedSize, fileInfo.Length,
+                        expectedDuration, actualDuration,
+                        trackMinLength,
+                        MinRipSizeRatio, MinDurationRatio);
+
+                    if (verdict == RipVerificationVerdict.Fail)
+                    {
+                        mainFeatureFailure = BuildRipVerificationFailure(
+                            track, expectedSize, fileInfo.Length, expectedDuration, actualDuration);
+                    }
+                    else if (verdict == RipVerificationVerdict.Warn)
+                    {
+                        undersizedWarnings.Add(
+                            $"track {track.TrackNumber} produced {DescribeRipVerification(expectedSize, fileInfo.Length, expectedDuration, actualDuration)}");
                     }
                 }
             }
@@ -1377,8 +1389,92 @@ public sealed class ArmRipperService(
     /// </summary>
     internal const double MinRipSizeRatio = 0.30;
 
+    /// <summary>
+    /// Minimum ratio of the ffprobe output duration to the MakeMKV info-scan
+    /// estimate before a rip target is considered truncated / the wrong title.
+    /// MakeMKV's duration (TINFO field 9) reflects the disc's title length; a
+    /// salvaged clip or a wrong title can land far below it even when the file
+    /// size happens to coincide. The bound is generous because damaged discs
+    /// legitimately trim cells (MSG:3037/3038) and PAL/NTSC conversion shifts
+    /// durations by small amounts.
+    /// </summary>
+    internal const double MinDurationRatio = 0.50;
+
     internal static bool IsRipUndersized(long expectedSize, long actualSize, double minRatio)
         => expectedSize > 0 && actualSize < expectedSize * minRatio;
+
+    /// <summary>True when the probed duration is a fraction of the expected duration below <paramref name="minRatio"/>.
+    /// Cannot-validate cases (missing expected or actual) never count as truncated.</summary>
+    internal static bool IsRipDurationTruncated(double? expectedDuration, double? actualDuration, double minRatio)
+        => expectedDuration is > 0 && actualDuration is not null && actualDuration < expectedDuration * minRatio;
+
+    /// <summary>True when the probed duration is below the configured minimum title length.
+    /// A zero/negative minLength disables the floor; a null actual duration cannot be validated.</summary>
+    internal static bool IsRipDurationBelowMinLength(double? actualDuration, int minLength)
+        => minLength > 0 && actualDuration is not null && actualDuration < minLength;
+
+    /// <summary>Verdict for a single rip target's output-file verification.</summary>
+    internal enum RipVerificationVerdict
+    {
+        /// <summary>Output matches the expected size/duration — no action.</summary>
+        Pass,
+        /// <summary>Output is undersized/truncated but this is not the main feature — warn only, keep the job running.</summary>
+        Warn,
+        /// <summary>Main-feature output is undersized/truncated — the job must fail so raw files are retained for retry.</summary>
+        Fail
+    }
+
+    /// <summary>
+    /// Verifies a rip output file against the expected info-scan estimate.
+    /// Combines the cheap size gate (B2) with the authoritative ffprobe duration
+    /// check (B3): a target is suspicious when it is grossly undersized, far
+    /// shorter than expected, or shorter than the configured minimum title
+    /// length. Severity is Fail for the main feature (the whole job must fail)
+    /// and Warn for extras.
+    /// </summary>
+    internal static RipVerificationVerdict VerifyRipOutput(
+        bool isMainFeature,
+        long expectedSize, long actualSize,
+        double? expectedDuration, double? actualDuration,
+        int minLength,
+        double minSizeRatio, double minDurationRatio)
+    {
+        var suspicious = IsRipUndersized(expectedSize, actualSize, minSizeRatio)
+            || IsRipDurationTruncated(expectedDuration, actualDuration, minDurationRatio)
+            || IsRipDurationBelowMinLength(actualDuration, minLength);
+
+        if (!suspicious)
+            return RipVerificationVerdict.Pass;
+
+        return isMainFeature ? RipVerificationVerdict.Fail : RipVerificationVerdict.Warn;
+    }
+
+    /// <summary>Builds the failure message for a failed main-feature verification.</summary>
+    private static string BuildRipVerificationFailure(
+        Track track, long expectedSize, long actualSize, double? expectedDuration, double? actualDuration)
+        => $"Main feature rip verification failed — track {track.TrackNumber} produced " +
+           $"{DescribeRipVerification(expectedSize, actualSize, expectedDuration, actualDuration)}. " +
+           "The intended title was likely skipped (damaged disc / navigation error) and the saved file is wrong.";
+
+    /// <summary>Describes a rip output discrepancy in human-readable terms (size and/or duration).</summary>
+    private static string DescribeRipVerification(long expectedSize, long actualSize, double? expectedDuration, double? actualDuration)
+    {
+        var parts = new List<string>();
+
+        if (expectedSize > 0)
+            parts.Add($"{actualSize:N0} bytes vs expected {expectedSize:N0} ({actualSize * 100.0 / expectedSize:F1}%)");
+
+        if (expectedDuration is > 0 && actualDuration is not null)
+            parts.Add($"{FormatDuration(actualDuration.Value)} vs expected {FormatDuration(expectedDuration.Value)}");
+
+        return parts.Count > 0 ? string.Join("; ", parts) : $"{actualSize:N0} bytes vs no expected size";
+    }
+
+    private static string FormatDuration(double seconds)
+    {
+        var t = TimeSpan.FromSeconds(seconds);
+        return t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"m\:ss");
+    }
 
     /// <summary>
     /// Logs warnings for notable MakeMKV rip-phase messages (read errors, corrupt

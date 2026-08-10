@@ -1,5 +1,6 @@
 using System.Reflection;
 using ArmRipper.Core.Models;
+using ArmRipper.Core.Rip;
 
 namespace ArmRipper.Core.Tests;
 
@@ -184,5 +185,150 @@ public sealed class ArmRipperServiceLogicTests
                 BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static);
         Assert.NotNull(field);
         Assert.Equal(0.30, (double)field.GetValue(null)!);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // IsRipDurationTruncated / IsRipDurationBelowMinLength / MinDurationRatio
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void MinDurationRatio_IsFiftyPercent()
+    {
+        var field = typeof(ArmRipper.Core.Rip.ArmRipperService)
+            .GetField("MinDurationRatio",
+                BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static);
+        Assert.NotNull(field);
+        Assert.Equal(0.50, (double)field.GetValue(null)!);
+    }
+
+    [Theory]
+    [InlineData(6547.0, 9.0, true)]        // 1:49:15 expected → 9s salvaged clip (job 977)
+    [InlineData(6547.0, 6540.0, false)]    // healthy rip
+    [InlineData(6547.0, 3273.5, false)]    // exactly 50% — not below the threshold
+    [InlineData(6547.0, 3273.0, true)]     // just under 50%
+    [InlineData(0.0, 9.0, false)]          // no expected duration — cannot validate
+    [InlineData(6547.0, null, false)]      // ffprobe failed — cannot validate
+    [InlineData(null, 9.0, false)]         // no expected duration — cannot validate
+    public void IsRipDurationTruncated_VariousDurations_ReturnsExpected(
+        double? expected, double? actual, bool expectedResult)
+    {
+        var result = ArmRipperService.IsRipDurationTruncated(expected, actual, ArmRipperService.MinDurationRatio);
+        Assert.Equal(expectedResult, result);
+    }
+
+    [Theory]
+    [InlineData(9.0, 300, true)]      // 9s clip below 5-minute floor
+    [InlineData(310.0, 300, false)]   // above floor
+    [InlineData(300.0, 300, false)]   // exactly at floor — not below
+    [InlineData(9.0, 0, false)]       // no floor configured
+    [InlineData(null, 300, false)]    // ffprobe failed — cannot validate
+    public void IsRipDurationBelowMinLength_VariousDurations_ReturnsExpected(
+        double? actual, int minLength, bool expectedResult)
+    {
+        var result = ArmRipperService.IsRipDurationBelowMinLength(actual, minLength);
+        Assert.Equal(expectedResult, result);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // VerifyRipOutput
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static ArmRipperService.RipVerificationVerdict InvokeVerifyRipOutput(
+        bool isMainFeature, long expectedSize, long actualSize,
+        double? expectedDuration, double? actualDuration, int minLength)
+        => ArmRipperService.VerifyRipOutput(
+            isMainFeature, expectedSize, actualSize,
+            expectedDuration, actualDuration, minLength,
+            ArmRipperService.MinRipSizeRatio, ArmRipperService.MinDurationRatio);
+
+    [Fact]
+    public void VerifyRipOutput_HealthyRip_ReturnsPass()
+    {
+        var result = InvokeVerifyRipOutput(
+            isMainFeature: true,
+            expectedSize: 4_000_000_000, actualSize: 3_900_000_000,
+            expectedDuration: 6547, actualDuration: 6540,
+            minLength: 300);
+        Assert.Equal(ArmRipperService.RipVerificationVerdict.Pass, result);
+    }
+
+    [Fact]
+    public void VerifyRipOutput_MainFeatureUndersized_ReturnsFail()
+    {
+        var result = InvokeVerifyRipOutput(
+            isMainFeature: true,
+            expectedSize: 4_000_000_000, actualSize: 10_000,
+            expectedDuration: 6547, actualDuration: 6540,
+            minLength: 300);
+        Assert.Equal(ArmRipperService.RipVerificationVerdict.Fail, result);
+    }
+
+    [Fact]
+    public void VerifyRipOutput_ExtraUndersized_ReturnsWarn()
+    {
+        var result = InvokeVerifyRipOutput(
+            isMainFeature: false,
+            expectedSize: 4_000_000_000, actualSize: 10_000,
+            expectedDuration: 6547, actualDuration: 6540,
+            minLength: 300);
+        Assert.Equal(ArmRipperService.RipVerificationVerdict.Warn, result);
+    }
+
+    [Fact]
+    public void VerifyRipOutput_MainFeatureDurationTruncated_ReturnsFail()
+    {
+        // Size happens to coincide, but the probed duration is ~0.1% of expected —
+        // the exact case B2's size gate alone cannot catch.
+        var result = InvokeVerifyRipOutput(
+            isMainFeature: true,
+            expectedSize: 4_000_000_000, actualSize: 4_000_000_000,
+            expectedDuration: 6547, actualDuration: 9,
+            minLength: 300);
+        Assert.Equal(ArmRipperService.RipVerificationVerdict.Fail, result);
+    }
+
+    [Fact]
+    public void VerifyRipOutput_ExtraDurationTruncated_ReturnsWarn()
+    {
+        var result = InvokeVerifyRipOutput(
+            isMainFeature: false,
+            expectedSize: 4_000_000_000, actualSize: 4_000_000_000,
+            expectedDuration: 6547, actualDuration: 9,
+            minLength: 300);
+        Assert.Equal(ArmRipperService.RipVerificationVerdict.Warn, result);
+    }
+
+    [Fact]
+    public void VerifyRipOutput_MainFeatureBelowMinLengthFloor_ReturnsFail()
+    {
+        var result = InvokeVerifyRipOutput(
+            isMainFeature: true,
+            expectedSize: 4_000_000_000, actualSize: 4_000_000_000,
+            expectedDuration: 6547, actualDuration: 250,
+            minLength: 300);
+        Assert.Equal(ArmRipperService.RipVerificationVerdict.Fail, result);
+    }
+
+    [Fact]
+    public void VerifyRipOutput_CannotProbeDuration_SizeHealthy_ReturnsPass()
+    {
+        // ffprobe returned null — the size gate still passes so we must not fail.
+        var result = InvokeVerifyRipOutput(
+            isMainFeature: true,
+            expectedSize: 4_000_000_000, actualSize: 3_900_000_000,
+            expectedDuration: 6547, actualDuration: null,
+            minLength: 300);
+        Assert.Equal(ArmRipperService.RipVerificationVerdict.Pass, result);
+    }
+
+    [Fact]
+    public void VerifyRipOutput_NoExpectedData_ReturnsPass()
+    {
+        var result = InvokeVerifyRipOutput(
+            isMainFeature: true,
+            expectedSize: 0, actualSize: 10_000,
+            expectedDuration: null, actualDuration: 9,
+            minLength: 0);
+        Assert.Equal(ArmRipperService.RipVerificationVerdict.Pass, result);
     }
 }
