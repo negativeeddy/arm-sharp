@@ -41,6 +41,47 @@ public sealed partial class FfmpegService(
         return string.IsNullOrWhiteSpace(firstLine) ? "Unknown" : firstLine;
     }
 
+    /// <summary>
+    /// Probes a single media file with ffprobe and returns its duration in seconds.
+    /// Returns null when the file is missing, ffprobe fails, or the reported
+    /// duration cannot be parsed — callers must treat null as "cannot verify"
+    /// rather than a verification failure.
+    /// </summary>
+    public async Task<double?> ProbeDurationAsync(string filePath, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            return null;
+
+        try
+        {
+            var result = await runner.RunAsync("ffprobe",
+                $"-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"{filePath}\"",
+                timeoutMs: 30_000, ct: ct);
+
+            if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.StdOut))
+            {
+                logger.LogWarning("ffprobe returned no duration for {File} (exit {ExitCode})", filePath, result.ExitCode);
+                return null;
+            }
+
+            if (double.TryParse(result.StdOut.Trim(),
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var duration))
+            {
+                return duration;
+            }
+
+            logger.LogWarning("ffprobe returned unparseable duration '{Output}' for {File}", result.StdOut.Trim(), filePath);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "ffprobe failed for {File}", filePath);
+            return null;
+        }
+    }
+
     public async Task<CliResult> TranscodeMkvAsync(Job job, string rawPath, string outputPath, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         logger.LogInformation("Starting FFmpeg for MKV files");
