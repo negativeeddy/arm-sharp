@@ -90,6 +90,68 @@ public class WebUiIntegrationTests : IClassFixture<WebApplicationFactory<Program
     }
 
     [Fact]
+    public async Task HomePage_ShowsInProgressAndRecentCompletedSections()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+
+        // Limit the recent-completed section to 1 job via the settings form.
+        var saveResponse = await client.PostAsync("/settings/save-ripper",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                { "RecentCompletedJobsCount", "1" }
+            }));
+        Assert.Equal(HttpStatusCode.OK, saveResponse.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            db.Jobs.Add(new Job
+            {
+                Title = "Active Job",
+                Year = "2026",
+                VideoType = VideoContentType.Movie,
+                Status = JobState.Active,
+                StartTime = DateTime.UtcNow.AddMinutes(-5),
+                DevPath = "/dev/sr1"
+            });
+            db.Jobs.Add(new Job
+            {
+                Title = "Old Completed",
+                Year = "2026",
+                VideoType = VideoContentType.Movie,
+                Status = JobState.Success,
+                StartTime = DateTime.UtcNow.AddDays(-2),
+                StopTime = DateTime.UtcNow.AddDays(-2).AddHours(1),
+                DevPath = "/dev/sr1"
+            });
+            db.Jobs.Add(new Job
+            {
+                Title = "Recent Completed",
+                Year = "2026",
+                VideoType = VideoContentType.Movie,
+                Status = JobState.Success,
+                StartTime = DateTime.UtcNow.AddHours(-1),
+                StopTime = DateTime.UtcNow.AddMinutes(-30),
+                DevPath = "/dev/sr1"
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var response = await client.GetAsync("/");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+
+        // In-progress section is present and open by default.
+        Assert.Contains("id=\"activeJobsCollapse\" class=\"collapse show\"", html);
+        Assert.Contains("Active Job", html);
+
+        // Completed section is present but collapsed by default, and count is applied.
+        Assert.Contains("id=\"completedJobsCollapse\" class=\"collapse\"", html);
+        Assert.Contains("Recent Completed", html);
+        Assert.DoesNotContain("Old Completed", html);
+    }
+
+    [Fact]
     public async Task JobsPage_Returns200_WhenAuthenticated()
     {
         var client = await CreateAuthenticatedClientAsync();
