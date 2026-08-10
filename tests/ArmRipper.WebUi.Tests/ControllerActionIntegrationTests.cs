@@ -590,6 +590,113 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
     }
 
     [Fact]
+    public async Task UpdateIdentification_UpdatesJobPathForActiveJob()
+    {
+        int jobId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = new Job
+            {
+                Title = "Old Title",
+                TitleAuto = "Old Title",
+                Year = "2025",
+                VideoType = VideoContentType.Series,
+                Status = JobState.Active,
+                StartTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99"
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+        }
+
+        // Point the completed path at a temp dir so the assertion is deterministic.
+        var tempDir = Path.Combine(Path.GetTempPath(), "armtest", Guid.NewGuid().ToString());
+        var completedPath = Path.Combine(tempDir, "completed");
+
+        try
+        {
+            var client = _factory.WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureServices(services =>
+                {
+                    services.PostConfigure<ArmSettings>(a =>
+                    {
+                        a.CompletedPath = completedPath;
+                        a.DisableLogin = false;
+                    });
+                });
+            }).CreateClient();
+            client = await AuthenticateAsync(client);
+
+            var response = await client.PostAsync("/jobs/update-identification",
+                new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    { "jobId", jobId.ToString() },
+                    { "title", "New Title" },
+                    { "year", "2026" },
+                    { "videoType", "movie" }
+                }));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = await db.Jobs.FindAsync(jobId);
+            Assert.NotNull(job);
+            Assert.Equal(Path.Combine(completedPath, "movies", "New Title (2026)"), job.Path);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task UpdateIdentification_DoesNotChangePathForCompletedJob()
+    {
+        int jobId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = new Job
+            {
+                Title = "Old Title",
+                Year = "2025",
+                VideoType = VideoContentType.Movie,
+                Status = JobState.Success,
+                Path = "/already/moved/Old Title (2025)",
+                StartTime = DateTime.UtcNow,
+                StopTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99"
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+        }
+
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.PostAsync("/jobs/update-identification",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                { "jobId", jobId.ToString() },
+                { "title", "New Title" },
+                { "year", "2026" }
+            }));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = await db.Jobs.FindAsync(jobId);
+            Assert.NotNull(job);
+            Assert.Equal("New Title", job.TitleManual);
+            Assert.Equal("/already/moved/Old Title (2025)", job.Path);
+        }
+    }
+
+    [Fact]
     public async Task UpdateIdentification_MissingJob_ReturnsNotFound()
     {
         var client = await CreateAuthenticatedClientAsync();

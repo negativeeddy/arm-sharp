@@ -39,6 +39,11 @@ public sealed class ArmRipperService(
         var transcodeOutPath = Path.Combine(job.Config?.TranscodePath ?? ArmPaths.GetTranscodePath(settings.Value), typeSubFolder, jobTitle);
         var finalDirectory = Path.Combine(job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value), typeSubFolder, jobTitle);
 
+        // Base output path before any duplicate-folder suffix is applied. The actual
+        // directory is only needed once the transcode completes — if the title is
+        // (re)identified after the rip has started, this is recomputed at finalize.
+        var finalBasePath = finalDirectory;
+
         job.Stage ??= RipStage.Setup;
         job.TransitionToStage(RipStage.Identify);
         job.ProgressMessage ??= "Preparing to rip...";
@@ -155,15 +160,27 @@ public sealed class ArmRipperService(
         }
 
         logger.LogDebug("Job title manual status: [{TitleManual}]", job.TitleManual);
-        if (!string.IsNullOrEmpty(job.TitleManual))
+
+        // Recompute the output path from the current (possibly newly-identified)
+        // title/type. The output directory is only needed once the transcode is
+        // complete, so if the title was identified or changed after the rip
+        // started, relocate to the newly-computed location.
+        var recomputedFinal = ComputeOutputPath(job, job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value));
+        if (!string.Equals(recomputedFinal, finalBasePath, StringComparison.Ordinal))
         {
-            DeleteRawFiles(new[] { finalDirectory });
-            typeSubFolder = ConvertJobType(job.VideoType);
-            jobTitle = FixJobTitle(job);
-            finalDirectory = Path.Combine(job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value), typeSubFolder, jobTitle);
-            // Re-apply dupe folder suffix — CheckForDupeFolder already determined a suffix
-            // was needed, but the path recalculation above dropped it.
-            finalDirectory = CheckForDupeFolder(hasDupes, finalDirectory, job);
+            logger.LogInformation("Output path changed to \"{Path}\" — relocating before finalize.", recomputedFinal);
+
+            var staleFinalDirectory = finalDirectory;
+
+            // Re-apply dupe folder suffix — the recomputation above dropped it, and
+            // CheckForDupeFolder decides whether one is needed (creating the directory
+            // when the new location is fresh).
+            finalDirectory = CheckForDupeFolder(hasDupes, recomputedFinal, job);
+
+            // Move the poster out of the stale location before removing it.
+            RelocatePoster(job, finalDirectory);
+
+            DeleteRawFiles(new[] { staleFinalDirectory });
             job.Path = finalDirectory;
             await db.SaveChangesAsync(ct);
         }
@@ -1379,6 +1396,16 @@ public sealed class ArmRipperService(
             _ => "unidentified"
         };
     }
+
+    /// <summary>
+    /// Computes the base output directory (before any duplicate-folder suffix is
+    /// applied) for a job's completed media from its current title/type. The
+    /// output path is not needed until the transcode is complete, so this is used
+    /// both at finalize time and by the WebUI to refresh <see cref="Job.Path"/> as
+    /// soon as the title is identified after the rip has started.
+    /// </summary>
+    public static string ComputeOutputPath(Job job, string? completedPath)
+        => Path.Combine(completedPath ?? ArmPaths.DefaultCompletedPath, ConvertJobType(job.VideoType), FixJobTitle(job));
 
     /// <summary>
     /// Minimum ratio of actual rip output size to the MakeMKV info-scan estimate

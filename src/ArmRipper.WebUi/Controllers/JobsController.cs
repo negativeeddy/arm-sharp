@@ -3,6 +3,7 @@ using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Metadata;
 using ArmRipper.Core.Models;
+using ArmRipper.Core.Rip;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -95,6 +96,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
 
         job.HasNiceTitle = true;
 
+        await RefreshOutputPathAsync(job, ct);
         await db.SaveChangesAsync(ct);
         return RedirectToAction("JobDetail", new { jobId });
     }
@@ -109,6 +111,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
         job.TitleManual = title;
         job.Title = title;
         job.HasNiceTitle = true;
+        await RefreshOutputPathAsync(job, ct);
         await db.SaveChangesAsync(ct);
 
         return Redirect(returnUrl ?? Url.Action("TitleSearch") ?? "/jobs/titlesearch");
@@ -355,6 +358,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
 
         job.HasNiceTitle = true;
 
+        await RefreshOutputPathAsync(job, ct);
         await db.SaveChangesAsync(ct);
 
         return RedirectToAction("JobDetail", new { jobId });
@@ -442,6 +446,22 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
         }
 
         return RedirectToAction("JobDetail", new { jobId });
+    }
+
+    /// <summary>
+    /// Refreshes the job's output path from its current title/type. The output path
+    /// is only needed once the transcode completes, so as soon as the title is
+    /// identified after the rip has started, the stored path is updated so the UI
+    /// and finalize step use the correct location. No-op for terminal jobs.
+    /// </summary>
+    private async Task RefreshOutputPathAsync(Job job, CancellationToken ct)
+    {
+        if (job.Status.IsTerminal())
+            return;
+
+        var effective = await settingsService.GetEffectiveAsync(ct);
+        var completedPath = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(effective);
+        job.Path = ArmRipperService.ComputeOutputPath(job, completedPath);
     }
 
     /// <summary>Append a timestamped line to the job's log file.</summary>
