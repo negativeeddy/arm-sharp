@@ -49,7 +49,7 @@ public sealed partial class IdentifyService(
             job.ProgressMessage = "Detecting disc type...";
             await db.SaveChangesAsync(ct);
             var mountPoint = job.MountPoint ?? throw new InvalidOperationException($"Job {job.Id} has no MountPoint after successful mount");
-            job.DiscType = GetDiscType(mountPoint);
+            job.DiscType = await DetectDiscTypeAsync(job, mountPoint, ct);
         }
         else
         {
@@ -69,7 +69,7 @@ public sealed partial class IdentifyService(
 
             job.ProgressMessage = "Detecting disc type (fallback)...";
             await db.SaveChangesAsync(ct);
-            job.DiscType = await DetectDiscTypeFallbackAsync(job, ct);
+            job.DiscType = await DetectDiscTypeAsync(job, job.MountPoint, ct);
         }
 
         if (job.DiscType is DiscType.Dvd or DiscType.Bluray or DiscType.Uhd)
@@ -414,13 +414,122 @@ public sealed partial class IdentifyService(
         }
     }
 
-    private async Task<DiscType> DetectDiscTypeFallbackAsync(Job job, CancellationToken ct)
+    /// <summary>
+    /// Determines the disc type.  Tries, in order:
+    /// 1. mounted-filesystem markers (VIDEO_TS/BDMV/CDA/AUDIO_TS — most authoritative),
+    /// 2. udev media properties (ID_CDROM_MEDIA_* — works without a readable mount),
+    /// 3. size-based classification from the sysfs sector count.
+    /// </summary>
+    private async Task<DiscType> DetectDiscTypeAsync(Job job, string? mountPoint, CancellationToken ct)
+    {
+        if (mountPoint is not null)
+        {
+            var markerType = GetDiscType(mountPoint);
+            if (markerType != DiscType.Unknown)
+                return markerType;
+
+            // Diagnostic: record what the mounted filesystem actually shows so a
+            // future "unknown" can distinguish a marker-less disc from a bad
+            // mount/view (e.g. only the ISO9660 bridge of a hybrid UDF disc).
+            LogMountPointContents(mountPoint);
+        }
+
+        var udevType = await DetectDiscTypeFromUdevAsync(job, ct);
+        if (udevType != DiscType.Unknown)
+            return udevType;
+
+        var sizeType = await DetectDiscTypeBySizeAsync(job, ct);
+        if (sizeType == DiscType.Unknown && mountPoint is not null)
+        {
+            logger.LogWarning(
+                "Could not determine disc type for {DevPath}: no VIDEO_TS/BDMV/AUDIO_TS markers at {MountPoint}, " +
+                "no udev media properties, and size-based detection failed",
+                job.DevPath, mountPoint);
+        }
+
+        return sizeType;
+    }
+
+    /// <summary>
+    /// Reads udev media properties for the device (ID_CDROM_MEDIA_DVD/BD and the
+    /// audio track count) to classify the disc without needing a readable mount.
+    /// Mirrors the original ARM <c>parse_udev</c>.  Returns Unknown when udev is
+    /// unavailable or the properties are absent/stale.
+    /// </summary>
+    private async Task<DiscType> DetectDiscTypeFromUdevAsync(Job job, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(job.DevPath) || !File.Exists(job.DevPath))
+            return DiscType.Unknown;
+
+        try
+        {
+            var result = await runner.RunAsync("udevadm",
+                $"info --query=property {job.DevPath}", timeoutMs: 10_000, ct: ct);
+            if (result.ExitCode != 0)
+                return DiscType.Unknown;
+
+            DiscType type = DiscType.Unknown;
+            foreach (var line in result.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (line.StartsWith("ID_CDROM_MEDIA_BD=") && line.EndsWith("1"))
+                    type = DiscType.Bluray;
+                else if (line.StartsWith("ID_CDROM_MEDIA_DVD=") && line.EndsWith("1"))
+                    type = DiscType.Dvd;
+                else if (line.StartsWith("ID_CDROM_MEDIA_TRACK_COUNT_AUDIO="))
+                {
+                    var value = line["ID_CDROM_MEDIA_TRACK_COUNT_AUDIO=".Length..].Trim('"');
+                    if (int.TryParse(value, out var count) && count > 0)
+                        type = DiscType.Music;
+                }
+            }
+
+            if (type != DiscType.Unknown)
+                logger.LogInformation("Disc type identified from udev media properties: {DiscType}", type);
+
+            return type;
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to detect disc type from udev media properties");
+            return DiscType.Unknown;
+        }
+    }
+
+    /// <summary>
+    /// Logs the top-level entries of the mount point for diagnostics when the
+    /// filesystem markers yield no disc type.
+    /// </summary>
+    private void LogMountPointContents(string mountPoint)
+    {
+        try
+        {
+            if (!Directory.Exists(mountPoint))
+            {
+                logger.LogWarning("Disc type detection: mount point {MountPoint} no longer exists", mountPoint);
+                return;
+            }
+
+            var entries = Directory.EnumerateFileSystemEntries(mountPoint)
+                .Take(50)
+                .Select(Path.GetFileName)
+                .ToArray();
+            logger.LogDebug(
+                "Disc type detection: top-level entries at {MountPoint}: {Entries}",
+                mountPoint, string.Join(", ", entries));
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to enumerate mount point {MountPoint} for diagnostics", mountPoint);
+        }
+    }
+
+    private async Task<DiscType> DetectDiscTypeBySizeAsync(Job job, CancellationToken ct)
     {
         try
         {
             if (string.IsNullOrWhiteSpace(job.DevPath) || !File.Exists(job.DevPath))
             {
-                logger.LogWarning("Fallback detection skipped: device path {DevPath} is not available", job.DevPath);
+                logger.LogWarning("Size-based detection skipped: device path {DevPath} is not available", job.DevPath);
                 return DiscType.Unknown;
             }
 
@@ -552,6 +661,13 @@ public sealed partial class IdentifyService(
 
         if (FindOnDisc("CDA", mountPoint))
             return DiscType.Music;
+
+        // AUDIO_TS is a data marker on DVD-Video hybrid discs (matches the
+        // original ARM get_disc_type).  VIDEO_TS/BDMV are checked first, so a
+        // real video disc is never misclassified as data.
+        var audioTs = Path.Combine(mountPoint, "AUDIO_TS");
+        if (Directory.Exists(audioTs) || FindOnDisc("AUDIO_TS", mountPoint))
+            return DiscType.Data;
 
         return DiscType.Unknown;
     }
