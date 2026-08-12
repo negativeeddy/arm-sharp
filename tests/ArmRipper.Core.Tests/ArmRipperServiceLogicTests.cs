@@ -89,6 +89,59 @@ public sealed class ArmRipperServiceLogicTests
         Assert.Equal("Custom Title", result);
     }
 
+    [Fact]
+    public void FixJobTitle_TitleWithSlash_ReplacesSlash_DoesNotCreateSubdirectories()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.Title = "Fahrenheit 9/11";
+            j.TitleManual = null;
+            j.Year = "2004";
+        });
+        var method = GetStaticMethod("FixJobTitle");
+        var result = method.Invoke(null, [job]);
+        Assert.Equal("Fahrenheit 9_11 (2004)", result);
+        Assert.DoesNotContain('/', (string)result!);
+    }
+
+    [Fact]
+    public void FixJobTitle_TitleWithSlashAndNoYear_ReplacesSlash()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.Title = "A/B";
+            j.TitleManual = null;
+            j.Year = null;
+        });
+        var method = GetStaticMethod("FixJobTitle");
+        var result = method.Invoke(null, [job]);
+        Assert.Equal("A_B", result);
+    }
+
+    [Fact]
+    public void FixJobTitle_ManualTitleWithSlash_ReplacesSlash()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.Title = "Something Else";
+            j.TitleManual = "9/11 Documentary";
+            j.Year = "2006";
+        });
+        var method = GetStaticMethod("FixJobTitle");
+        var result = method.Invoke(null, [job]);
+        Assert.Equal("9_11 Documentary (2006)", result);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void SanitizeDirectoryName_NullOrWhitespace_FallsBackToUnknown(string? input)
+    {
+        var result = ArmRipperService.SanitizeDirectoryName(input ?? "");
+        Assert.Equal("unknown", result);
+    }
+
     [Theory]
     [InlineData(DiscType.Bluray, false, "mkv", false, true)]
     [InlineData(DiscType.Dvd, false, "mkv", true, true)]
@@ -371,5 +424,19 @@ public sealed class ArmRipperServiceLogicTests
         Assert.Equal(
             "/custom/media/completed/movies/Test Movie (2024)",
             ArmRipperService.ComputeOutputPath(job, "/custom/media/completed"));
+    }
+
+    [Fact]
+    public void ComputeOutputPath_TitleWithSlash_ReturnsSingleDirectory()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.Title = "Fahrenheit 9/11";
+            j.TitleManual = null;
+            j.Year = "2004";
+        });
+        Assert.Equal(
+            "/home/arm/media/completed/movies/Fahrenheit 9_11 (2004)",
+            ArmRipperService.ComputeOutputPath(job, null));
     }
 }

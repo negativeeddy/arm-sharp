@@ -1377,14 +1377,37 @@ public sealed class ArmRipperService(
 
     internal static string FixJobTitle(Job job)
     {
+        string title;
         if (!string.IsNullOrEmpty(job.Year) && job.Year != "0000")
         {
             if (!string.IsNullOrEmpty(job.TitleManual))
-                return $"{job.TitleManual} ({job.Year})";
-            return $"{job.Title} ({job.Year})";
+                title = $"{job.TitleManual} ({job.Year})";
+            else
+                title = $"{job.Title} ({job.Year})";
+        }
+        else
+        {
+            title = job.TitleManual ?? job.Title ?? "unknown";
         }
 
-        return job.TitleManual ?? job.Title ?? "unknown";
+        return SanitizeDirectoryName(title);
+    }
+
+    /// <summary>
+    /// Converts a title into a filesystem-safe folder/file name. Path separators
+    /// are replaced (not dropped) so a title like "Fahrenheit 9/11" yields a single
+    /// directory instead of nested subdirectories; any remaining characters that
+    /// are invalid in filenames are stripped. Falls back to "unknown" when nothing
+    /// usable remains.
+    /// </summary>
+    internal static string SanitizeDirectoryName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "unknown";
+
+        var replaced = name.Replace('/', '_').Replace('\\', '_');
+        var sanitized = SanitizeFileName(replaced).Trim();
+        return string.IsNullOrWhiteSpace(sanitized) ? "unknown" : sanitized;
     }
 
     internal static string ConvertJobType(VideoContentType videoType)

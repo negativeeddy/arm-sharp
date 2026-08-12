@@ -99,7 +99,7 @@ public sealed partial class HandBrakeService(
         logger.LogInformation("Starting DVD/BluRay main feature transcoding");
 
         var ext = settings.Value.DestExt ?? "mp4";
-        var filename = $"{job.Title}.{ext}";
+        var filename = $"{ArmRipperService.SanitizeFileName(job.Title ?? "unknown")}.{ext}";
         var outputFile = Path.Combine(outputPath, filename);
 
         await GetTrackInfoAsync(rawPath, job, ct);
