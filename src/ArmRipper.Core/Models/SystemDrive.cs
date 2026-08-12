@@ -14,6 +14,9 @@ public class SystemDrive
     public bool ReadDvd { get; set; }
     public bool ReadBd { get; set; }
     public string? DriveMode { get; set; }
+    /// <summary>Per-drive Main Feature override. null = use the global setting,
+    /// true = force rip main feature only, false = rip all titles.</summary>
+    public bool? MainFeature { get; set; }
     public bool Stale { get; set; }
     public string? Name { get; set; }
     public string? Description { get; set; }

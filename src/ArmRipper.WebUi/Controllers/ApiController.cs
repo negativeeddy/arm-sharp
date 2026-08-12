@@ -115,6 +115,11 @@ public partial class ApiController(
             .Select(j => j.DevPath!)
             .ToHashSet(); // safe: Where filters null/empty, but compiler can't prove across LINQ
 
+        // Global Main Feature setting, so the drives partial can label the
+        // "Default (...)" option with the current rip mode.
+        var effective = await settingsService.GetEffectiveAsync(ct);
+        ViewBag.MainFeature = effective.MainFeature;
+
         var drives = await db.SystemDrives.ToListAsync(ct);
         return PartialView("~/Views/Shared/_Drives.cshtml", drives);
     }

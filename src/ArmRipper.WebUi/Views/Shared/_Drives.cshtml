@@ -41,6 +41,7 @@ else
                             <form method="post" action="/settings/start-rip" style="display:inline;">
                                 <input type="hidden" name="devPath" value="@d.Mount" />
                                 <input type="hidden" name="returnUrl" value="@(Context.Request.Path + Context.Request.QueryString)" />
+                                <partial name="_DriveMainFeatureSelect" model="d" />
                                 <button type="submit" class="btn btn-sm btn-success" title="Start rip">Rip</button>
                             </form>
                         }

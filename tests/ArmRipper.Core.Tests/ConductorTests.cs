@@ -197,6 +197,74 @@ public sealed class ConductorTests : IDisposable
         Assert.Equal(Path.Combine(tmpDir, "completed"), config.CompletedPath);
     }
 
+    [Fact]
+    public async Task RunAsync_WhenDriveOverridesMainFeatureToAll_OverridesGlobalSetting()
+    {
+        _db.SystemDrives.Add(new SystemDrive
+        {
+            SerialId = "SR-TEST-ALL",
+            Mount = "/dev/sr0",
+            Model = "Test Drive",
+            MainFeature = false // "All" — rip every title
+        });
+        await _db.SaveChangesAsync();
+
+        var conductor = CreateConductor();
+        await conductor.RunAsync("/dev/sr0");
+
+        var job = _db.Jobs.Single();
+        Assert.NotNull(job.Config);
+        Assert.False(job.Config.MainFeature);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenDriveOverridesMainFeatureToMain_OverridesGlobalSetting()
+    {
+        var options = TestHelpers.CreateOptions(a =>
+        {
+            a.MainFeature = false; // global says "All"
+            a.RawPath = Path.Combine(Path.GetTempPath(), "arm-test", Guid.NewGuid().ToString(), "raw");
+            a.TranscodePath = Path.Combine(Path.GetTempPath(), "arm-test", Guid.NewGuid().ToString(), "transcode");
+            a.CompletedPath = Path.Combine(Path.GetTempPath(), "arm-test", Guid.NewGuid().ToString(), "completed");
+            a.LogPath = Path.Combine(Path.GetTempPath(), "arm-test", Guid.NewGuid().ToString(), "logs");
+        });
+        _db.SystemDrives.Add(new SystemDrive
+        {
+            SerialId = "SR-TEST-MAIN",
+            Mount = "/dev/sr0",
+            Model = "Test Drive",
+            MainFeature = true // "Main" — rip main feature only
+        });
+        await _db.SaveChangesAsync();
+
+        var conductor = CreateConductor(options: options);
+        await conductor.RunAsync("/dev/sr0");
+
+        var job = _db.Jobs.Single();
+        Assert.NotNull(job.Config);
+        Assert.True(job.Config.MainFeature);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenDriveHasNoOverride_UsesGlobalSetting()
+    {
+        _db.SystemDrives.Add(new SystemDrive
+        {
+            SerialId = "SR-TEST-DEFAULT",
+            Mount = "/dev/sr0",
+            Model = "Test Drive",
+            MainFeature = null
+        });
+        await _db.SaveChangesAsync();
+
+        var conductor = CreateConductor();
+        await conductor.RunAsync("/dev/sr0");
+
+        var job = _db.Jobs.Single();
+        Assert.NotNull(job.Config);
+        Assert.True(job.Config.MainFeature); // global default is true
+    }
+
     private sealed class MockIdentifyService(DiscType resultType = DiscType.Dvd, string? label = null) : IIdentifyService
     {
         public Task IdentifyAsync(Job job, CancellationToken ct = default)
