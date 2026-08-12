@@ -1,0 +1,16 @@
+@model ArmRipper.Core.Models.SystemDrive
+@{
+    // Global "Main Feature" setting used to label the default option.
+    var globalMainFeature = ViewBag.MainFeature as bool? ?? true;
+    var selected = Model.MainFeature switch
+    {
+        null => "default",
+        true => "main",
+        false => "all"
+    };
+}
+<select name="mainFeature" class="form-control form-control-sm d-inline-block" style="width:auto;" title="Main Feature mode for this rip (overrides the global setting)" aria-label="Main Feature mode">
+    <option value="default" selected="@(selected == "default")">Default (@(globalMainFeature ? "Main" : "All"))</option>
+    <option value="main" selected="@(selected == "main")">Main</option>
+    <option value="all" selected="@(selected == "all")">All</option>
+</select>

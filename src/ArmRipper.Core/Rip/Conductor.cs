@@ -468,6 +468,19 @@ public sealed class Conductor(
         var armSettings = await settingsService.GetEffectiveAsync(ct);
         var config = ConfigSnapshot.FromSettings(armSettings, job.Id);
 
+        // Per-drive Main Feature override (issue #62): if the drive has a saved
+        // override it wins over the global setting for this job, so the same
+        // machine can rip a movie (main feature) in one drive and a series
+        // (all titles) in another.
+        var drive = await db.SystemDrives.FirstOrDefaultAsync(d => d.Mount == devicePath, ct);
+        if (drive?.MainFeature is bool mainFeatureOverride)
+        {
+            config.MainFeature = mainFeatureOverride;
+            logger.LogInformation(
+                "Applying per-drive Main Feature override ({Mode}) for {DevPath}",
+                mainFeatureOverride ? "main" : "all", devicePath);
+        }
+
         db.ConfigSnapshots.Add(config);
         job.MarkStageComplete(RipStage.Setup);
         await db.SaveChangesAsync(ct);

@@ -44,6 +44,7 @@ public class SettingsController(
         // Merge DB-stored ripper settings on top of defaults
         var mergedSettings = await settingsService.GetEffectiveAsync(ct);
         ViewBag.ArmSettings = mergedSettings;
+        ViewBag.MainFeature = mergedSettings.MainFeature;
         ViewBag.Hostname = Environment.MachineName;
         ViewBag.OsDesc = RuntimeInformation.OSDescription;
         ViewBag.ProcCount = Environment.ProcessorCount;
@@ -339,7 +340,7 @@ public class SettingsController(
     }
 
     [HttpPost("start-rip")]
-    public async Task<IActionResult> StartRip(string devPath, string? returnUrl = null, CancellationToken ct = default)
+    public async Task<IActionResult> StartRip(string devPath, string? mainFeature = null, string? returnUrl = null, CancellationToken ct = default)
     {
         var fallback = string.IsNullOrWhiteSpace(returnUrl)
             ? (IActionResult)RedirectToAction("Index")
@@ -371,6 +372,21 @@ public class SettingsController(
         {
             SetError($"Drive {devPath} is disabled. Enable it before starting a rip.");
             return fallback;
+        }
+
+        // Per-drive Main Feature override (issue #62): the dropdown next to the
+        // Rip button submits "default", "main", or "all". Persist it on the drive
+        // so the setting sticks for future rips (including auto-rip) on this device.
+        bool? mainFeatureOverride = mainFeature?.Trim().ToLowerInvariant() switch
+        {
+            "main" => true,
+            "all" => false,
+            _ => null
+        };
+        if (drive.MainFeature != mainFeatureOverride)
+        {
+            drive.MainFeature = mainFeatureOverride;
+            await db.SaveChangesAsync(ct);
         }
 
         // Check if a job is already actively ripping on this device.

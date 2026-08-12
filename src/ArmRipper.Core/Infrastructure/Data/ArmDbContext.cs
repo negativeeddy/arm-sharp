@@ -111,6 +111,7 @@ public class ArmDbContext : DbContext
             entity.Property(e => e.Mount).HasMaxLength(100);
             entity.Property(e => e.Firmware).HasMaxLength(10);
             entity.Property(e => e.DriveMode).HasMaxLength(100);
+            entity.Property(e => e.MainFeature);
             entity.Property(e => e.Name).HasMaxLength(100);
             entity.Property(e => e.Description).HasMaxLength(256);
         });

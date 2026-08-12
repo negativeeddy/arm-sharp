@@ -127,6 +127,33 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
     }
 
     [Fact]
+    public async Task DrivesPartial_RendersMainFeatureOverrideDropdown()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            db.SystemDrives.Add(new SystemDrive
+            {
+                SerialId = "SR-PARTIAL-1",
+                Mount = "/dev/sr0",
+                Model = "Test Drive",
+                MainFeature = false // "All" override for this drive
+            });
+            db.SaveChanges();
+        }
+
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync("/api/drives/partial");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("mainFeature", html);
+        Assert.Contains("Default (Main)", html); // labels the global default
+        Assert.Contains(@"value=""all"" selected", html); // drive override is selected
+        Assert.Contains("Rip", html);
+    }
+
+    [Fact]
     public async Task Stats_ReturnsCountsMatchingSeededData()
     {
         await EnsureSeedLoadedAsync();

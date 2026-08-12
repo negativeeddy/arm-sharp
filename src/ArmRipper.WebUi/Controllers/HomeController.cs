@@ -29,6 +29,7 @@ public class HomeController(ArmDbContext db, ICliProcessRunner runner, IHardware
         // beneath the in-progress jobs. Count is configurable in the settings.
         var effective = await settingsService.GetEffectiveAsync(ct);
         var recentCount = Math.Max(0, effective.RecentCompletedJobsCount);
+        ViewBag.MainFeature = effective.MainFeature;
         var recentCompleted = await db.Jobs
             .Include(j => j.Config)
             .Where(j => j.Status == JobState.Success || j.Status == JobState.Failure || j.Status == JobState.Cancelled)
