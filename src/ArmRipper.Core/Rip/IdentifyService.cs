@@ -1047,7 +1047,17 @@ public sealed partial class IdentifyService(
                             job.VideoType = vt;
                     }
 
-                    // Update title/year from search result if ARM API didn't provide them
+                    // Update title/year from search result if ARM API didn't provide them.
+                    // The title is only replaced when the current one came from a low-confidence
+                    // fallback (label/"not identified") and no manual override exists — values
+                    // set by authoritative sources (DiscDb, OVID, CRC64, BD-MT) are preserved.
+                    // HasNiceTitle is intentionally left unchanged so the user can confirm the
+                    // search-derived title via the "Approve Title" button on the job page.
+                    if (!job.HasNiceTitle && string.IsNullOrEmpty(job.TitleManual) &&
+                        !string.IsNullOrEmpty(resultTitle) &&
+                        !resultTitle.Equals("N/A", StringComparison.OrdinalIgnoreCase))
+                        job.Title = job.TitleAuto = resultTitle;
+
                     if (string.IsNullOrEmpty(job.YearAuto) && !string.IsNullOrEmpty(resultYear))
                         job.Year = job.YearAuto = resultYear;
 
