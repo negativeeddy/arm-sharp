@@ -249,10 +249,7 @@ else
                                         data-filepath="@file.FilePath"
                                         data-originaljobid="@(transcodeJobId?.ToString() ?? "")">🔀</button>
                             }
-                            <form method="post" action="/completed/delete" onsubmit="return confirm('Delete @file.FileName? This cannot be undone.');" style="display:inline">
-                                <input type="hidden" name="filePath" value="@file.FilePath" />
-                                <button type="submit" class="btn btn-outline-danger btn-sm" title="Delete file" style="padding:0.1rem 0.4rem; font-size:0.75rem;">🗑</button>
-                            </form>
+                            <button type="button" class="btn btn-outline-danger btn-sm delete-file-btn" title="Delete file" style="padding:0.1rem 0.4rem; font-size:0.75rem;" data-filepath="@file.FilePath" data-filename="@file.FileName">🗑</button>
                         </td>
                     </tr>
                 }
@@ -406,6 +403,33 @@ else
                     <form method="post" action="/completed/delete-folder" id="deleteFolderForm">
                         <input type="hidden" name="dirPath" id="deleteFolderPath" />
                         <button type="submit" class="btn btn-danger">🗑 Delete Folder</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete File Modal -->
+    <div class="modal fade" id="deleteFileModal" tabindex="-1" role="dialog" aria-labelledby="deleteFileModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteFileModalLabel">🗑 Delete File</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-danger py-2 small mb-0">
+                        Are you sure you want to delete <strong id="deleteFileName"></strong>?
+                        <span class="d-block mt-1">This cannot be undone.</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                    <form method="post" action="/completed/delete" id="deleteFileForm">
+                        <input type="hidden" name="filePath" id="deleteFilePath" />
+                        <button type="submit" class="btn btn-danger">🗑 Delete File</button>
                     </form>
                 </div>
             </div>
@@ -578,6 +602,18 @@ else
                     $('.file-row[data-dirpath="' + CSS.escape(dirPath) + '"]').toggleClass('collapsed', !allCollapsed);
                 });
                 updateCollapseAllButton();
+            });
+
+            // ── Delete File modal ──
+            var $dffModal = $('#deleteFileModal');
+            var $dffPath = $('#deleteFilePath');
+            var $dffName = $('#deleteFileName');
+
+            $(document).on('click', '.delete-file-btn', function () {
+                var $btn = $(this);
+                $dffPath.val($btn.data('filepath'));
+                $dffName.text($btn.data('filename'));
+                $dffModal.modal('show');
             });
 
             // ── Delete Folder modal ──
