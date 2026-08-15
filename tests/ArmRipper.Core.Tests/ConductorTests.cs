@@ -315,6 +315,8 @@ public sealed class ConductorTests : IDisposable
         identifyMock.Verify(
             i => i.IdentifyAsync(It.IsAny<Job>(), It.IsAny<CancellationToken>()),
             Times.AtLeastOnce);
+    }
+
     [Fact]
     public async Task RunAsync_WhenStatusSetToTerminalDuringManualWait_Returns1AndKeepsTerminalStatus()
     {

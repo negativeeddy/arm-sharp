@@ -80,6 +80,7 @@ builder.Services.AddScoped<IDiscDbHashService, DiscDbHashService>();
 builder.Services.AddScoped<IDiscDbQueryService, DiscDbQueryService>();
 builder.Services.AddScoped<IDiscDbMappingService, DiscDbMappingService>();
 builder.Services.AddScoped<ITrackMapperService, TrackMapperService>();
+builder.Services.AddSingleton<IRipRedirectService, RipRedirectService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<IConductor, Conductor>();
 builder.Services.AddSingleton<INotificationBroadcaster, NullNotificationBroadcaster>();

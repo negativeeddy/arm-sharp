@@ -25,11 +25,164 @@ public sealed class ArmRipperService(
     IIdentifyService identifyService,
     IDiscDbMappingService discDbMappingService,
     ITrackMapperService trackMapperService,
+    IRipRedirectService ripRedirectService,
     IEpisodeIdentificationOrchestrator? episodeOrchestrator = null) : IArmRipperService
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("ArmRipperService");
     private static readonly TimeSpan ProgressBroadcastInterval = TimeSpan.FromMilliseconds(200);
     private readonly ConcurrentDictionary<string, (int Percent, DateTime LastBroadcastUtc)> progressBroadcastState = new();
+
+    /// <summary>Fraction of the longest duration that counts as a "near tie".</summary>
+    private const double MainFeatureTieToleranceRatio = 0.03;
+
+    /// <summary>Absolute floor (seconds) for the near-tie window, so short discs
+    /// still get a meaningful window.</summary>
+    private const double MainFeatureTieToleranceFloorSeconds = 120.0;
+
+    /// <summary>
+    /// Selects the track to treat as the main feature from a list whose Process
+    /// flags are already populated. The longest eligible track wins, but when one
+    /// or more tracks are within a small tolerance of the longest duration (e.g.
+    /// a featurette that is marginally longer than the movie), the tie is broken
+    /// by file size, then chapter count, then (optionally) widescreen, then
+    /// duration. If no track is eligible, falls back to the longest track overall
+    /// so a disc of only short clips still rips its longest title.
+    /// </summary>
+    internal static Track? SelectMainFeatureTrack(IReadOnlyList<Track> tracks, bool preferWidescreen)
+    {
+        var eligible = tracks.Where(t => t.Process).ToList();
+        var pool = eligible.Count > 0 ? eligible : tracks.ToList();
+        if (pool.Count == 0)
+            return null;
+
+        var maxDuration = pool.Max(t => t.Length ?? 0);
+        if (maxDuration <= 0)
+            return pool[0];
+
+        var tolerance = Math.Max(
+            maxDuration * MainFeatureTieToleranceRatio,
+            MainFeatureTieToleranceFloorSeconds);
+
+        IOrderedEnumerable<Track> ranked = pool
+            .Where(t => (t.Length ?? 0) >= maxDuration - tolerance)
+            .OrderByDescending(MainFeatureSizeOf)
+            .ThenByDescending(t => t.Chapters ?? 0);
+
+        if (preferWidescreen)
+            ranked = ranked.ThenByDescending(t => t.AspectRatio?.Contains("16:9") == true);
+
+        return ranked
+            .ThenByDescending(t => t.Length ?? 0)
+            .First();
+    }
+
+    /// <summary>Bytes to compare tracks by, falling back to an estimate from duration.</summary>
+    private static long MainFeatureSizeOf(Track t) => t.FileSize ?? (long)(t.Length ?? 0) * 1024;
+
+    /// <summary>
+    /// Applies a manual main-feature override for the job (or one remembered for
+    /// the disc fingerprint) on top of the automatic selection. No-op when no
+    /// override exists.
+    /// </summary>
+    private async Task ApplyMainFeatureOverrideAsync(Job job, IReadOnlyList<Track> tracks, CancellationToken ct)
+    {
+        var target = await ResolveMainFeatureTrackAsync(job, tracks, ct);
+        if (target is null)
+            return;
+
+        var previous = tracks.FirstOrDefault(t => t.MainFeature);
+        foreach (var track in tracks)
+            track.MainFeature = ReferenceEquals(track, target);
+
+        if (previous is not null && !ReferenceEquals(previous, target))
+        {
+            logger.LogInformation(
+                "Main feature overridden to track {Track} (was {OldTrack}) for job {JobId}",
+                target.TrackNumber, previous.TrackNumber, job.Id);
+        }
+    }
+
+    /// <summary>
+    /// Resolves which track should be the main feature for the rip, consulting, in
+    /// order: a manual per-job override (freshly read from the DB so a mid-rip
+    /// redirect is honored), a per-fingerprint override, then the automatic
+    /// selection marked on <see cref="Track.MainFeature"/>.
+    /// </summary>
+    private async Task<Track?> ResolveMainFeatureTrackAsync(Job job, IReadOnlyList<Track> tracks, CancellationToken ct)
+    {
+        var overrideNumber = job.MainFeatureOverrideTrackNumber
+            ?? await db.Jobs.AsNoTracking()
+                .Where(j => j.Id == job.Id)
+                .Select(j => j.MainFeatureOverrideTrackNumber)
+                .FirstOrDefaultAsync(ct);
+
+        if (!string.IsNullOrEmpty(overrideNumber))
+        {
+            var manual = tracks.FirstOrDefault(t => t.TrackNumber == overrideNumber);
+            if (manual is not null)
+                return manual;
+        }
+
+        if (!string.IsNullOrEmpty(job.DiscFingerprint))
+        {
+            var fingerprintTrackNumber = await db.DiscMetadata.AsNoTracking()
+                .Where(d => d.Fingerprint == job.DiscFingerprint)
+                .Select(d => d.MainFeatureTrackNumber)
+                .FirstOrDefaultAsync(ct);
+
+            if (!string.IsNullOrEmpty(fingerprintTrackNumber))
+            {
+                var remembered = tracks.FirstOrDefault(t => t.TrackNumber == fingerprintTrackNumber);
+                if (remembered is not null)
+                    return remembered;
+            }
+        }
+
+        return tracks.FirstOrDefault(t => t.MainFeature);
+    }
+
+    /// <summary>
+    /// Deletes leftover partial MakeMKV output for the single track that was
+    /// being ripped when a redirect cancelled it, so the re-rip starts from a
+    /// clean output directory. Only the cancelled track's file is removed —
+    /// completed files from other tracks (e.g. an earlier rip of the same
+    /// title) are left untouched.
+    /// </summary>
+    private static void CleanupPartialRipOutput(string makeMkvOutPath, Track track)
+    {
+        if (!Directory.Exists(makeMkvOutPath))
+            return;
+
+        // The exact output file name MakeMKV reported for this track in the
+        // info scan (TINFO Filename field), or MakeMKV's conventional
+        // "&lt;title&gt;_t{index}.mkv" name where index is the 0-based title index
+        // (TrackNumber - 1), zero-padded to two digits.
+        var exactName = string.IsNullOrEmpty(track.FileName)
+            ? null
+            : Path.GetFileName(track.FileName);
+
+        var suffix = int.TryParse(track.TrackNumber, out var trackNumber) && trackNumber > 0
+            ? $"t{trackNumber - 1:D2}.mkv"
+            : null;
+
+        foreach (var file in Directory.EnumerateFiles(makeMkvOutPath, "*.mkv"))
+        {
+            var name = Path.GetFileName(file);
+            var isTarget = name.Equals(exactName, StringComparison.OrdinalIgnoreCase)
+                || (suffix is not null && name.EndsWith("_" + suffix, StringComparison.OrdinalIgnoreCase));
+            if (!isTarget)
+                continue;
+
+            try
+            {
+                File.Delete(file);
+            }
+            catch (Exception)
+            {
+                // Best-effort — a file in use by the dying process may linger.
+            }
+        }
+    }
     public async Task<string> RipVisualMediaAsync(Job job, string logFile, bool hasDupes, bool protection, CancellationToken ct = default)
     {
         // ── 1. Compute paths ──
@@ -322,71 +475,39 @@ public sealed class ArmRipperService(
             }
         }
 
-        Track? longestTrack = null;
+        // ── Main feature selection ──
+        // A track is eligible when its length is inside the configured window. The
+        // longest eligible track is normally the feature, but discs often carry an
+        // extra whose duration is within a hair of the movie (e.g. a featurette a
+        // few seconds longer than the feature). Comparing raw duration then picks
+        // the wrong side, so when several tracks are near the longest duration we
+        // break the tie by file size, then chapter count, then (optionally)
+        // widescreen, then duration.
         foreach (var track in tracks)
         {
             var length = track.Length ?? 0;
             track.Process = length >= minLengthCfg && length <= maxLength;
-
-            if (longestTrack is null || length > (longestTrack.Length ?? 0))
-                longestTrack = track;
         }
 
-        if (longestTrack is not null)
+        var preferWidescreen = config?.PreferWidescreen ?? settings.Value.PreferWidescreen;
+        var mainFeatureTrack = SelectMainFeatureTrack(tracks, preferWidescreen);
+
+        if (mainFeatureTrack is not null)
         {
-            longestTrack.MainFeature = true;
+            foreach (var track in tracks)
+                track.MainFeature = ReferenceEquals(track, mainFeatureTrack);
 
-            // ── Prefer widescreen over fullscreen when tracks are similarly sized ──
-            var preferWidescreen = config?.PreferWidescreen ?? settings.Value.PreferWidescreen;
-            if (preferWidescreen)
-            {
-                var eligible = tracks.Where(t => t.Process).ToList();
-                if (eligible.Count >= 2)
-                {
-                    // Sort descending by file size (or duration as a fallback)
-                    var sorted = eligible
-                        .OrderByDescending(t => t.FileSize ?? (long)(t.Length ?? 0) * 1024)
-                        .ToList();
-
-                    var first = sorted[0];
-                    var second = sorted[1];
-
-                    var firstSize = first.FileSize ?? (long)(first.Length ?? 0) * 1024;
-                    var secondSize = second.FileSize ?? (long)(second.Length ?? 0) * 1024;
-
-                    // Only apply when both tracks have meaningful sizes and are within 15%
-                    if (firstSize > 0 && secondSize > 0)
-                    {
-                        var ratio = (double)Math.Min(firstSize, secondSize) / Math.Max(firstSize, secondSize);
-                        if (ratio >= 0.85)
-                        {
-                            var firstIsWide = first.AspectRatio?.Contains("16:9") == true;
-                            var secondIsWide = second.AspectRatio?.Contains("16:9") == true;
-
-                            Track? widescreenPick = null;
-                            if (firstIsWide && !secondIsWide)
-                                widescreenPick = first;
-                            else if (!firstIsWide && secondIsWide)
-                                widescreenPick = second;
-
-                            if (widescreenPick is not null && widescreenPick != longestTrack)
-                            {
-                                var oldTrack = longestTrack;
-                                longestTrack.MainFeature = false;
-                                widescreenPick.MainFeature = true;
-                                longestTrack = widescreenPick;
-                                logger.LogInformation(
-                                    "PreferWidescreen: swapped MainFeature from track {OldTrack} (aspect {OldAspect}, size {OldSize}) " +
-                                    "to track {NewTrack} (aspect {NewAspect}, size {NewSize}) — ratio was {Ratio:P1}",
-                                    oldTrack.TrackNumber, oldTrack.AspectRatio ?? "(unknown)", oldTrack.FileSize ?? 0,
-                                    widescreenPick.TrackNumber, widescreenPick.AspectRatio ?? "(unknown)", widescreenPick.FileSize ?? 0,
-                                    ratio);
-                            }
-                        }
-                    }
-                }
-            }
+            logger.LogInformation(
+                "Main feature: track {Track} (length {Length}s, chapters {Chapters}, size {Size}, aspect {Aspect})",
+                mainFeatureTrack.TrackNumber, mainFeatureTrack.Length ?? 0,
+                mainFeatureTrack.Chapters ?? 0, mainFeatureTrack.FileSize ?? 0,
+                mainFeatureTrack.AspectRatio ?? "(unknown)");
         }
+
+        // A manual per-job override (set from the UI, including mid-rip redirects)
+        // or a per-fingerprint override remembered from an earlier rip wins over
+        // the automatic selection above.
+        await ApplyMainFeatureOverrideAsync(job, tracks, ct);
 
         foreach (var track in tracks)
             db.Tracks.Add(track);
@@ -496,18 +617,62 @@ public sealed class ArmRipperService(
             }
             else if (config?.MainFeature ?? settings.Value.MainFeature)
             {
-                // MainFeature mode: only rip the single longest track.
-                // DiscDb metadata mapping still runs (for poster, title, etc.) but
-                // promoted extras are NOT ripped in this mode.
-                var main = tracks.FirstOrDefault(t => t.MainFeature);
-                if (main is not null)
+                // MainFeature mode: only rip the single longest track (or the track
+                // chosen by a manual/fingerprint override). DiscDb metadata mapping
+                // still runs (for poster, title, etc.) but promoted extras are NOT
+                // ripped in this mode.
+                try
                 {
-                    // We already identified the exact track (the longest one), so pass
-                    // minLength=0 to prevent MakeMKV from filtering it out with --minlength.
-                    var trackNum = main.TrackNumber ?? throw new InvalidOperationException(
-                        $"Main-feature track {main.Id} has no TrackNumber — cannot rip");
-                    ripResults.Add(await makeMkv.RipTrackAsync(job, trackNum, makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping main feature", ct), ct));
-                    ripCount = 1;
+                    while (true)
+                    {
+                        var main = await ResolveMainFeatureTrackAsync(job, tracks, ct);
+                        if (main is null)
+                            break;
+
+                        // Keep MainFeature flags in sync so downstream stages use the
+                        // same track (a mid-rip redirect may have changed the target).
+                        var currentMain = tracks.FirstOrDefault(t => t.MainFeature);
+                        if (!ReferenceEquals(currentMain, main))
+                        {
+                            foreach (var track in tracks)
+                                track.MainFeature = ReferenceEquals(track, main);
+                            await db.SaveChangesAsync(ct);
+                        }
+
+                        // We already identified the exact track (the longest one), so pass
+                        // minLength=0 to prevent MakeMKV from filtering it out with --minlength.
+                        var trackNum = main.TrackNumber ?? throw new InvalidOperationException(
+                            $"Main-feature track {main.Id} has no TrackNumber — cannot rip");
+
+                        // Register a per-job cancellation token so the UI can request a
+                        // mid-rip redirect; linked to the pipeline token so a normal stop
+                        // still aborts the rip.
+                        var ripCts = ripRedirectService.BeginRip(job.Id, ct);
+                        try
+                        {
+                            ripResults.Add(await makeMkv.RipTrackAsync(
+                                job, trackNum, makeMkvOutPath, mkvArgs, 0,
+                                MkvProgress(job, $"Ripping main feature (track {trackNum})", ripCts.Token),
+                                ripCts.Token));
+                            ripCount = 1;
+                            break;
+                        }
+                        catch (OperationCanceledException) when (!ct.IsCancellationRequested && ripRedirectService.WasRedirectRequested(job.Id))
+                        {
+                            ripRedirectService.AcknowledgeRedirect(job.Id);
+                            logger.LogInformation(
+                                "Main-feature rip redirected for job {JobId}; re-ripping the newly-selected track", job.Id);
+                            CleanupPartialRipOutput(makeMkvOutPath, main);
+                        }
+                        finally
+                        {
+                            ripCts.Dispose();
+                        }
+                    }
+                }
+                finally
+                {
+                    ripRedirectService.EndRip(job.Id);
                 }
             }
             else if (maxLength > 99998 && eligibleTracks.All(t => string.IsNullOrEmpty(t.EpisodeTitle)))

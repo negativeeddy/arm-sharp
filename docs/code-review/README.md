@@ -77,6 +77,10 @@ proposed fix.
 | 34 | [No concurrency protection on `MarkStageComplete`](34-markstagecomplete-no-concurrency.md) | 🟡 Medium | ⬜ Todo | — |
 | 35 | [Misleading comment: "CompletedStages is not queryable"](35-completedstages-queryable-misleading.md) | 🟢 Low | ⬜ Todo | — |
 | 36 | [Renaming `RipStage` silently breaks resume for old jobs](36-ripstage-rename-breaks-completedstages.md) | 🟢 Low | ⬜ Todo | — |
+| 37 | [JobDetail assumes `MainFeature=true` when job config is null](37-jobdetail-mainfeature-default-mismatch.md) | 🟢 Low | ⬜ Todo | — |
+| 38 | [Redirect can report `cancelled=true` without a re-rip](38-redirect-cancelled-without-restart.md) | 🟢 Low | ⬜ Todo | — |
+| 39 | [WebUi integration tests flake in `CreateAuthenticatedWithTokenAsync`](39-webui-test-login-flake.md) | 🟢 Low | ⬜ Todo | — |
+| 40 | [No test for job override read from DB with stale tracked entity](40-missing-stale-entity-override-test.md) | 🟢 Low | ⬜ Todo | — |
 
 ---
 
@@ -84,7 +88,7 @@ proposed fix.
 
 | Status | Count |
 |--------|-------|
-| ⬜ Todo | 18 |
+| ⬜ Todo | 22 |
 | 🔄 In Progress | 0 |
 | ✅ Done | 18 |
 

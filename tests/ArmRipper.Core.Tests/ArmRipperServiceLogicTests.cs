@@ -439,4 +439,156 @@ public sealed class ArmRipperServiceLogicTests
             "/home/arm/media/completed/movies/Fahrenheit 9_11 (2004)",
             ArmRipperService.ComputeOutputPath(job, null));
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SelectMainFeatureTrack
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static Track CreateTestTrack(string trackNumber, int? length, long? size, int? chapters, string? aspect)
+        => new()
+        {
+            TrackNumber = trackNumber,
+            Length = length,
+            FileSize = size,
+            Chapters = chapters,
+            AspectRatio = aspect,
+            Process = true
+        };
+
+    [Fact]
+    public void SelectMainFeatureTrack_NearDurationTie_PicksLargerFile()
+    {
+        // Underworld (job 1106): the feature is 2h 13m 37s but a featurette is
+        // 1s longer. The movie has a larger file and more chapters — size wins.
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("1", 8017, 4_920_000_000L, 17, "16:9"),
+            CreateTestTrack("7", 8018, 4_830_000_000L, 16, "4:3")
+        };
+
+        var result = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: true);
+
+        Assert.NotNull(result);
+        Assert.Equal("1", result.TrackNumber);
+    }
+
+    [Fact]
+    public void SelectMainFeatureTrack_WidescreenFeatureVsFullscreenExtra_PicksFeature()
+    {
+        // Sherlock (job 1103): the fullscreen extra is ~3 minutes LONGER than the
+        // widescreen feature, so duration alone picks wrong. Size + chapters win.
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("1", 7704, 4_500_000_000L, 25, "16:9"),
+            CreateTestTrack("2", 7901, 4_100_000_000L, 12, "4:3")
+        };
+
+        var result = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: true);
+
+        Assert.NotNull(result);
+        Assert.Equal("1", result.TrackNumber);
+    }
+
+    [Fact]
+    public void SelectMainFeatureTrack_ClearlyLongestWinsByDuration()
+    {
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("0", 6000, 4_000_000_000L, 20, "16:9"),
+            CreateTestTrack("1", 1800, 1_500_000_000L, 5, "4:3"),
+            CreateTestTrack("2", 300, 200_000_000L, 1, "4:3")
+        };
+
+        var result = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: true);
+
+        Assert.NotNull(result);
+        Assert.Equal("0", result.TrackNumber);
+    }
+
+    [Fact]
+    public void SelectMainFeatureTrack_SizeEqual_BreaksTieByChapters()
+    {
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("1", 8000, 4_000_000_000L, 12, "16:9"),
+            CreateTestTrack("2", 8003, 4_000_000_000L, 18, "16:9")
+        };
+
+        var result = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: true);
+
+        Assert.NotNull(result);
+        Assert.Equal("2", result.TrackNumber);
+    }
+
+    [Fact]
+    public void SelectMainFeatureTrack_EqualTies_PrefersWidescreen()
+    {
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("1", 8000, 4_000_000_000L, 10, "4:3"),
+            CreateTestTrack("2", 8000, 4_000_000_000L, 10, "16:9")
+        };
+
+        var widescreen = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: true);
+        var noPreference = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: false);
+
+        Assert.Equal("2", widescreen!.TrackNumber);
+        Assert.Equal("1", noPreference!.TrackNumber); // stable first-wins when nothing differs
+    }
+
+    [Fact]
+    public void SelectMainFeatureTrack_NoEligibleTracks_FallsBackToLongest()
+    {
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("1", 6000, 4_000_000_000L, 20, "16:9"),
+            CreateTestTrack("2", 300, 200_000_000L, 1, "4:3")
+        };
+        tracks[0].Process = false;
+        tracks[1].Process = false;
+
+        var result = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: true);
+
+        Assert.NotNull(result);
+        Assert.Equal("1", result.TrackNumber);
+    }
+
+    [Fact]
+    public void SelectMainFeatureTrack_IgnoresIneligibleNearTies()
+    {
+        // A longer track outside the allowed window must not win over an eligible one.
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("1", 6000, 4_000_000_000L, 20, "16:9"),
+            CreateTestTrack("2", 9000, 5_000_000_000L, 22, "4:3")
+        };
+        tracks[1].Process = false;
+
+        var result = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: true);
+
+        Assert.NotNull(result);
+        Assert.Equal("1", result.TrackNumber);
+    }
+
+    [Fact]
+    public void SelectMainFeatureTrack_Empty_ReturnsNull()
+    {
+        var result = ArmRipperService.SelectMainFeatureTrack([], preferWidescreen: true);
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void SelectMainFeatureTrack_NoDurationInfo_FallsBackToFirst()
+    {
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("1", null, 4_000_000_000L, null, null),
+            CreateTestTrack("2", null, 3_000_000_000L, null, null)
+        };
+
+        var result = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: true);
+
+        Assert.NotNull(result);
+        Assert.Equal("1", result.TrackNumber);
+    }
 }

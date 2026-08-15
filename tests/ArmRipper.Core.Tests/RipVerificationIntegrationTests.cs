@@ -68,8 +68,12 @@ public sealed class RipVerificationIntegrationTests : IDisposable
         return result;
     }
 
-    private (ArmRipperService Service, Job Job, Mock<IMakeMkvService> MakeMkv, Mock<IFfmpegService> Ffmpeg) CreateService()
+    private (ArmRipperService Service, Job Job, Mock<IMakeMkvService> MakeMkv, Mock<IFfmpegService> Ffmpeg, IRipRedirectService Redirect) CreateService(
+        IRipRedirectService? redirectService = null,
+        IReadOnlyList<Track>? tracks = null)
     {
+        redirectService ??= new RipRedirectService();
+
         var job = TestHelpers.CreateTestJob(
             configure: j => j.DiscFingerprint = null,
             configureConfig: c => c.MainFeature = true);
@@ -85,13 +89,13 @@ public sealed class RipVerificationIntegrationTests : IDisposable
         var makeMkv = new Mock<IMakeMkvService>();
         var ffmpeg = new Mock<IFfmpegService>();
 
-        var tracks = new List<Track>
+        tracks ??= new List<Track>
         {
             new()
             {
                 JobId = job.Id,
-                TrackNumber = "0",
-                FileName = "title00.mkv",
+                TrackNumber = "1",
+                FileName = "title_t00.mkv",
                 Length = 6547,                // 1:49:15 — the info-scan estimate
                 FileSize = 4_000_000_000L,
                 Chapters = 16,
@@ -104,7 +108,7 @@ public sealed class RipVerificationIntegrationTests : IDisposable
 
         makeMkv.Setup(m => m.GetTrackInfoWithCacheAsync(
                 It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(tracks);
+            .ReturnsAsync(() => tracks.ToList());
 
         var service = new ArmRipperService(
             NullLoggerFactory.Instance,
@@ -118,9 +122,10 @@ public sealed class RipVerificationIntegrationTests : IDisposable
             [],
             Mock.Of<IIdentifyService>(),
             Mock.Of<IDiscDbMappingService>(),
-            Mock.Of<ITrackMapperService>());
+            Mock.Of<ITrackMapperService>(),
+            redirectService);
 
-        return (service, job, makeMkv, ffmpeg);
+        return (service, job, makeMkv, ffmpeg, redirectService);
     }
 
     private static async Task<string?> InvokeAsync(ArmRipperService service, Job job, string makeMkvOutPath)
@@ -134,7 +139,7 @@ public sealed class RipVerificationIntegrationTests : IDisposable
     [Fact]
     public async Task DamagedDisc_SavedWrongTitle_FailsJobAtRipStage()
     {
-        var (service, job, makeMkv, ffmpeg) = CreateService();
+        var (service, job, makeMkv, ffmpeg, _) = CreateService();
 
         var ripResult = Job977RipResult();
         makeMkv.Setup(m => m.RipTrackAsync(
@@ -158,14 +163,14 @@ public sealed class RipVerificationIntegrationTests : IDisposable
 
         Assert.Equal(JobState.Failure, job.Status);
         Assert.Contains("Main feature rip verification failed", ex.Message);
-        Assert.Contains("track 0", ex.Message);
+        Assert.Contains("track 1", ex.Message);
         Assert.Equal(job.Errors, ex.Message);
     }
 
     [Fact]
     public async Task HealthyRip_DoesNotFailAtRipStage()
     {
-        var (service, job, makeMkv, ffmpeg) = CreateService();
+        var (service, job, makeMkv, ffmpeg, _) = CreateService();
 
         makeMkv.Setup(m => m.RipTrackAsync(
                 It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
@@ -186,5 +191,222 @@ public sealed class RipVerificationIntegrationTests : IDisposable
         Assert.Equal(makeMkvOutPath, result);
         Assert.NotEqual(JobState.Failure, job.Status);
         Assert.Null(job.Errors);
+    }
+
+    [Fact]
+    public async Task MainFeatureOverride_HonoredAtSelection_RipsChosenTrack()
+    {
+        var (service, job, makeMkv, ffmpeg, _) = CreateService(tracks: new List<Track>
+        {
+            new()
+            {
+                JobId = 1,
+                TrackNumber = "1",
+                FileName = "title_t00.mkv",
+                Length = 9000,                 // longest → auto-selected main feature
+                FileSize = 5_000_000_000L,
+                Chapters = 30,
+                AspectRatio = "16:9",
+                Fps = 23.976,
+                Source = "MakeMKV",
+                BaseName = "Test Movie"
+            },
+            new()
+            {
+                JobId = 1,
+                TrackNumber = "2",
+                FileName = "title_t01.mkv",
+                Length = 6000,
+                FileSize = 3_000_000_000L,
+                Chapters = 12,
+                AspectRatio = "4:3",
+                Fps = 23.976,
+                Source = "MakeMKV",
+                BaseName = "Test Movie"
+            }
+        });
+
+        // The user chose track 2 even though track 1 is the longest.
+        job.MainFeatureOverrideTrackNumber = "2";
+        _db.SaveChanges();
+
+        var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
+        Directory.CreateDirectory(makeMkvOutPath);
+        var outputFile = Path.Combine(makeMkvOutPath, "title_t01.mkv");
+        using (var fs = new FileStream(outputFile, FileMode.CreateNew))
+            fs.SetLength(3_000_000_000L);
+
+        ffmpeg.Setup(f => f.ProbeDurationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(6000.0);
+
+        var result = await InvokeAsync(service, job, makeMkvOutPath);
+
+        Assert.Equal(makeMkvOutPath, result);
+        makeMkv.Verify(m => m.RipTrackAsync(
+                It.IsAny<Job>(), "2", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        makeMkv.Verify(m => m.RipTrackAsync(
+                It.IsAny<Job>(), "1", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task FingerprintOverride_HonoredAtSelection_RipsRememberedTrack()
+    {
+        var (service, job, makeMkv, ffmpeg, _) = CreateService(tracks: new List<Track>
+        {
+            new()
+            {
+                JobId = 1,
+                TrackNumber = "1",
+                FileName = "title_t00.mkv",
+                Length = 9000,                 // longest → auto-selected main feature
+                FileSize = 5_000_000_000L,
+                Chapters = 30,
+                AspectRatio = "16:9",
+                Fps = 23.976,
+                Source = "MakeMKV",
+                BaseName = "Test Movie"
+            },
+            new()
+            {
+                JobId = 1,
+                TrackNumber = "2",
+                FileName = "title_t01.mkv",
+                Length = 6000,
+                FileSize = 3_000_000_000L,
+                Chapters = 12,
+                AspectRatio = "4:3",
+                Fps = 23.976,
+                Source = "MakeMKV",
+                BaseName = "Test Movie"
+            }
+        });
+
+        // A previous rip of this disc remembered track 2 as the main feature.
+        job.DiscFingerprint = "TEST_FP";
+        _db.DiscMetadata.Add(new DiscMetadata
+        {
+            Fingerprint = "TEST_FP",
+            VolumeLabel = "TEST DISC",
+            SectorCount = 0,
+            DiscType = "DVD",
+            CreatedAt = DateTime.UtcNow,
+            LastUsedAt = DateTime.UtcNow,
+            MainFeatureTrackNumber = "2"
+        });
+        _db.SaveChanges();
+
+        var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
+        Directory.CreateDirectory(makeMkvOutPath);
+        var outputFile = Path.Combine(makeMkvOutPath, "title_t01.mkv");
+        using (var fs = new FileStream(outputFile, FileMode.CreateNew))
+            fs.SetLength(3_000_000_000L);
+
+        ffmpeg.Setup(f => f.ProbeDurationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(6000.0);
+
+        var result = await InvokeAsync(service, job, makeMkvOutPath);
+
+        Assert.Equal(makeMkvOutPath, result);
+        makeMkv.Verify(m => m.RipTrackAsync(
+                It.IsAny<Job>(), "2", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        makeMkv.Verify(m => m.RipTrackAsync(
+                It.IsAny<Job>(), "1", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task MidRipRedirect_CancelsActiveRip_AndReripsChosenTrack()
+    {
+        var redirect = new RipRedirectService();
+        var (service, job, makeMkv, ffmpeg, _) = CreateService(redirect, tracks: new List<Track>
+        {
+            new()
+            {
+                JobId = 1,
+                TrackNumber = "1",
+                FileName = "title_t00.mkv",
+                Length = 9000,                 // longest → auto-selected main feature
+                FileSize = 5_000_000_000L,
+                Chapters = 30,
+                AspectRatio = "16:9",
+                Fps = 23.976,
+                Source = "MakeMKV",
+                BaseName = "Test Movie"
+            },
+            new()
+            {
+                JobId = 1,
+                TrackNumber = "2",
+                FileName = "title_t01.mkv",
+                Length = 6000,
+                FileSize = 3_000_000_000L,
+                Chapters = 12,
+                AspectRatio = "4:3",
+                Fps = 23.976,
+                Source = "MakeMKV",
+                BaseName = "Test Movie"
+            }
+        });
+
+        var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
+
+        // Track 1 is ripped first; mid-rip the user redirects to track 2, which
+        // cancels the active rip (OCE) and leaves a partial output file behind.
+        var track1Ripped = false;
+        makeMkv.Setup(m => m.RipTrackAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
+            .Returns(async (Job j, string track, string outPath, string args, int minLen, IProgress<int>? prog, CancellationToken token) =>
+            {
+                Directory.CreateDirectory(outPath);
+                if (!track1Ripped)
+                {
+                    track1Ripped = true;
+                    using var partial = new FileStream(Path.Combine(outPath, "title_t00.mkv"), FileMode.Create);
+                    partial.SetLength(500_000L);
+
+                    // The user picks track 2 while the rip is in progress.
+                    j.MainFeatureOverrideTrackNumber = "2";
+                    _db.SaveChanges();
+                    redirect.RequestRedirect(j.Id);
+
+                    throw new OperationCanceledException();
+                }
+
+                using var output = new FileStream(Path.Combine(outPath, "title_t01.mkv"), FileMode.Create);
+                output.SetLength(3_000_000_000L);
+                return new MakeMkvRipResult();
+            });
+
+        ffmpeg.Setup(f => f.ProbeDurationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(6000.0);
+
+        var result = await InvokeAsync(service, job, makeMkvOutPath);
+
+        Assert.Equal(makeMkvOutPath, result);
+        makeMkv.Verify(m => m.RipTrackAsync(
+                It.IsAny<Job>(), "1", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        makeMkv.Verify(m => m.RipTrackAsync(
+                It.IsAny<Job>(), "2", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        // The partial rip of track 1 was cleaned up; only the re-ripped file remains.
+        Assert.False(File.Exists(Path.Combine(makeMkvOutPath, "title_t00.mkv")));
+        Assert.True(File.Exists(Path.Combine(makeMkvOutPath, "title_t01.mkv")));
+
+        // The redirect persisted the choice and track 2 became the main feature.
+        Assert.Equal("2", job.MainFeatureOverrideTrackNumber);
+        var savedTrack = _db.Tracks.First(t => t.JobId == job.Id && t.TrackNumber == "2");
+        Assert.True(savedTrack.MainFeature);
     }
 }

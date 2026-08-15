@@ -54,6 +54,8 @@ public static class DatabaseHelper
         TryAlterColumn(db, "jobs", "ManualWaitResume");
         TryAlterColumn(db, "jobs", "CompletedStages");
         TryAlterColumn(db, "jobs", "OriginalJobId", "INTEGER");
+        TryAlterColumn(db, "jobs", "MainFeatureOverrideTrackNumber");
+        TryAlterColumn(db, "disc_metadata", "MainFeatureTrackNumber");
         // MaxConcurrentRips removed — per-drive gating supersedes the global slot.
 
         // ── Season/Disc/StartingEpisode columns (PR#32) ──

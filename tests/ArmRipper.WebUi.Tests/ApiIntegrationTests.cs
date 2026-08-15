@@ -364,6 +364,107 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    [Fact]
+    public async Task RedirectRip_ActiveMainFeatureJob_PersistsOverride()
+    {
+        await EnsureSeedLoadedAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            // The startup ShutdownJobCancellationService marks the seeded Active job
+            // as Stopping, so restore a ripping state before exercising the endpoint.
+            var job = await db.Jobs.Include(j => j.Tracks).FirstAsync(j => j.Id == _testJobId);
+            job.Status = JobState.Active;
+            job.Tracks.Add(new Track { JobId = _testJobId, TrackNumber = "1", FileName = "title01.mkv", Length = 6000, Process = true });
+            job.Tracks.Add(new Track { JobId = _testJobId, TrackNumber = "2", FileName = "title02.mkv", Length = 9000, Process = true });
+            await db.SaveChangesAsync();
+        }
+
+        var (client, token) = await CreateAuthenticatedWithTokenAsync();
+        var form = new Dictionary<string, string>
+        {
+            { "__RequestVerificationToken", token },
+            { "trackNumber", "1" }
+        };
+        var response = await client.PostAsync($"/api/jobs/{_testJobId}/redirect-rip",
+            new FormUrlEncodedContent(form));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var json = await response.Content.ReadAsStringAsync();
+        var doc = JsonDocument.Parse(json);
+        Assert.True(doc.RootElement.GetProperty("success").GetBoolean(), $"Response: {json}");
+        Assert.Equal("1", doc.RootElement.GetProperty("track").GetString());
+        Assert.False(doc.RootElement.GetProperty("cancelled").GetBoolean());
+        Assert.True(doc.RootElement.GetProperty("mainFeatureMode").GetBoolean());
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = await db.Jobs.FirstAsync(j => j.Id == _testJobId);
+            Assert.Equal("1", job.MainFeatureOverrideTrackNumber);
+        }
+    }
+
+    [Fact]
+    public async Task RedirectRip_MissingJob_ReturnsNotFound()
+    {
+        var (client, token) = await CreateAuthenticatedWithTokenAsync();
+        var form = new Dictionary<string, string>
+        {
+            { "__RequestVerificationToken", token },
+            { "trackNumber", "1" }
+        };
+        var response = await client.PostAsync("/api/jobs/9999/redirect-rip",
+            new FormUrlEncodedContent(form));
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task RedirectRip_UnknownTrack_ReturnsError()
+    {
+        await EnsureSeedLoadedAsync();
+        var (client, token) = await CreateAuthenticatedWithTokenAsync();
+        var form = new Dictionary<string, string>
+        {
+            { "__RequestVerificationToken", token },
+            { "trackNumber", "999" }
+        };
+        var response = await client.PostAsync($"/api/jobs/{_testJobId}/redirect-rip",
+            new FormUrlEncodedContent(form));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var json = await response.Content.ReadAsStringAsync();
+        var doc = JsonDocument.Parse(json);
+        Assert.False(doc.RootElement.GetProperty("success").GetBoolean());
+    }
+
+    [Fact]
+    public async Task RedirectRip_NonRippingJob_ReturnsError()
+    {
+        await EnsureSeedLoadedAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = await db.Jobs.FirstAsync(j => j.Id == _testJobId);
+            job.Status = JobState.Success;
+            await db.SaveChangesAsync();
+        }
+
+        var (client, token) = await CreateAuthenticatedWithTokenAsync();
+        var form = new Dictionary<string, string>
+        {
+            { "__RequestVerificationToken", token },
+            { "trackNumber", "1" }
+        };
+        var response = await client.PostAsync($"/api/jobs/{_testJobId}/redirect-rip",
+            new FormUrlEncodedContent(form));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var json = await response.Content.ReadAsStringAsync();
+        var doc = JsonDocument.Parse(json);
+        Assert.False(doc.RootElement.GetProperty("success").GetBoolean());
+    }
+
     private async Task<HttpClient> CreateAuthenticatedClientAsync()
     {
         var client = _factory.CreateClient();
