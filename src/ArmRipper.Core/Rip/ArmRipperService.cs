@@ -752,6 +752,15 @@ public sealed class ArmRipperService(
                     // remains the only check for that file.
                     var actualDuration = await ffmpeg.ProbeDurationAsync(file, ct);
 
+                    // Update track length with the actual probed duration. When
+                    // MakeMKV's "fast path" rip (all titles with --minlength) saves
+                    // files, it renumbers output sequentially (t00, t01, …) which
+                    // can mismatch info-scan track numbers. The ffprobe result is
+                    // authoritative and ensures episode identification uses the
+                    // correct duration for provider matching.
+                    if (actualDuration is not null && actualDuration > 0)
+                        track.Length = (int)actualDuration.Value;
+
                     // DiscDb-promoted tracks were deliberately ripped with
                     // minLength=0 because they may legitimately be shorter than the
                     // configured floor — do not re-impose the floor on them.
