@@ -66,9 +66,9 @@ proposed fix.
 | 23 | [Audit EF Core migrations vs model consistency](23-ef-core-migration-audit.md) | 🟢 Low | ⬜ Todo | — |
 | 24 | [`ProcessJobAsync` has no resume-from-stage logic](24-processjobasync-no-resume-logic.md) | 🔴 Critical | ✅ Done | — |
 | 25 | [`RunAsync` always creates new job — resume path is dead](25-runasync-no-resume-overload.md) | 🔴 Critical | ✅ Done | — |
-| 26 | [Non-Active status at entry only warns, doesn't gate](26-processjobasync-status-guard-weak.md) | 🟡 Medium | ⬜ Todo | — |
+| 26 | [Non-Active status at entry only warns, doesn't gate](26-processjobasync-status-guard-weak.md) | 🟡 Medium | ✅ Done | — |
 | 27 | [Synchronous `FirstOrDefault` blocks async pipeline](27-sync-firstordefault-in-async.md) | 🟡 Medium | ✅ Done | — |
-| 28 | [After manual wait, Status set to Active unconditionally](28-manualwait-status-overwrite.md) | 🟡 Medium | ⬜ Todo | — |
+| 28 | [After manual wait, Status set to Active unconditionally](28-manualwait-status-overwrite.md) | 🟡 Medium | ✅ Done | — |
 | 29 | [Duplicate `RemoveWriter` in duplicate-skip path](29-duplicate-removewriter.md) | 🟢 Low | ⬜ Todo | — |
 | 30 | [Default switch case doesn't call `MarkStageComplete`](30-default-case-missing-markstagecomplete.md) | 🟢 Low | ⬜ Todo | — |
 | 31 | [`ManualWaitResume` flag not reset on timeout path](31-manualwaitresume-not-reset.md) | 🟢 Low | ⬜ Todo | — |
@@ -84,9 +84,9 @@ proposed fix.
 
 | Status | Count |
 |--------|-------|
-| ⬜ Todo | 20 |
+| ⬜ Todo | 18 |
 | 🔄 In Progress | 0 |
-| ✅ Done | 16 |
+| ✅ Done | 18 |
 
 ---
 
