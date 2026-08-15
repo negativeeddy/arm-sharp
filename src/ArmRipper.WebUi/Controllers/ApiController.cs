@@ -20,6 +20,7 @@ public partial class ApiController(
     ISettingsService settingsService,
     IDatabaseSubmitService databaseSubmitService,
     IOvidSubmitService ovidSubmitService,
+    IRipRedirectService ripRedirectService,
     ILogger<ApiController> logger) : Controller
 {
     [HttpGet("health")]
@@ -279,6 +280,57 @@ public partial class ApiController(
         await db.SaveChangesAsync(ct);
 
         return Json(new { success = true, job = id, message = "Manual wait will resume" });
+    }
+
+    /// <summary>
+    /// Manually redirect a rip in progress to a specific track. The choice is
+    /// remembered per disc fingerprint so future rips of the same disc pick the
+    /// same feature. When the job is in Main Feature mode the running MakeMKV rip
+    /// is cancelled and the pipeline re-rips the newly-selected track; otherwise
+    /// the override is applied on the next rip.
+    /// </summary>
+    [HttpPost("jobs/{id:int}/redirect-rip")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RedirectRip(int id, string trackNumber, CancellationToken ct = default)
+    {
+        var job = await db.Jobs
+            .Include(j => j.Tracks)
+            .Include(j => j.Config)
+            .FirstOrDefaultAsync(j => j.Id == id, ct);
+        if (job is null)
+            return NotFound(new { success = false, error = "Job not found" });
+
+        if (!job.Status.IsRippingState())
+            return Json(new { success = false, error = "Job is not currently ripping" });
+
+        if (string.IsNullOrEmpty(trackNumber) || !job.Tracks.Any(t => t.TrackNumber == trackNumber))
+            return Json(new { success = false, error = $"Track {trackNumber} not found on this disc" });
+
+        var effective = await settingsService.GetEffectiveAsync(ct);
+        var mainFeatureMode = job.Config?.MainFeature ?? effective.MainFeature;
+
+        job.MainFeatureOverrideTrackNumber = trackNumber;
+
+        // Remember the choice for the whole disc fingerprint so future rips of the
+        // same disc pick the right feature automatically.
+        if (!string.IsNullOrEmpty(job.DiscFingerprint))
+        {
+            var cached = await db.DiscMetadata
+                .FirstOrDefaultAsync(d => d.Fingerprint == job.DiscFingerprint, ct);
+            if (cached is not null)
+                cached.MainFeatureTrackNumber = trackNumber;
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        // Only cancel the active rip in Main Feature mode; in "rip all titles" mode
+        // every track is ripped anyway and cancelling would abort the whole job.
+        var cancelled = mainFeatureMode && ripRedirectService.RequestRedirect(id);
+        logger.LogInformation(
+            "Main-feature redirect requested for job {JobId} to track {Track} (rip {State})",
+            id, trackNumber, cancelled ? "cancelled" : "not active");
+
+        return Json(new { success = true, job = id, track = trackNumber, cancelled, mainFeatureMode });
     }
 
     /// <summary>

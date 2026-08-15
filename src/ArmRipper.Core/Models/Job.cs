@@ -52,6 +52,14 @@ public class Job
     /// <summary>If set, this job was forked from another job (e.g. a re-transcode of raw files).</summary>
     public int? OriginalJobId { get; set; }
 
+    /// <summary>
+    /// Track number to treat as the main feature for this job, overriding the
+    /// automatic selection. Set from the UI (including mid-rip redirects) and
+    /// remembered per disc fingerprint for future rips. Persisted so a re-rip
+    /// keeps using the chosen track.
+    /// </summary>
+    public string? MainFeatureOverrideTrackNumber { get; set; }
+
     /// <summary>TheDiscDb content hash for this disc (computed during identify).</summary>
     public string? DiscDbHash { get; set; }
 
