@@ -4,6 +4,7 @@ using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
 using ArmRipper.Core.Notifications;
 using ArmRipper.Core.Rip;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -263,6 +264,147 @@ public sealed class ConductorTests : IDisposable
         var job = _db.Jobs.Single();
         Assert.NotNull(job.Config);
         Assert.True(job.Config.MainFeature); // global default is true
+    }
+
+    [Theory]
+    [InlineData(JobState.Failure)]
+    [InlineData(JobState.Success)]
+    public async Task RunResumeAsync_WithNonResumableStatus_AbortsBeforeIdentification(JobState status)
+    {
+        var identifyMock = new Mock<IIdentifyService>();
+        identifyMock.Setup(i => i.IdentifyAsync(It.IsAny<Job>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var conductor = CreateConductor(identify: identifyMock.Object);
+
+        var job = TestHelpers.CreateTestJob(j => j.Status = status);
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var exitCode = await conductor.RunResumeAsync(job.Id);
+
+        // Non-resumable status must abort with failure code, never touching identification
+        Assert.Equal(1, exitCode);
+        identifyMock.Verify(
+            i => i.IdentifyAsync(It.IsAny<Job>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        // Job status must not be advanced by the aborted run
+        var dbJob = await _db.Jobs.FindAsync(job.Id);
+        Assert.NotNull(dbJob);
+        Assert.Equal(status, dbJob.Status);
+    }
+
+    [Theory]
+    [InlineData(JobState.Stopping)]
+    [InlineData(JobState.Cancelled)]
+    public async Task RunResumeAsync_WithResumableStatus_ProceedsToIdentification(JobState status)
+    {
+        var identifyMock = new Mock<IIdentifyService>();
+        identifyMock.Setup(i => i.IdentifyAsync(It.IsAny<Job>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var conductor = CreateConductor(identify: identifyMock.Object);
+
+        var job = TestHelpers.CreateTestJob(j => j.Status = status);
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        await conductor.RunResumeAsync(job.Id);
+
+        // Resumable statuses (Stopping/Cancelled) must not early-return at the guard —
+        // execution must proceed all the way into identification.
+        identifyMock.Verify(
+            i => i.IdentifyAsync(It.IsAny<Job>(), It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenStatusSetToTerminalDuringManualWait_Returns1AndKeepsTerminalStatus()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), "arm-test", Guid.NewGuid().ToString());
+        var options = TestHelpers.CreateOptions(a =>
+        {
+            a.ManualWait = true;
+            a.ManualWaitTime = 1; // wait loop exits after the first 5s iteration
+            a.RawPath = Path.Combine(tmpDir, "raw");
+            a.TranscodePath = Path.Combine(tmpDir, "transcode");
+            a.CompletedPath = Path.Combine(tmpDir, "completed");
+            a.LogPath = Path.Combine(tmpDir, "logs");
+        });
+        var conductor = CreateConductor(
+            options: options,
+            identify: new MockIdentifyService(DiscType.Dvd, label: "TEST_LABEL"));
+
+        using var secondCtx = CreateSecondDbContext();
+
+        // Run the pipeline in the background — it blocks in the manual wait loop.
+        var runTask = conductor.RunAsync("/dev/sr0");
+
+        // Wait until the conductor reaches ManualWaitStarted, then simulate another
+        // process (separate DbContext) setting a terminal state the loop doesn't check.
+        var jobId = await WaitForJobStatusAsync(secondCtx, JobState.ManualWaitStarted);
+        var externalJob = await secondCtx.Jobs.FirstAsync(j => j.Id == jobId);
+        externalJob.Status = JobState.Failure;
+        await secondCtx.SaveChangesAsync();
+
+        var exitCode = await runTask;
+
+        Assert.Equal(1, exitCode);
+
+        // The terminal status must not have been overwritten with Active.
+        var finalJob = await secondCtx.Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobState.Failure, finalJob.Status);
+    }
+
+    [Fact]
+    public async Task RunAsync_ManualWaitCompletesWithNoExternalChange_SetsActiveAndProceeds()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), "arm-test", Guid.NewGuid().ToString());
+        var options = TestHelpers.CreateOptions(a =>
+        {
+            a.ManualWait = true;
+            a.ManualWaitTime = 1; // wait loop exits after the first 5s iteration
+            a.RawPath = Path.Combine(tmpDir, "raw");
+            a.TranscodePath = Path.Combine(tmpDir, "transcode");
+            a.CompletedPath = Path.Combine(tmpDir, "completed");
+            a.LogPath = Path.Combine(tmpDir, "logs");
+        });
+        var conductor = CreateConductor(
+            options: options,
+            identify: new MockIdentifyService(DiscType.Dvd, label: "TEST_LABEL"));
+
+        var exitCode = await conductor.RunAsync("/dev/sr0");
+
+        Assert.Equal(0, exitCode);
+
+        // Pipeline proceeded past the manual wait and completed the rip.
+        var job = _db.Jobs.Single();
+        Assert.Equal(JobState.Success, job.Status);
+    }
+
+    /// <summary>
+    /// Creates a second <see cref="ArmDbContext"/> over the same in-memory SQLite database,
+    /// simulating another process reading/writing the job concurrently.
+    /// </summary>
+    private ArmDbContext CreateSecondDbContext()
+    {
+        var options = new DbContextOptionsBuilder<ArmDbContext>()
+            .UseSqlite(_db.Database.GetDbConnection())
+            .Options;
+        return new ArmDbContext(options);
+    }
+
+    /// <summary>Polls until a job reaches <paramref name="target"/> status, returning its id.</summary>
+    private static async Task<int> WaitForJobStatusAsync(ArmDbContext ctx, JobState target, int timeoutMs = 15_000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            var job = await ctx.Jobs.AsNoTracking().FirstOrDefaultAsync();
+            if (job is not null && job.Status == target)
+                return job.Id;
+            await Task.Delay(50);
+        }
+        throw new TimeoutException($"Job never reached status {target} within {timeoutMs}ms");
     }
 
     private sealed class MockIdentifyService(DiscType resultType = DiscType.Dvd, string? label = null) : IIdentifyService

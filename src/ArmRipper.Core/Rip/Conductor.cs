@@ -507,9 +507,15 @@ public sealed class Conductor(
 
             if (job.Status != JobState.Active)
             {
-                var msg = $"Setup stage: expected status Active, was {job.Status}";
-                logger.LogWarning(msg);
-                job.Warnings = string.IsNullOrEmpty(job.Warnings) ? msg : $"{job.Warnings}; {msg}";
+                if (job.Status.IsResumable())
+                {
+                    logger.LogInformation("Job {JobId} is resumable ({Status}) — proceeding", job.Id, job.Status);
+                }
+                else
+                {
+                    logger.LogWarning("Job {JobId} has non-Active status {Status} — aborting", job.Id, job.Status);
+                    return 1;
+                }
             }
 
             var cfg = job.Config ?? await db.ConfigSnapshots
@@ -630,6 +636,16 @@ public sealed class Conductor(
 
                     if (string.IsNullOrEmpty(job.TitleManual))
                         logger.LogInformation("Manual wait expired, continuing with auto-identified title");
+
+                    // The wait loop only checks for Cancelled explicitly — another process
+                    // may have set a terminal state (e.g. Failure) meanwhile. Reload from the
+                    // DB and abort rather than overwriting that state.
+                    await db.Entry(job).ReloadAsync(ct);
+                    if (job.Status.IsTerminal())
+                    {
+                        logger.LogWarning("Job set to terminal state {Status} during manual wait — aborting", job.Status);
+                        return 1;
+                    }
 
                     job.Status = JobState.Active;
                     job.ProgressMessage = "Starting rip...";
