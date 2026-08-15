@@ -266,6 +266,55 @@ public sealed class ConductorTests : IDisposable
         Assert.True(job.Config.MainFeature); // global default is true
     }
 
+    [Theory]
+    [InlineData(JobState.Failure)]
+    [InlineData(JobState.Success)]
+    public async Task RunResumeAsync_WithNonResumableStatus_AbortsBeforeIdentification(JobState status)
+    {
+        var identifyMock = new Mock<IIdentifyService>();
+        identifyMock.Setup(i => i.IdentifyAsync(It.IsAny<Job>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var conductor = CreateConductor(identify: identifyMock.Object);
+
+        var job = TestHelpers.CreateTestJob(j => j.Status = status);
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var exitCode = await conductor.RunResumeAsync(job.Id);
+
+        // Non-resumable status must abort with failure code, never touching identification
+        Assert.Equal(1, exitCode);
+        identifyMock.Verify(
+            i => i.IdentifyAsync(It.IsAny<Job>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        // Job status must not be advanced by the aborted run
+        var dbJob = await _db.Jobs.FindAsync(job.Id);
+        Assert.NotNull(dbJob);
+        Assert.Equal(status, dbJob.Status);
+    }
+
+    [Theory]
+    [InlineData(JobState.Stopping)]
+    [InlineData(JobState.Cancelled)]
+    public async Task RunResumeAsync_WithResumableStatus_ProceedsToIdentification(JobState status)
+    {
+        var identifyMock = new Mock<IIdentifyService>();
+        identifyMock.Setup(i => i.IdentifyAsync(It.IsAny<Job>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var conductor = CreateConductor(identify: identifyMock.Object);
+
+        var job = TestHelpers.CreateTestJob(j => j.Status = status);
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        await conductor.RunResumeAsync(job.Id);
+
+        // Resumable statuses (Stopping/Cancelled) must not early-return at the guard —
+        // execution must proceed all the way into identification.
+        identifyMock.Verify(
+            i => i.IdentifyAsync(It.IsAny<Job>(), It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
     [Fact]
     public async Task RunAsync_WhenStatusSetToTerminalDuringManualWait_Returns1AndKeepsTerminalStatus()
     {
