@@ -142,30 +142,45 @@ public sealed class ArmRipperService(
     }
 
     /// <summary>
-    /// Deletes leftover partial MakeMKV output after a redirect cancelled a rip
-    /// in progress, so the re-rip starts from a clean output directory.
-    /// Main-feature mode rips a single track, so clearing the directory is safe.
+    /// Deletes leftover partial MakeMKV output for the single track that was
+    /// being ripped when a redirect cancelled it, so the re-rip starts from a
+    /// clean output directory. Only the cancelled track's file is removed —
+    /// completed files from other tracks (e.g. an earlier rip of the same
+    /// title) are left untouched.
     /// </summary>
-    private static void CleanupPartialRipOutput(string makeMkvOutPath)
+    private static void CleanupPartialRipOutput(string makeMkvOutPath, Track track)
     {
-        try
+        if (!Directory.Exists(makeMkvOutPath))
+            return;
+
+        // The exact output file name MakeMKV reported for this track in the
+        // info scan (TINFO Filename field), or MakeMKV's conventional
+        // "&lt;title&gt;_t{index}.mkv" name where index is the 0-based title index
+        // (TrackNumber - 1), zero-padded to two digits.
+        var exactName = string.IsNullOrEmpty(track.FileName)
+            ? null
+            : Path.GetFileName(track.FileName);
+
+        var suffix = int.TryParse(track.TrackNumber, out var trackNumber) && trackNumber > 0
+            ? $"t{trackNumber - 1:D2}.mkv"
+            : null;
+
+        foreach (var file in Directory.EnumerateFiles(makeMkvOutPath, "*.mkv"))
         {
-            foreach (var file in Directory.EnumerateFiles(makeMkvOutPath)
-                         .Where(f => f.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase)))
+            var name = Path.GetFileName(file);
+            var isTarget = name.Equals(exactName, StringComparison.OrdinalIgnoreCase)
+                || (suffix is not null && name.EndsWith("_" + suffix, StringComparison.OrdinalIgnoreCase));
+            if (!isTarget)
+                continue;
+
+            try
             {
-                try
-                {
-                    File.Delete(file);
-                }
-                catch (Exception)
-                {
-                    // Best-effort — a file in use by the dying process may linger.
-                }
+                File.Delete(file);
             }
-        }
-        catch (Exception)
-        {
-            // Best-effort only.
+            catch (Exception)
+            {
+                // Best-effort — a file in use by the dying process may linger.
+            }
         }
     }
     public async Task<string> RipVisualMediaAsync(Job job, string logFile, bool hasDupes, bool protection, CancellationToken ct = default)
@@ -647,7 +662,7 @@ public sealed class ArmRipperService(
                             ripRedirectService.AcknowledgeRedirect(job.Id);
                             logger.LogInformation(
                                 "Main-feature rip redirected for job {JobId}; re-ripping the newly-selected track", job.Id);
-                            CleanupPartialRipOutput(makeMkvOutPath);
+                            CleanupPartialRipOutput(makeMkvOutPath, main);
                         }
                         finally
                         {

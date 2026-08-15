@@ -94,8 +94,8 @@ public sealed class RipVerificationIntegrationTests : IDisposable
             new()
             {
                 JobId = job.Id,
-                TrackNumber = "0",
-                FileName = "title00.mkv",
+                TrackNumber = "1",
+                FileName = "title_t00.mkv",
                 Length = 6547,                // 1:49:15 — the info-scan estimate
                 FileSize = 4_000_000_000L,
                 Chapters = 16,
@@ -163,7 +163,7 @@ public sealed class RipVerificationIntegrationTests : IDisposable
 
         Assert.Equal(JobState.Failure, job.Status);
         Assert.Contains("Main feature rip verification failed", ex.Message);
-        Assert.Contains("track 0", ex.Message);
+        Assert.Contains("track 1", ex.Message);
         Assert.Equal(job.Errors, ex.Message);
     }
 
@@ -201,8 +201,8 @@ public sealed class RipVerificationIntegrationTests : IDisposable
             new()
             {
                 JobId = 1,
-                TrackNumber = "0",
-                FileName = "title00.mkv",
+                TrackNumber = "1",
+                FileName = "title_t00.mkv",
                 Length = 9000,                 // longest → auto-selected main feature
                 FileSize = 5_000_000_000L,
                 Chapters = 30,
@@ -214,8 +214,8 @@ public sealed class RipVerificationIntegrationTests : IDisposable
             new()
             {
                 JobId = 1,
-                TrackNumber = "1",
-                FileName = "title01.mkv",
+                TrackNumber = "2",
+                FileName = "title_t01.mkv",
                 Length = 6000,
                 FileSize = 3_000_000_000L,
                 Chapters = 12,
@@ -226,8 +226,8 @@ public sealed class RipVerificationIntegrationTests : IDisposable
             }
         });
 
-        // The user chose track 1 even though track 0 is the longest.
-        job.MainFeatureOverrideTrackNumber = "1";
+        // The user chose track 2 even though track 1 is the longest.
+        job.MainFeatureOverrideTrackNumber = "2";
         _db.SaveChanges();
 
         var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
@@ -243,11 +243,11 @@ public sealed class RipVerificationIntegrationTests : IDisposable
 
         Assert.Equal(makeMkvOutPath, result);
         makeMkv.Verify(m => m.RipTrackAsync(
-                It.IsAny<Job>(), "1", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<Job>(), "2", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()),
             Times.Once);
         makeMkv.Verify(m => m.RipTrackAsync(
-                It.IsAny<Job>(), "0", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<Job>(), "1", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
@@ -260,8 +260,8 @@ public sealed class RipVerificationIntegrationTests : IDisposable
             new()
             {
                 JobId = 1,
-                TrackNumber = "0",
-                FileName = "title00.mkv",
+                TrackNumber = "1",
+                FileName = "title_t00.mkv",
                 Length = 9000,                 // longest → auto-selected main feature
                 FileSize = 5_000_000_000L,
                 Chapters = 30,
@@ -273,8 +273,8 @@ public sealed class RipVerificationIntegrationTests : IDisposable
             new()
             {
                 JobId = 1,
-                TrackNumber = "1",
-                FileName = "title01.mkv",
+                TrackNumber = "2",
+                FileName = "title_t01.mkv",
                 Length = 6000,
                 FileSize = 3_000_000_000L,
                 Chapters = 12,
@@ -285,7 +285,7 @@ public sealed class RipVerificationIntegrationTests : IDisposable
             }
         });
 
-        // A previous rip of this disc remembered track 1 as the main feature.
+        // A previous rip of this disc remembered track 2 as the main feature.
         job.DiscFingerprint = "TEST_FP";
         _db.DiscMetadata.Add(new DiscMetadata
         {
@@ -295,7 +295,7 @@ public sealed class RipVerificationIntegrationTests : IDisposable
             DiscType = "DVD",
             CreatedAt = DateTime.UtcNow,
             LastUsedAt = DateTime.UtcNow,
-            MainFeatureTrackNumber = "1"
+            MainFeatureTrackNumber = "2"
         });
         _db.SaveChanges();
 
@@ -312,11 +312,11 @@ public sealed class RipVerificationIntegrationTests : IDisposable
 
         Assert.Equal(makeMkvOutPath, result);
         makeMkv.Verify(m => m.RipTrackAsync(
-                It.IsAny<Job>(), "1", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<Job>(), "2", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()),
             Times.Once);
         makeMkv.Verify(m => m.RipTrackAsync(
-                It.IsAny<Job>(), "0", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<Job>(), "1", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
@@ -330,8 +330,8 @@ public sealed class RipVerificationIntegrationTests : IDisposable
             new()
             {
                 JobId = 1,
-                TrackNumber = "0",
-                FileName = "title00.mkv",
+                TrackNumber = "1",
+                FileName = "title_t00.mkv",
                 Length = 9000,                 // longest → auto-selected main feature
                 FileSize = 5_000_000_000L,
                 Chapters = 30,
@@ -343,8 +343,8 @@ public sealed class RipVerificationIntegrationTests : IDisposable
             new()
             {
                 JobId = 1,
-                TrackNumber = "1",
-                FileName = "title01.mkv",
+                TrackNumber = "2",
+                FileName = "title_t01.mkv",
                 Length = 6000,
                 FileSize = 3_000_000_000L,
                 Chapters = 12,
@@ -357,23 +357,23 @@ public sealed class RipVerificationIntegrationTests : IDisposable
 
         var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
 
-        // Track 0 is ripped first; mid-rip the user redirects to track 1, which
+        // Track 1 is ripped first; mid-rip the user redirects to track 2, which
         // cancels the active rip (OCE) and leaves a partial output file behind.
-        var track0Ripped = false;
+        var track1Ripped = false;
         makeMkv.Setup(m => m.RipTrackAsync(
                 It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
             .Returns(async (Job j, string track, string outPath, string args, int minLen, IProgress<int>? prog, CancellationToken token) =>
             {
                 Directory.CreateDirectory(outPath);
-                if (!track0Ripped)
+                if (!track1Ripped)
                 {
-                    track0Ripped = true;
+                    track1Ripped = true;
                     using var partial = new FileStream(Path.Combine(outPath, "title_t00.mkv"), FileMode.Create);
                     partial.SetLength(500_000L);
 
-                    // The user picks track 1 while the rip is in progress.
-                    j.MainFeatureOverrideTrackNumber = "1";
+                    // The user picks track 2 while the rip is in progress.
+                    j.MainFeatureOverrideTrackNumber = "2";
                     _db.SaveChanges();
                     redirect.RequestRedirect(j.Id);
 
@@ -392,21 +392,21 @@ public sealed class RipVerificationIntegrationTests : IDisposable
 
         Assert.Equal(makeMkvOutPath, result);
         makeMkv.Verify(m => m.RipTrackAsync(
-                It.IsAny<Job>(), "0", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
-                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()),
-            Times.Once);
-        makeMkv.Verify(m => m.RipTrackAsync(
                 It.IsAny<Job>(), "1", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()),
             Times.Once);
+        makeMkv.Verify(m => m.RipTrackAsync(
+                It.IsAny<Job>(), "2", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
 
-        // The partial rip of track 0 was cleaned up; only the re-ripped file remains.
+        // The partial rip of track 1 was cleaned up; only the re-ripped file remains.
         Assert.False(File.Exists(Path.Combine(makeMkvOutPath, "title_t00.mkv")));
         Assert.True(File.Exists(Path.Combine(makeMkvOutPath, "title_t01.mkv")));
 
-        // The redirect persisted the choice and track 1 became the main feature.
-        Assert.Equal("1", job.MainFeatureOverrideTrackNumber);
-        var savedTrack = _db.Tracks.First(t => t.JobId == job.Id && t.TrackNumber == "1");
+        // The redirect persisted the choice and track 2 became the main feature.
+        Assert.Equal("2", job.MainFeatureOverrideTrackNumber);
+        var savedTrack = _db.Tracks.First(t => t.JobId == job.Id && t.TrackNumber == "2");
         Assert.True(savedTrack.MainFeature);
     }
 }

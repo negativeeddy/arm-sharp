@@ -15,9 +15,14 @@ public sealed class RipRedirectService : IRipRedirectService
     public CancellationTokenSource BeginRip(int jobId, CancellationToken pipelineCt)
     {
         var cts = CancellationTokenSource.CreateLinkedTokenSource(pipelineCt);
+
+        // Register first, then check for a pending redirect. RequestRedirect
+        // cancels whichever CTS is currently registered, so storing the source
+        // before the check closes the race where a redirect landing between the
+        // check and the store would be lost (the new rip would never see it).
+        _ripCts[jobId] = cts;
         if (_redirectPending.ContainsKey(jobId))
             cts.Cancel();
-        _ripCts[jobId] = cts;
         return cts;
     }
 
