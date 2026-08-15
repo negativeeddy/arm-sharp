@@ -507,9 +507,15 @@ public sealed class Conductor(
 
             if (job.Status != JobState.Active)
             {
-                var msg = $"Setup stage: expected status Active, was {job.Status}";
-                logger.LogWarning(msg);
-                job.Warnings = string.IsNullOrEmpty(job.Warnings) ? msg : $"{job.Warnings}; {msg}";
+                if (job.Status.IsResumable())
+                {
+                    logger.LogInformation("Job {JobId} is resumable ({Status}) — proceeding", job.Id, job.Status);
+                }
+                else
+                {
+                    logger.LogWarning("Job {JobId} has non-Active status {Status} — aborting", job.Id, job.Status);
+                    return 1;
+                }
             }
 
             var cfg = job.Config ?? await db.ConfigSnapshots
