@@ -114,7 +114,13 @@ arm.stopJobRefresh = function () {
 
 arm.abandonJob = function (jobId) {
     if (!confirm('Abandon this job? The process will be killed and the disc ejected.')) return;
-    fetch('/api/abandon/' + jobId, { method: 'POST' })
+    var tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
+    fetch('/api/abandon/' + jobId, {
+        method: 'POST',
+        headers: {
+            'RequestVerificationToken': tokenInput ? tokenInput.value : ''
+        }
+    })
         .then(function (r) { return r.json(); })
         .then(function (data) {
             if (data.success) {
