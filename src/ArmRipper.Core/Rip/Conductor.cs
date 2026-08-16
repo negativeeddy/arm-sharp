@@ -580,8 +580,7 @@ public sealed class Conductor(
                     job.Path = job.Label;
                     await db.SaveChangesAsync(ct);
                     await BroadcastJobUpdateAsync(job);
-                    fileLogProvider.RemoveWriter(job.GetLogFilePath());
-                    return 0;
+                    return 0; // finally block removes the log writer
                 }
 
                 // Manual wait for title identification
@@ -647,6 +646,10 @@ public sealed class Conductor(
                         return 1;
                     }
 
+                    // Reset the resume flag unconditionally — a user "Resume" click that
+                    // landed in the final loop iteration must not leave a stale true in the
+                    // DB once the wait loop exits on its own.
+                    job.ManualWaitResume = false;
                     job.Status = JobState.Active;
                     job.ProgressMessage = "Starting rip...";
                     await db.SaveChangesAsync(ct);
@@ -700,6 +703,9 @@ public sealed class Conductor(
 
             default:
                 logger.LogCritical("Couldn't identify the disc type. Exiting without any action.");
+                // Mark Identify complete for consistent CompletedStages tracking across
+                // all failure paths (identification ran, it just couldn't determine the type).
+                job.MarkStageComplete(RipStage.Identify);
                 job.Status = JobState.Failure;
                 job.Errors = "Couldn't identify the disc type. Exiting without any action.";
                 await db.SaveChangesAsync(ct);
