@@ -647,6 +647,10 @@ public sealed class Conductor(
                         return 1;
                     }
 
+                    // Reset the resume flag unconditionally — a user "Resume" click that
+                    // landed in the final loop iteration must not leave a stale true in the
+                    // DB once the wait loop exits on its own.
+                    job.ManualWaitResume = false;
                     job.Status = JobState.Active;
                     job.ProgressMessage = "Starting rip...";
                     await db.SaveChangesAsync(ct);
