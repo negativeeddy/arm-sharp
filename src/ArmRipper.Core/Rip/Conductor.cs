@@ -704,6 +704,9 @@ public sealed class Conductor(
 
             default:
                 logger.LogCritical("Couldn't identify the disc type. Exiting without any action.");
+                // Mark Identify complete for consistent CompletedStages tracking across
+                // all failure paths (identification ran, it just couldn't determine the type).
+                job.MarkStageComplete(RipStage.Identify);
                 job.Status = JobState.Failure;
                 job.Errors = "Couldn't identify the disc type. Exiting without any action.";
                 await db.SaveChangesAsync(ct);
