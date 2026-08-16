@@ -236,10 +236,15 @@ public sealed class ArmRipperService(
         if (settings.Value.TestMode && transcodeInPath is not null && Directory.Exists(transcodeInPath))
         {
             logger.LogInformation("Test mode: trimming raw MKV files to 30 seconds");
+            // Respect the configured ffmpeg binary (same as FfmpegService) so a
+            // custom path/wrapper is honored here too.
+            var ffmpegCli = settings.Value.FfmpegCli;
+            if (string.IsNullOrWhiteSpace(ffmpegCli))
+                ffmpegCli = "ffmpeg";
             foreach (var file in Directory.EnumerateFiles(transcodeInPath, "*.mkv"))
             {
                 var tmp = file + ".trimmed";
-                var trimResult = await runner.RunAsync("ffmpeg",
+                var trimResult = await runner.RunAsync(ffmpegCli,
                     $"-t 30 -i \"{file}\" -c copy -y \"{tmp}\"", timeoutMs: 60_000, ct: ct);
                 if (trimResult.ExitCode == 0 && File.Exists(tmp))
                 {
