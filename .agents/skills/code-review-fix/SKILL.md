@@ -103,7 +103,7 @@ The `closes #<number>` will auto-close the issue when merged.
 
 ### Step 4: Create a Pull Request (per issue)
 
-Create **one PR per issue** — the branch contains only that issue's fix, so the PR is small, focused, and easy to review. Include the issue reference in both the title and body so it auto-closes on merge.
+Create **one PR per issue** — the branch contains only that issue's fix, so the PR is small, focused, and easy to review. Cross-link both ways: the PR references the issue (`closes #N` so it auto-closes on merge), and the issue is updated with a comment linking to the PR.
 
 ```bash
 git push -u origin fix/code-review-#<issue-number>
@@ -115,7 +115,7 @@ gh pr create --repo negativeeddy/arm-sharp \
 Automated fix from periodic code review cleanup.
 
 ### Issue
-- [x] #<number> — <title>
+- [x] #<number> — <title> (link to the issue)
 
 ### Changes
 <brief summary of the fix>
@@ -125,9 +125,25 @@ Automated fix from periodic code review cleanup.
 - <any new tests added>"
 ```
 
+#### 4a. Link the Issue to the PR
+
+After the PR is created, comment on the issue with the PR link so anyone viewing the issue can find the fix:
+
+```bash
+# Capture the PR URL from the create output, or look it up by branch:
+pr_url=$(gh pr view fix/code-review-#<issue-number> --repo negativeeddy/arm-sharp --json url --jq .url)
+
+gh issue comment <issue-number> --repo negativeeddy/arm-sharp \
+  --body "Fix submitted in PR: $pr_url (auto-closes this issue on merge)."
+```
+
+Both directions are now linked:
+- **PR → Issue:** `closes #<number>` in the title/body (plus the `### Issue` section).
+- **Issue → PR:** the comment above, so the issue thread shows where the fix lives.
+
 ### Step 5: Move to Next Issue
 
-After the PR for the current issue is created, start the next issue from a fresh branch off the latest `master`:
+After the PR for the current issue is created (and the issue is linked), start the next issue from a fresh branch off the latest `master`:
 
 ```bash
 # Sync local master with any merged PRs (including your own earlier ones)
@@ -148,11 +164,13 @@ Print a summary with one row per issue/PR:
 **Issues Fixed:** N
 **Issues Skipped:** N (needs investigation)
 
-### Fixed (one PR each)
+### Fixed (one PR each, cross-linked)
 | Issue | Title | Priority | Branch/PR |
 |-------|-------|----------|-----------|
 | #N | <title> | 🟡 Medium | fix/code-review-#N → PR #NN |
 | #M | <title> | 🟢 Low | fix/code-review-#M → PR #MM |
+
+Each issue above has a comment linking to its PR, and each PR links back via `closes #N`.
 
 ### Skipped
 | Issue | Title | Reason |
@@ -179,6 +197,7 @@ These issues require a deep review before a fix can be prescribed. When working 
 
 - **Never modify running services** — only build and test
 - **One issue per branch and PR** — never mix fixes for different issues in a single branch/PR; keep each issue's fix isolated
+- **Cross-link every issue and PR** — PR references the issue via `closes #N`, and a comment on the issue links the PR
 - **One fix per commit** — easy to revert individual fixes
 - **Always run tests** before committing
 - **Skip if uncertain** — mark as needs-investigation and move on
@@ -206,4 +225,7 @@ git checkout -b fix/code-review-#<issue-number>
 # ... implement + verify + commit ...
 git push -u origin fix/code-review-#<issue-number>
 gh pr create --repo negativeeddy/arm-sharp --title "fix: <short description> (closes #<number>)" --body "..."
+# Cross-link the issue back to the PR so each references the other:
+pr_url=$(gh pr view fix/code-review-#<issue-number> --repo negativeeddy/arm-sharp --json url --jq .url)
+gh issue comment <issue-number> --repo negativeeddy/arm-sharp --body "Fix submitted in PR: $pr_url (auto-closes this issue on merge)."
 ```
