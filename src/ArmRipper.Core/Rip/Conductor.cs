@@ -580,8 +580,7 @@ public sealed class Conductor(
                     job.Path = job.Label;
                     await db.SaveChangesAsync(ct);
                     await BroadcastJobUpdateAsync(job);
-                    fileLogProvider.RemoveWriter(job.GetLogFilePath());
-                    return 0;
+                    return 0; // finally block removes the log writer
                 }
 
                 // Manual wait for title identification
