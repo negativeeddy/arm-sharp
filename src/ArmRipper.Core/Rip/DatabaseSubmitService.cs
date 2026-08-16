@@ -107,8 +107,7 @@ public sealed class DatabaseSubmitService(
             // ── Success: results object is present ──
             if (parsed.Results is not null)
             {
-                job.MarkStageComplete(RipStage.CrcSubmitted);
-                await Db.SaveChangesAsync(ct);
+                await Db.MarkStageCompleteAsync(job, RipStage.CrcSubmitted, ct);
                 Logger.LogInformation(
                     "Successfully submitted CRC64 for job {JobId} ({Title}) — crc_id={CrcId}",
                     job.Id, job.Title, parsed.Results.CrcId);
@@ -124,8 +123,7 @@ public sealed class DatabaseSubmitService(
                 errorMsg.Contains("exist", StringComparison.OrdinalIgnoreCase) ||
                 errorMsg.Contains("duplicate", StringComparison.OrdinalIgnoreCase))
             {
-                job.MarkStageComplete(RipStage.CrcSubmitted);
-                await Db.SaveChangesAsync(ct);
+                await Db.MarkStageCompleteAsync(job, RipStage.CrcSubmitted, ct);
                 Logger.LogInformation("CRC64 for job {JobId} already exists remotely, marking as submitted", job.Id);
                 return new SubmitResult { Success = true, JobId = job.Id, Title = job.Title, Message = "Already exists remotely", Status = "already_exists" };
             }

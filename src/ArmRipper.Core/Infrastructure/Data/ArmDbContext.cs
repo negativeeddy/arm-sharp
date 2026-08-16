@@ -22,6 +22,45 @@ public class ArmDbContext : DbContext
     public DbSet<RipperSettings> RipperSettings => Set<RipperSettings>();
     public DbSet<DiscDbMapping> DiscDbMappings => Set<DiscDbMapping>();
 
+    /// <summary>
+    /// Marks a stage complete on a job and persists it with a single atomic UPDATE,
+    /// so two concurrent writers cannot overwrite each other's <see cref="Job.CompletedStages"/>
+    /// (a read-modify-write race). Idempotent — a no-op when the stage is already recorded.
+    /// The in-memory copy is refreshed afterwards so the current context's view stays
+    /// consistent with the database (including stages appended concurrently).
+    /// </summary>
+    public async Task MarkStageCompleteAsync(Job job, RipStage stage, CancellationToken ct = default)
+    {
+        var name = stage.ToString();
+
+        // SQLite LIKE is case-insensitive for ASCII, matching MarkStageComplete's
+        // OrdinalIgnoreCase dedupe so existing (possibly differently-cased) marks
+        // are not duplicated.
+        await Jobs
+            .Where(j => j.Id == job.Id &&
+                        (j.CompletedStages == null || !EF.Functions.Like(j.CompletedStages, $"%{name}%")))
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(
+                    j => j.CompletedStages,
+                    j => j.CompletedStages == null ? name : j.CompletedStages + "|" + name),
+                ct);
+
+        // Keep the in-memory entity consistent with the DB. The tracked property is
+        // marked unmodified so a later SaveChanges on this context doesn't write a
+        // stale value over a concurrent writer's append.
+        job.MarkStageComplete(stage);
+        var persisted = await Jobs.AsNoTracking()
+            .Where(j => j.Id == job.Id)
+            .Select(j => j.CompletedStages)
+            .FirstOrDefaultAsync(ct);
+        if (job.CompletedStages != persisted)
+            job.CompletedStages = persisted;
+
+        var entry = Entry(job);
+        if (entry.State != EntityState.Detached)
+            entry.Property(j => j.CompletedStages).IsModified = false;
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // VideoType is stored as its lowercase enum name (e.g. "movie", "series")
