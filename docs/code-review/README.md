@@ -84,6 +84,39 @@ proposed fix.
 
 ---
 
+## GitHub Issue Mapping
+
+Each Todo finding has been migrated to a GitHub issue for tracking:
+
+| Finding | Issue | Labels |
+|---------|-------|--------|
+| #7 Notification condition | [#78](https://github.com/negativeeddy/arm-sharp/issues/78) | `code-review`, `priority: medium` |
+| #8 Hardcoded ffmpeg | [#79](https://github.com/negativeeddy/arm-sharp/issues/79) | `code-review`, `priority: medium` |
+| #9 Break up RipVisualMedia | [#80](https://github.com/negativeeddy/arm-sharp/issues/80) | `code-review`, `priority: medium` |
+| #10 Standardize logger | [#89](https://github.com/negativeeddy/arm-sharp/issues/89) | `code-review`, `priority: low` |
+| #11 Channel events | [#90](https://github.com/negativeeddy/arm-sharp/issues/90) | `code-review`, `priority: low` |
+| #12 WaitForExitAsync | [#91](https://github.com/negativeeddy/arm-sharp/issues/91) | `code-review`, `priority: low` |
+| #13 Pre-size list | [#92](https://github.com/negativeeddy/arm-sharp/issues/92) | `code-review`, `priority: low` |
+| #17 Deep-review MakeMkv parser | [#82](https://github.com/negativeeddy/arm-sharp/issues/82) | `code-review`, `priority: medium`, `needs-investigation` |
+| #18 Deep-review shutdown | [#83](https://github.com/negativeeddy/arm-sharp/issues/83) | `code-review`, `priority: medium`, `needs-investigation` |
+| #19 Deep-review identify disc | [#84](https://github.com/negativeeddy/arm-sharp/issues/84) | `code-review`, `priority: medium`, `needs-investigation` |
+| #20 Deep-review musicbrainz | [#85](https://github.com/negativeeddy/arm-sharp/issues/85) | `code-review`, `priority: medium`, `needs-investigation` |
+| #21 Deep-review linting | [#86](https://github.com/negativeeddy/arm-sharp/issues/86) | `code-review`, `priority: low`, `needs-investigation` |
+| #22 Deep-review ovid | [#87](https://github.com/negativeeddy/arm-sharp/issues/87) | `code-review`, `priority: low`, `needs-investigation` |
+| #23 EF Core migration audit | [#88](https://github.com/negativeeddy/arm-sharp/issues/88) | `code-review`, `priority: low`, `needs-investigation` |
+| #29 Duplicate RemoveWriter | [#93](https://github.com/negativeeddy/arm-sharp/issues/93) | `code-review`, `priority: low` |
+| #30 Default case missing MarkStageComplete | [#94](https://github.com/negativeeddy/arm-sharp/issues/94) | `code-review`, `priority: low` |
+| #31 ManualWaitResume not reset | [#95](https://github.com/negativeeddy/arm-sharp/issues/95) | `code-review`, `priority: low` |
+| #34 MarkStageComplete no concurrency | [#81](https://github.com/negativeeddy/arm-sharp/issues/81) | `code-review`, `priority: medium` |
+| #35 CompletedStages queryable comment | [#96](https://github.com/negativeeddy/arm-sharp/issues/96) | `code-review`, `priority: low` |
+| #36 RipStage rename breaks resume | [#97](https://github.com/negativeeddy/arm-sharp/issues/97) | `code-review`, `priority: low` |
+| #37 JobDetail mainfeature mismatch | [#98](https://github.com/negativeeddy/arm-sharp/issues/98) | `code-review`, `priority: low` |
+| #38 Redirect cancelled without restart | [#99](https://github.com/negativeeddy/arm-sharp/issues/99) | `code-review`, `priority: low` |
+| #39 WebUI test login flake | [#100](https://github.com/negativeeddy/arm-sharp/issues/100) | `code-review`, `priority: low` |
+| #40 Missing stale entity test | [#101](https://github.com/negativeeddy/arm-sharp/issues/101) | `code-review`, `priority: low` |
+
+---
+
 ## Progress Summary
 
 | Status | Count |
@@ -95,6 +128,34 @@ proposed fix.
 ---
 
 ## How to Use
+
+### GitHub Issues Workflow (Recommended)
+
+All open findings are now tracked as GitHub issues with labels:
+- **`code-review`** — all code review findings
+- **`priority: critical`** / **`priority: medium`** / **`priority: low`** — severity
+- **`needs-investigation`** — requires deeper review before a fix
+
+```bash
+# View all open code review issues
+gh issue list --repo negativeeddy/arm-sharp --label code-review --state open
+
+# View by priority
+gh issue list --repo negativeeddy/arm-sharp --label "priority: critical" --state open
+```
+
+#### Automated Skills
+
+Two VS Code skills are available for managing code review issues:
+
+1. **`/code-review`** — Runs a code review and creates new GitHub issues for findings
+2. **`/code-review-fix`** — Picks up open issues and implements fixes in priority order
+
+Typical workflow:
+1. Run `/code-review` periodically (weekly/monthly) to sweep for new issues
+2. Run `/code-review-fix` to work through the backlog (e.g., `/code-review-fix 3` for 3 issues)
+
+### Manual Workflow
 
 1. Pick a task from the index above.
 2. Click the link to read the detailed sub-document (problem, affected files, proposed fix).
