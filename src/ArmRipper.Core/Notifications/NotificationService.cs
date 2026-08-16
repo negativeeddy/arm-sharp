@@ -26,9 +26,9 @@ public sealed class NotificationService(
         if (!string.IsNullOrEmpty(cfg?.InstallPath))
             title = $"[{cfg.InstallPath}] - {title}";
 
-        // Append Job ID if configured
-        if (cfg?.OmdbApiKey is not null && job is not null)
-            title = $"{title} - {job.Id}";
+        // Append Job ID for traceability
+        if (job is not null)
+            title = $"{title} - #{job.Id}";
 
         logger.LogDebug("Apprise message, title: {Title} body: {Body}", title, body);
 
