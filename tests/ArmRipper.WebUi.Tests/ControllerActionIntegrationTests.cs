@@ -913,6 +913,63 @@ public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFact
     }
 
     [Fact]
+    public async Task JobDetail_RendersIdentificationFormCellsForLiveUpdate()
+    {
+        int jobId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = new Job
+            {
+                Title = "Auto Detected Movie",
+                TitleAuto = "Auto Detected Movie",
+                Year = "2026",
+                YearAuto = "2026",
+                VideoType = VideoContentType.Movie,
+                VideoTypeAuto = VideoContentType.Movie,
+                ImdbIdAuto = "tt1234567",
+                SeasonNumber = 1,
+                SeasonNumberAuto = 1,
+                DiscNumber = 2,
+                DiscNumberAuto = 2,
+                DiscType = DiscType.Dvd,
+                HasNiceTitle = true,
+                Status = JobState.Active,
+                StartTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99",
+                Config = new ConfigSnapshot { MinLength = 300, MaxLength = 9999, RipMethod = "mkv", GetAudioTitle = "" }
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+        }
+
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync($"/jobs/jobdetail?jobId={jobId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var html = await response.Content.ReadAsStringAsync();
+        // The identification form must expose stable ids so the live-update JS can
+        // populate the Auto/Final columns when the disc is auto-detected.
+        Assert.Contains("id=\"approval-buttons\"", html);
+        Assert.Contains("id=\"id-title-auto\"", html);
+        Assert.Contains("id=\"id-title-final\"", html);
+        Assert.Contains("id=\"id-year-auto\"", html);
+        Assert.Contains("id=\"id-year-final\"", html);
+        Assert.Contains("id=\"id-videotype-auto\"", html);
+        Assert.Contains("id=\"id-videotype-final\"", html);
+        Assert.Contains("id=\"id-imdb-auto\"", html);
+        Assert.Contains("id=\"id-imdb-final\"", html);
+        Assert.Contains("id=\"id-season-auto\"", html);
+        Assert.Contains("id=\"id-season-final\"", html);
+        Assert.Contains("id=\"id-disc-auto\"", html);
+        Assert.Contains("id=\"id-disc-final\"", html);
+        Assert.Contains("id=\"id-startep-final\"", html);
+        Assert.Contains("id=\"id-poster-auto\"", html);
+        Assert.Contains("id=\"id-poster-final\"", html);
+    }
+
+    [Fact]
     public async Task ActiveRips_ReturnsPageWithActiveJobs()
     {
         using (var scope = _factory.Services.CreateScope())

@@ -228,21 +228,23 @@
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span>Identification</span>
                 <span class="d-flex gap-2">
-                    @if (!Model.HasNiceTitle && !string.IsNullOrEmpty(Model.Title))
-                    {
-                        <form method="post" action="/jobs/approve-title" style="display:inline">
-                            <input type="hidden" name="jobId" value="@Model.Id" />
-                            <button type="submit" class="btn btn-success btn-sm">✓ Approve Title</button>
-                        </form>
-                    }
-                    else if (Model.HasNiceTitle)
-                    {
-                        <form method="post" action="/jobs/unapprove-title" style="display:inline"
-                              onsubmit="return confirm('Clear the approved status for this title? It won\'t be uploaded to DiscDb until re-approved.');">
-                            <input type="hidden" name="jobId" value="@Model.Id" />
-                            <button type="submit" class="btn btn-outline-warning btn-sm">✗ Clear Approval</button>
-                        </form>
-                    }
+                    <span id="approval-buttons" class="d-flex gap-2">
+                        @if (!Model.HasNiceTitle && !string.IsNullOrEmpty(Model.Title))
+                        {
+                            <form method="post" action="/jobs/approve-title" style="display:inline">
+                                <input type="hidden" name="jobId" value="@Model.Id" />
+                                <button type="submit" class="btn btn-success btn-sm">✓ Approve Title</button>
+                            </form>
+                        }
+                        else if (Model.HasNiceTitle)
+                        {
+                            <form method="post" action="/jobs/unapprove-title" style="display:inline"
+                                  onsubmit="return confirm('Clear the approved status for this title? It won\'t be uploaded to DiscDb until re-approved.');">
+                                <input type="hidden" name="jobId" value="@Model.Id" />
+                                <button type="submit" class="btn btn-outline-warning btn-sm">✗ Clear Approval</button>
+                            </form>
+                        }
+                    </span>
                     <a href="/jobs/titlesearch?jobId=@Model.Id" class="btn btn-outline-primary btn-sm">Search for Title</a>
                 </span>
             </div>
@@ -253,17 +255,17 @@
                         <thead><tr><th>Field</th><th>Auto</th><th>Manual</th><th>Final</th></tr></thead>
                         <tbody>
                             <tr>
-                                <td>Title</td><td>@(Model.TitleAuto ?? "—")</td>
+                                <td>Title</td><td id="id-title-auto">@(Model.TitleAuto ?? "—")</td>
                                 <td><input type="text" name="title" class="form-control form-control-sm" value="@(Model.TitleManual ?? "")" /></td>
-                                <td><strong>@Model.Title</strong></td>
+                                <td><strong id="id-title-final">@Model.Title</strong></td>
                             </tr>
                             <tr>
-                                <td>Year</td><td>@(Model.YearAuto ?? "—")</td>
+                                <td>Year</td><td id="id-year-auto">@(Model.YearAuto ?? "—")</td>
                                 <td><input type="text" name="year" class="form-control form-control-sm" value="@(Model.YearManual ?? "")" /></td>
-                                <td><strong>@Model.Year</strong></td>
+                                <td><strong id="id-year-final">@Model.Year</strong></td>
                             </tr>
                             <tr>
-                                <td>Video Type</td><td>@(Model.VideoTypeAuto?.ToString() ?? "—")</td>
+                                <td>Video Type</td><td id="id-videotype-auto">@(Model.VideoTypeAuto?.ToString() ?? "—")</td>
                                 <td>
                                     <select name="videoType" class="form-select form-select-sm">
                                         <option value="">—</option>
@@ -272,36 +274,36 @@
                                         <option value="episode" selected="@(Model.VideoTypeManual == VideoContentType.Episode)">episode</option>
                                     </select>
                                 </td>
-                                <td><strong>@(Model.VideoType == VideoContentType.Unknown ? "—" : Model.VideoType.ToString())</strong></td>
+                                <td><strong id="id-videotype-final">@(Model.VideoType == VideoContentType.Unknown ? "—" : Model.VideoType.ToString())</strong></td>
                             </tr>
                             <tr>
-                                <td>IMDb ID</td><td>@(Model.ImdbIdAuto ?? "—")</td>
+                                <td>IMDb ID</td><td id="id-imdb-auto">@(Model.ImdbIdAuto ?? "—")</td>
                                 <td><input type="text" name="imdbId" class="form-control form-control-sm" value="@(Model.ImdbIdManual ?? "")" /></td>
-                                <td><strong>@Model.ImdbId</strong></td>
+                                <td><strong id="id-imdb-final">@Model.ImdbId</strong></td>
                             </tr>
                             <tr>
                                 <td>Season</td>
-                                <td>@(Model.SeasonNumberAuto?.ToString() ?? "—")</td>
+                                <td id="id-season-auto">@(Model.SeasonNumberAuto?.ToString() ?? "—")</td>
                                 <td><input type="number" name="seasonNumber" class="form-control form-control-sm" min="0" placeholder="Use auto" value="@(Model.SeasonNumberManual?.ToString() ?? "")" /></td>
-                                <td><strong>@(Model.SeasonNumber?.ToString() ?? "—")</strong></td>
+                                <td><strong id="id-season-final">@(Model.SeasonNumber?.ToString() ?? "—")</strong></td>
                             </tr>
                             <tr>
                                 <td>Disc</td>
-                                <td>@(Model.DiscNumberAuto?.ToString() ?? "—")</td>
+                                <td id="id-disc-auto">@(Model.DiscNumberAuto?.ToString() ?? "—")</td>
                                 <td><input type="number" name="discNumber" class="form-control form-control-sm" min="1" placeholder="Use auto" value="@(Model.DiscNumberManual?.ToString() ?? "")" /></td>
-                                <td><strong>@(Model.DiscNumber?.ToString() ?? "—")</strong></td>
+                                <td><strong id="id-disc-final">@(Model.DiscNumber?.ToString() ?? "—")</strong></td>
                             </tr>
                             <tr>
                                 <td>Starting Episode</td>
                                 <td class="text-muted small">Manual entry</td>
                                 <td><input type="number" name="startingEpisodeNumber" class="form-control form-control-sm" min="1" placeholder="Optional" value="@(Model.StartingEpisodeNumber?.ToString() ?? "")" /></td>
-                                <td><strong>@(Model.StartingEpisodeNumber?.ToString() ?? "—")</strong></td>
+                                <td><strong id="id-startep-final">@(Model.StartingEpisodeNumber?.ToString() ?? "—")</strong></td>
                             </tr>
                             <tr>
                                 <td>Poster URL</td>
-                                <td class="text-truncate" style="max-width:200px" title="@Model.PosterUrlAuto">@(Model.PosterUrlAuto ?? "—")</td>
+                                <td class="text-truncate" style="max-width:200px" title="@Model.PosterUrlAuto"><span id="id-poster-auto">@(Model.PosterUrlAuto ?? "—")</span></td>
                                 <td><input type="text" name="posterUrl" class="form-control form-control-sm" value="@(Model.PosterUrlManual ?? "")" /></td>
-                                <td class="text-truncate" style="max-width:200px" title="@Model.PosterUrl">@(Model.PosterUrl ?? "—")</td>
+                                <td class="text-truncate" style="max-width:200px" title="@Model.PosterUrl"><span id="id-poster-final">@(Model.PosterUrl ?? "—")</span></td>
                             </tr>
                         </tbody>
                     </table>
@@ -637,6 +639,78 @@ else
             }
         }
 
+        // Set a text cell, normalizing empty/missing values to an em dash
+        function setCellText(el, value) {
+            if (!el) return;
+            el.textContent = (value == null || value === '' || value === 'N/A') ? '\u2014' : String(value);
+        }
+
+        // Swap the Approve Title / Clear Approval buttons once identification lands
+        function updateApprovalButtons(update) {
+            var container = document.getElementById('approval-buttons');
+            if (!container) return;
+            var hasNiceTitle = !!update.hasNiceTitle;
+            var hasTitle = update.title != null && update.title !== '';
+            var html = '';
+            if (!hasNiceTitle && hasTitle) {
+                html = '<form method="post" action="/jobs/approve-title" style="display:inline">' +
+                    '<input type="hidden" name="jobId" value="' + jobId + '" />' +
+                    '<button type="submit" class="btn btn-success btn-sm">\u2713 Approve Title</button>' +
+                    '</form>';
+            } else if (hasNiceTitle) {
+                html = '<form method="post" action="/jobs/unapprove-title" style="display:inline" ' +
+                    'onsubmit="return confirm(\'Clear the approved status for this title? It won\\\'t be uploaded to DiscDb until re-approved.\');">' +
+                    '<input type="hidden" name="jobId" value="' + jobId + '" />' +
+                    '<button type="submit" class="btn btn-outline-warning btn-sm">\u2717 Clear Approval</button>' +
+                    '</form>';
+            }
+            if (container.innerHTML !== html) container.innerHTML = html;
+        }
+
+        // Populate the identification form (Auto/Final columns) when the disc is
+        // auto-detected. Manual inputs are left alone so the user can still edit them.
+        function updateIdentificationForm(update) {
+            if (update.title != null || update.titleAuto != null) {
+                setCellText(document.getElementById('id-title-auto'), update.titleAuto);
+                setCellText(document.getElementById('id-title-final'), update.title);
+                if (update.title != null) {
+                    var h1 = document.querySelector('h1');
+                    if (h1) h1.textContent = 'Job ' + jobId + ': ' + update.title;
+                }
+            }
+            if (update.year != null || update.yearAuto != null) {
+                setCellText(document.getElementById('id-year-auto'), update.yearAuto);
+                setCellText(document.getElementById('id-year-final'), update.year);
+            }
+            if (update.videoTypeAuto != null || update.videoType != null) {
+                setCellText(document.getElementById('id-videotype-auto'), update.videoTypeAuto);
+                setCellText(document.getElementById('id-videotype-final'),
+                    update.videoType === 'Unknown' ? null : update.videoType);
+            }
+            if (update.imdbIdAuto != null || update.imdbId != null) {
+                setCellText(document.getElementById('id-imdb-auto'), update.imdbIdAuto);
+                setCellText(document.getElementById('id-imdb-final'), update.imdbId);
+            }
+            if (update.seasonNumberAuto != null || update.seasonNumber != null) {
+                setCellText(document.getElementById('id-season-auto'), update.seasonNumberAuto);
+                setCellText(document.getElementById('id-season-final'), update.seasonNumber);
+            }
+            if (update.discNumberAuto != null || update.discNumber != null) {
+                setCellText(document.getElementById('id-disc-auto'), update.discNumberAuto);
+                setCellText(document.getElementById('id-disc-final'), update.discNumber);
+            }
+            if (update.startingEpisodeNumber != null) {
+                setCellText(document.getElementById('id-startep-final'), update.startingEpisodeNumber);
+            }
+            if (update.posterUrlAuto != null || update.posterUrl != null) {
+                setCellText(document.getElementById('id-poster-auto'), update.posterUrlAuto);
+                setCellText(document.getElementById('id-poster-final'), update.posterUrl);
+            }
+            if (update.hasNiceTitle !== undefined) {
+                updateApprovalButtons(update);
+            }
+        }
+
         function onJobUpdate(update) {
             if (update.jobId !== jobId) return;
 
@@ -648,16 +722,8 @@ else
                 updatePoster(update.posterUrl);
             }
 
-            // Update title when identification completes
-            if (update.title != null) {
-                var h1 = document.querySelector('h1');
-                if (h1) h1.textContent = 'Job ' + jobId + ': ' + update.title;
-            }
-
-            // Update year when identification completes
-            if (update.year !== undefined && update.year != null) {
-                setText(findDd('Year'), update.year);
-            }
+            // Populate the identification form when the disc is auto-detected
+            updateIdentificationForm(update);
 
             // Update disc type when identification completes
             if (update.discType != null) {
