@@ -46,6 +46,42 @@ public class JobUpdate
     /// <summary>Display title.</summary>
     public string? Title { get; set; }
 
+    /// <summary>Auto-detected title (set during identification).</summary>
+    public string? TitleAuto { get; set; }
+
+    /// <summary>Auto-detected release year.</summary>
+    public string? YearAuto { get; set; }
+
+    /// <summary>Auto-detected content type (movie/series/tv/episode).</summary>
+    public VideoContentType? VideoTypeAuto { get; set; }
+
+    /// <summary>Final content type.</summary>
+    public VideoContentType VideoType { get; set; } = VideoContentType.Unknown;
+
+    /// <summary>Auto-detected IMDb ID.</summary>
+    public string? ImdbIdAuto { get; set; }
+
+    /// <summary>Auto-detected poster URL.</summary>
+    public string? PosterUrlAuto { get; set; }
+
+    /// <summary>Auto-detected season number (TV series).</summary>
+    public int? SeasonNumberAuto { get; set; }
+
+    /// <summary>Final season number (TV series).</summary>
+    public int? SeasonNumber { get; set; }
+
+    /// <summary>Auto-detected disc number (TV series).</summary>
+    public int? DiscNumberAuto { get; set; }
+
+    /// <summary>Final disc number (TV series).</summary>
+    public int? DiscNumber { get; set; }
+
+    /// <summary>User-specified starting episode number.</summary>
+    public int? StartingEpisodeNumber { get; set; }
+
+    /// <summary>Whether the title is approved ("nice").</summary>
+    public bool HasNiceTitle { get; set; }
+
     /// <summary>Disc type for UI rendering.</summary>
     public string? DiscType { get; set; }
 
@@ -84,6 +120,18 @@ public class JobUpdate
         JobLength = job.JobLength,
         Path = job.Path,
         Title = job.Title,
+        TitleAuto = job.TitleAuto,
+        YearAuto = job.YearAuto,
+        VideoTypeAuto = job.VideoTypeAuto,
+        VideoType = job.VideoType,
+        ImdbIdAuto = job.ImdbIdAuto,
+        PosterUrlAuto = job.PosterUrlAuto,
+        SeasonNumberAuto = job.SeasonNumberAuto,
+        SeasonNumber = job.SeasonNumber,
+        DiscNumberAuto = job.DiscNumberAuto,
+        DiscNumber = job.DiscNumber,
+        StartingEpisodeNumber = job.StartingEpisodeNumber,
+        HasNiceTitle = job.HasNiceTitle,
         PosterUrl = job.PosterUrl,
         Year = job.Year,
         DiscType = job.DiscType.ToString(),
