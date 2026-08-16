@@ -80,7 +80,9 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
 
     private static async Task<List<string>> ReadAllLinesAsync(StreamReader reader, CancellationToken ct)
     {
-        var lines = new List<string>();
+        // Pre-size: MakeMKV info output can be thousands of lines, and the default
+        // List capacity (4) would cause many resizes/copies on the way there.
+        var lines = new List<string>(capacity: 256);
         while (await reader.ReadLineAsync(ct) is { } line)
             lines.Add(line);
         return lines;
