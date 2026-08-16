@@ -33,24 +33,38 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
 
         process.Start();
 
-        using var _ = ct.Register(() =>
-        {
-            try { process.Kill(entireProcessTree: true); }
-            catch (Exception ex) { logger.LogDebug(ex, "Failed to kill cancelled process ({Name}) — likely already exited", fileName); }
-            logger.LogWarning("Process cancelled ({Name})", fileName);
-        });
-
         var stdout = ReadAllLinesAsync(process.StandardOutput, ct);
         var stderr = ReadAllLinesAsync(process.StandardError, ct);
 
-        var exited = process.WaitForExit(timeoutMs) && !ct.IsCancellationRequested;
+        // Wait for exit with a timeout, linked to the caller's token. WaitForExitAsync
+        // handles the process-exit-during-cancellation race internally, so we avoid
+        // the sync WaitForExit + ct.Register(kill) pattern that could Kill an
+        // already-exited process.
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(timeoutMs));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
-        if (!exited)
+        try
+        {
+            await process.WaitForExitAsync(linkedCts.Token);
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
         {
             try { process.Kill(entireProcessTree: true); }
             catch (Exception ex) { logger.LogDebug(ex, "Failed to kill timed-out process ({Name}) — likely already exited", fileName); }
             logger.LogWarning("Process timed out after {Timeout}ms: {FileName}", timeoutMs, fileName);
             return new CliResult(-1, string.Join("\n", await stdout), string.Join("\n", await stderr), true);
+        }
+        catch (OperationCanceledException)
+        {
+            // Caller cancelled — kill the process tree and report like a timeout.
+            try { process.Kill(entireProcessTree: true); }
+            catch (Exception ex) { logger.LogDebug(ex, "Failed to kill cancelled process ({Name}) — likely already exited", fileName); }
+            logger.LogWarning("Process cancelled ({Name})", fileName);
+            return new CliResult(-1, string.Join("\n", await stdout), string.Join("\n", await stderr), true);
+        }
+        catch (InvalidOperationException)
+        {
+            // Process already exited — fine, fall through to read the exit code.
         }
 
         // Wait for async readers to finish (they may lag behind process exit)
