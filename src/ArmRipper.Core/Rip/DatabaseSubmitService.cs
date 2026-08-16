@@ -149,7 +149,9 @@ public sealed class DatabaseSubmitService(
                         (j.HasNiceTitle || !string.IsNullOrEmpty(j.TitleManual)))
             .ToListAsync(ct);
 
-        // Filter out already-submitted in memory (since CompletedStages is not queryable via EF)
+        // Filter out already-submitted in memory — CompletedStages is a pipe-delimited
+        // string that IsStageComplete splits client-side, so the filter can't be
+        // translated to SQL.
         return pendingJobs
             .Where(j => !j.IsStageComplete(RipStage.CrcSubmitted))
             .ToList();
