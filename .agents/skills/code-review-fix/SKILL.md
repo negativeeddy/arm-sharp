@@ -6,7 +6,7 @@ argument-hint: '[count|priority|issue#] — e.g. "3", "critical", "#82", "medium
 
 # Code Review Fix Worker
 
-Picks up open `code-review` labeled issues from the GitHub issue board and implements fixes one at a time, in priority order. Designed to be run periodically (e.g., weekly) to work through accumulated code review findings.
+Picks up open `code-review` labeled issues from the GitHub issue board and implements fixes **one issue at a time — each on its own branch and its own pull request**. Designed to be run periodically (e.g., weekly) to work through accumulated code review findings.
 
 ## When to Use
 
@@ -19,18 +19,18 @@ Picks up open `code-review` labeled issues from the GitHub issue board and imple
 
 ### Step 1: Determine What to Fix
 
-Parse the argument hint to decide which issues to work on:
+Parse the argument hint to decide which issues to work on. Every issue selected gets its **own branch and its own PR** — never batch multiple issues into one branch/PR.
 
 | Argument | Behavior |
 |----------|----------|
 | (none) | Pick the highest-priority open `code-review` issue |
-| `N` (number) | Fix the next N issues in priority order |
-| `critical` | Fix all `priority: critical` issues |
-| `medium` | Fix all `priority: medium` issues |
-| `low` | Fix all `priority: low` issues |
-| `#NNN` | Fix the specific issue number |
+| `N` (number) | Fix the next N issues in priority order, one branch/PR per issue |
+| `critical` | Fix all `priority: critical` issues, one branch/PR per issue |
+| `medium` | Fix all `priority: medium` issues, one branch/PR per issue |
+| `low` | Fix all `priority: low` issues, one branch/PR per issue |
+| `#NNN` | Fix the specific issue number (one branch/PR) |
 | `investigation` | Work on `needs-investigation` issues (deep reviews) |
-| `medium+low` | Fix all medium and low priority issues |
+| `medium+low` | Fix all medium and low priority issues, one branch/PR per issue |
 
 Fetch open issues:
 
@@ -42,12 +42,23 @@ gh issue list --repo negativeeddy/arm-sharp \
 
 Sort by priority: critical → medium → low. Skip `needs-investigation` issues unless explicitly requested (they need review first, not a blind fix).
 
-### Step 2: Create a Working Branch
+### Step 2: Create a Working Branch (one per issue)
+
+Always start from an up-to-date `master`, and give the branch a **per-issue** name. Never reuse a branch for more than one issue.
 
 ```bash
-git checkout -b fix/code-review-<batch-date>
-# or
+git checkout master
+# Ensure the branch contains the latest merged fixes so each PR is small and conflict-free.
+git pull --ff-only
+# One branch per issue, named after that issue:
 git checkout -b fix/code-review-#<issue-number>
+```
+
+If a branch for this issue already exists (e.g. from a previous interrupted run), rebase it onto the latest `master` before continuing:
+
+```bash
+git checkout fix/code-review-#<issue-number>
+git rebase master
 ```
 
 ### Step 3: For Each Issue
@@ -90,51 +101,58 @@ git commit -m "fix: <short description> (closes #<number>)"
 
 The `closes #<number>` will auto-close the issue when merged.
 
-#### 3f. Move to Next Issue
+### Step 4: Create a Pull Request (per issue)
 
-Repeat 3a–3e for the next issue in the batch.
-
-### Step 4: Create Pull Request
-
-After completing the batch:
+Create **one PR per issue** — the branch contains only that issue's fix, so the PR is small, focused, and easy to review. Include the issue reference in both the title and body so it auto-closes on merge.
 
 ```bash
+git push -u origin fix/code-review-#<issue-number>
+
 gh pr create --repo negativeeddy/arm-sharp \
-  --title "fix: Code review batch — <date>" \
-  --body "## Code Review Fixes
+  --title "fix: <short description> (closes #<number>)" \
+  --body "## Code Review Fix
 
-Automated fixes from periodic code review cleanup.
+Automated fix from periodic code review cleanup.
 
-### Issues Addressed
-- [x] #N — <title>
-- [x] #M — <title>
-- [ ] #P — <title> (skipped: needs investigation)
+### Issue
+- [x] #<number> — <title>
 
 ### Changes
-<brief summary of each fix>
+<brief summary of the fix>
 
 ### Testing
 - All existing tests pass
 - <any new tests added>"
 ```
 
-### Step 5: Report Summary
+### Step 5: Move to Next Issue
 
-Print a summary:
+After the PR for the current issue is created, start the next issue from a fresh branch off the latest `master`:
+
+```bash
+# Sync local master with any merged PRs (including your own earlier ones)
+git checkout master
+git pull --ff-only
+
+# Repeat Steps 3–4 for the next issue
+git checkout -b fix/code-review-#<next-issue-number>
+```
+
+### Step 6: Report Summary
+
+Print a summary with one row per issue/PR:
 
 ```
 ## Code Review Fix Session Complete
 
-**Branch:** fix/code-review-<date>
 **Issues Fixed:** N
 **Issues Skipped:** N (needs investigation)
-**PR:** <url>
 
-### Fixed
-| Issue | Title | Priority |
-|-------|-------|----------|
-| #N | <title> | 🔴 Critical |
-| #M | <title> | 🟡 Medium |
+### Fixed (one PR each)
+| Issue | Title | Priority | Branch/PR |
+|-------|-------|----------|-----------|
+| #N | <title> | 🟡 Medium | fix/code-review-#N → PR #NN |
+| #M | <title> | 🟢 Low | fix/code-review-#M → PR #MM |
 
 ### Skipped
 | Issue | Title | Reason |
@@ -150,7 +168,7 @@ These issues require a deep review before a fix can be prescribed. When working 
 2. **Explore the code** using read-only subagents
 3. **Determine** if the code is actually robust (close the issue) or has real bugs
 4. If bugs found:
-   - Create a new sub-document in `docs/code-review/` with findings
+   - Create a new sub-document in `.agents/skills/code-review/` (or a `docs/code-review/` subfolder if it exists) with findings
    - Either fix directly or create new focused issues
    - Comment on the original issue with findings
 5. If code is robust:
@@ -160,11 +178,12 @@ These issues require a deep review before a fix can be prescribed. When working 
 ## Safety Rules
 
 - **Never modify running services** — only build and test
+- **One issue per branch and PR** — never mix fixes for different issues in a single branch/PR; keep each issue's fix isolated
 - **One fix per commit** — easy to revert individual fixes
 - **Always run tests** before committing
 - **Skip if uncertain** — mark as needs-investigation and move on
 - **Respect the priority order** — critical first, then medium, then low
-- **Don't batch unrelated fixes** — keep each issue's fix isolated
+- **Always branch from an up-to-date `master`** — pull before creating each issue branch so every PR is small and conflict-free
 
 ## Quick Reference Commands
 
@@ -181,6 +200,10 @@ gh issue comment <number> --repo negativeeddy/arm-sharp --body "..."
 # Close an issue
 gh issue close <number> --repo negativeeddy/arm-sharp
 
-# Create a PR
-gh pr create --repo negativeeddy/arm-sharp --title "..." --body "..."
+# Per-issue branch + PR workflow (repeat for each issue)
+git checkout master && git pull --ff-only
+git checkout -b fix/code-review-#<issue-number>
+# ... implement + verify + commit ...
+git push -u origin fix/code-review-#<issue-number>
+gh pr create --repo negativeeddy/arm-sharp --title "fix: <short description> (closes #<number>)" --body "..."
 ```
