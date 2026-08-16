@@ -36,7 +36,7 @@ public sealed class NotificationServiceTests : IDisposable
 
         var notifications = _db.Notifications.ToList();
         Assert.Single(notifications);
-        Assert.Equal("Test Title", notifications[0].EventType);
+        Assert.Equal("Test Title - #1", notifications[0].EventType);
         Assert.Equal("Test Body", notifications[0].Message);
         Assert.False(notifications[0].Read);
     }
