@@ -186,9 +186,36 @@ These issues require a deep review before a fix can be prescribed. When working 
 2. **Explore the code** using read-only subagents
 3. **Determine** if the code is actually robust (close the issue) or has real bugs
 4. If bugs found:
-   - Create a new sub-document in `.agents/skills/code-review/` (or a `docs/code-review/` subfolder if it exists) with findings
-   - Either fix directly or create new focused issues
-   - Comment on the original issue with findings
+   - Create a **new GitHub issue** for each bug, using the same template as the `code-review` skill:
+     ```bash
+     gh issue create --repo negativeeddy/arm-sharp \
+       --title "<concise bug title>" \
+       --body-file <temp-file> \
+       --label "code-review" \
+       --label "priority: <critical|medium|low>"
+     ```
+     Issue body template:
+     ```markdown
+     ## <Title>
+
+     **Source:** Investigation of #<original-issue-number>
+     **Date:** <today>
+     **File(s):** `<affected files>`
+
+     ### Problem
+
+     <description of the bug>
+
+     ### Proposed Fix
+
+     <fix description or code sample>
+
+     ### Notes
+
+     <any additional context>
+     ```
+   - Comment on the original issue with links to the new issues
+   - If the bug is simple enough to fix directly, also create a branch and PR as usual (one per bug)
 5. If code is robust:
    - Comment with evidence of why it's safe
    - Close the issue: `gh issue close <number> --repo negativeeddy/arm-sharp`

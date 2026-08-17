@@ -183,9 +183,58 @@ public sealed class ArmRipperService(
             }
         }
     }
+
+    /// <summary>
+    /// Carries mutable path state across the rip phases.  Used only as an
+    /// internal shuttle between the orchestrator and its extracted sub-phases
+    /// so that each phase can stay small and independently testable.
+    /// </summary>
+    private sealed class RipContext
+    {
+        public required string JobTitle { get; init; }
+        public required string TranscodeOutPath { get; set; }
+        public required string FinalDirectory { get; set; }
+        public required string FinalBasePath { get; init; }
+        public required string MakeMkvOutPath { get; init; }
+        public string? TranscodeInPath { get; set; }
+        public required bool UseMakeMkv { get; init; }
+    }
+
     public async Task<string> RipVisualMediaAsync(Job job, string logFile, bool hasDupes, bool protection, CancellationToken ct = default)
     {
-        // ── 1. Compute paths ──
+        // Phase 1 – compute paths, set initial stage, apply dupe-folder suffix.
+        var ctx = await ComputeRipContextAsync(job, hasDupes, protection, ct);
+
+        // Phase 2 – MakeMKV rip (idempotent, already extracted).
+        if (ctx.UseMakeMkv)
+        {
+            ctx.TranscodeInPath = await PrepareTranscodeInputPathAsync(job, ctx.JobTitle, ctx.MakeMkvOutPath, ct);
+        }
+
+        // Phase 2b – eject disc and reload job.
+        await EjectAndReloadAsync(job, ct);
+
+        // Phase 3 – optional test-mode trim.
+        await TestModeTrimAsync(ctx.TranscodeInPath, ct);
+
+        // Phase 4 – TV episode identification (after rip, before transcode).
+        await IdentifyEpisodesAsync(job, ctx.MakeMkvOutPath, ct);
+
+        // Phase 5 – transcode (idempotent).
+        var transcodeSucceeded = await ExecuteTranscodeAsync(job, logFile, ctx, protection, ct);
+
+        // Phase 6 – finalize: file moves, Emby scan, cleanup, notification.
+        return await FinalizeAsync(job, ctx, hasDupes, transcodeSucceeded, ct);
+    }
+
+    // ── Phase 1: path computation and initial state ────────────────────────
+
+    /// <summary>
+    /// Computes all output paths, transitions the job to the Identify stage,
+    /// and applies duplicate-folder suffixes when needed.
+    /// </summary>
+    private async Task<RipContext> ComputeRipContextAsync(Job job, bool hasDupes, bool protection, CancellationToken ct)
+    {
         var typeSubFolder = ConvertJobType(job.VideoType);
         var jobTitle = FixJobTitle(job);
 
@@ -212,70 +261,102 @@ public sealed class ArmRipperService(
         logger.LogInformation("Processing files to: {TranscodeOutPath}", transcodeOutPath);
 
         var makeMkvOutPath = Path.Combine(job.Config?.RawPath ?? ArmPaths.GetRawPath(settings.Value), jobTitle);
-        var transcodeInPath = job.DevPath;
         var useMakeMkv = RipWithMkv(job, protection);
 
         logger.LogDebug("Using MakeMKV: {UseMakeMkv}", useMakeMkv);
 
-        // ── 2. MakeMKV rip (idempotent) ──
-        if (useMakeMkv)
+        return new RipContext
         {
-            transcodeInPath = await PrepareTranscodeInputPathAsync(job, jobTitle, makeMkvOutPath, ct);
-        }
+            JobTitle = jobTitle,
+            TranscodeOutPath = transcodeOutPath,
+            FinalDirectory = finalDirectory,
+            FinalBasePath = finalBasePath,
+            MakeMkvOutPath = makeMkvOutPath,
+            TranscodeInPath = job.DevPath,
+            UseMakeMkv = useMakeMkv,
+        };
+    }
 
-        // ── 2b. Eject the disc now that the rip is done — transcode uses files only.
-        //     If AutoEject is disabled in config, this is a no-op.
+    // ── Phase 2b: eject disc and reload ────────────────────────────────────
+
+    /// <summary>
+    /// Ejects the disc after the rip completes (no-op when AutoEject is
+    /// disabled), then reloads the job so mid-rip WebUI edits are picked up.
+    /// </summary>
+    private async Task EjectAndReloadAsync(Job job, CancellationToken ct)
+    {
         await identifyService.EjectAsync(job, ct);
         job.Ejected = true;
         await db.SaveChangesAsync(ct);
 
         // Reload job from DB: user may have changed title/video-type via WebUI during the rip.
         await db.Entry(job).ReloadAsync(ct);
+    }
 
-        // ── 3. Test-mode trim (optional) ──
-        if (settings.Value.TestMode && transcodeInPath is not null && Directory.Exists(transcodeInPath))
+    // ── Phase 3: test-mode trim ────────────────────────────────────────────
+
+    /// <summary>
+    /// When <see cref="ArmSettings.TestMode"/> is enabled, trims every MKV in
+    /// the transcode input directory to 30 seconds for quick validation.
+    /// </summary>
+    private async Task TestModeTrimAsync(string? transcodeInPath, CancellationToken ct)
+    {
+        if (!settings.Value.TestMode || transcodeInPath is null || !Directory.Exists(transcodeInPath))
+            return;
+
+        logger.LogInformation("Test mode: trimming raw MKV files to 30 seconds");
+        // Respect the configured ffmpeg binary (same as FfmpegService) so a
+        // custom path/wrapper is honored here too.
+        var ffmpegCli = settings.Value.FfmpegCli;
+        if (string.IsNullOrWhiteSpace(ffmpegCli))
+            ffmpegCli = "ffmpeg";
+        foreach (var file in Directory.EnumerateFiles(transcodeInPath, "*.mkv"))
         {
-            logger.LogInformation("Test mode: trimming raw MKV files to 30 seconds");
-            // Respect the configured ffmpeg binary (same as FfmpegService) so a
-            // custom path/wrapper is honored here too.
-            var ffmpegCli = settings.Value.FfmpegCli;
-            if (string.IsNullOrWhiteSpace(ffmpegCli))
-                ffmpegCli = "ffmpeg";
-            foreach (var file in Directory.EnumerateFiles(transcodeInPath, "*.mkv"))
+            var tmp = file + ".trimmed";
+            var trimResult = await runner.RunAsync(ffmpegCli,
+                $"-t 30 -i \"{file}\" -c copy -y \"{tmp}\"", timeoutMs: 60_000, ct: ct);
+            if (trimResult.ExitCode == 0 && File.Exists(tmp))
             {
-                var tmp = file + ".trimmed";
-                var trimResult = await runner.RunAsync(ffmpegCli,
-                    $"-t 30 -i \"{file}\" -c copy -y \"{tmp}\"", timeoutMs: 60_000, ct: ct);
-                if (trimResult.ExitCode == 0 && File.Exists(tmp))
-                {
-                    File.Delete(file);
-                    File.Move(tmp, file);
-                }
+                File.Delete(file);
+                File.Move(tmp, file);
             }
         }
+    }
 
-        // ── 4. TV episode identification (runs after rip, before transcode) ──
-        // Run the full provider chain (DiscDb → DvdCompare → FileBot → TMDB →
-        // TVDB → OMDB) to identify TV episode assignments for naming, so the
-        // transcode and move steps can use episode numbers/titles.
+    // ── Phase 4: TV episode identification ─────────────────────────────────
+
+    /// <summary>
+    /// Runs the full provider chain (DiscDb → DvdCompare → FileBot → TMDB →
+    /// TVDB → OMDB) to identify TV episode assignments for naming, so the
+    /// transcode and move steps can use episode numbers/titles.
+    /// </summary>
+    private async Task IdentifyEpisodesAsync(Job job, string makeMkvOutPath, CancellationToken ct)
+    {
         await db.Entry(job).Collection(j => j.Tracks).LoadAsync(ct);
         if (episodeOrchestrator is not null &&
             (job.VideoType is VideoContentType.Series or VideoContentType.Tv))
         {
             await RunEpisodeIdentificationAsync(job, makeMkvOutPath, ct);
         }
+    }
 
-        // ── 5. Transcode (idempotent) ──
+    // ── Phase 5: transcode ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Runs the transcode (ffmpeg or HandBrake) if it has not already completed.
+    /// Returns <c>true</c> when the transcode succeeded (or was already done).
+    /// </summary>
+    private async Task<bool> ExecuteTranscodeAsync(
+        Job job, string logFile, RipContext ctx, bool protection, CancellationToken ct)
+    {
         // Reload job from DB before transcode: user may have changed title/video-type
         // via WebUI during episode identification.
         await db.Entry(job).ReloadAsync(ct);
 
         // transcodeInPath must be set by this point — either from DevPath or MakeMKV output
-        if (transcodeInPath is null)
+        if (ctx.TranscodeInPath is null)
             throw new InvalidOperationException($"Job {job.Id}: transcodeInPath is null — DevPath may not have been set");
 
-        // Track whether the transcode phase completed successfully so we can
-        // decide later whether it is safe to delete the raw source files.
         var transcodeSucceeded = job.IsStageComplete(RipStage.Transcode);
 
         if (transcodeSucceeded)
@@ -284,7 +365,7 @@ public sealed class ArmRipperService(
         }
         else
         {
-            await StartTranscodeAsync(job, logFile, transcodeInPath, transcodeOutPath, protection, ct);
+            await StartTranscodeAsync(job, logFile, ctx.TranscodeInPath, ctx.TranscodeOutPath, protection, ct);
             transcodeSucceeded = job.Status != JobState.Failure;
             if (transcodeSucceeded)
             {
@@ -298,7 +379,19 @@ public sealed class ArmRipperService(
             await BroadcastJobUpdateAsync(job);
         }
 
-        // ── 6. Finalize: manual title, file moves, Emby, cleanup ──
+        return transcodeSucceeded;
+    }
+
+    // ── Phase 6: finalize ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Handles all post-transcode work: title recomputation, file moves, poster
+    /// relocation, Emby library scan, permissions, raw-file cleanup, and final
+    /// notification.
+    /// </summary>
+    private async Task<string> FinalizeAsync(
+        Job job, RipContext ctx, bool hasDupes, bool transcodeSucceeded, CancellationToken ct)
+    {
         job.TransitionToStage(RipStage.Finalize);
         job.ProgressMessage = "Finalizing...";
         await db.SaveChangesAsync(ct);
@@ -308,69 +401,53 @@ public sealed class ArmRipperService(
         // the user made via the WebUI while the rip + transcode were running.
         await db.Entry(job).ReloadAsync(ct);
 
+        // Handle skip-transcode path swap.
         logger.LogDebug("Transcode status: [{SkipTranscode}] and MakeMKV Status: [{UseMakeMkv}]",
-            job.Config?.SkipTranscode ?? settings.Value.SkipTranscode, useMakeMkv);
+            job.Config?.SkipTranscode ?? settings.Value.SkipTranscode, ctx.UseMakeMkv);
 
-        if ((job.Config?.SkipTranscode ?? settings.Value.SkipTranscode) && useMakeMkv)
+        if ((job.Config?.SkipTranscode ?? settings.Value.SkipTranscode) && ctx.UseMakeMkv)
         {
-            DeleteRawFiles(new[] { transcodeOutPath });
-            transcodeOutPath = transcodeInPath;
+            DeleteRawFiles(new[] { ctx.TranscodeOutPath });
+            ctx.TranscodeOutPath = ctx.TranscodeInPath!;
         }
-
-        logger.LogDebug("Job title manual status: [{TitleManual}]", job.TitleManual);
 
         // Recompute the output path from the current (possibly newly-identified)
         // title/type. The output directory is only needed once the transcode is
         // complete, so if the title was identified or changed after the rip
         // started, relocate to the newly-computed location.
+        logger.LogDebug("Job title manual status: [{TitleManual}]", job.TitleManual);
+
         var recomputedFinal = ComputeOutputPath(job, job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value));
-        if (!string.Equals(recomputedFinal, finalBasePath, StringComparison.Ordinal))
+        if (!string.Equals(recomputedFinal, ctx.FinalBasePath, StringComparison.Ordinal))
         {
             logger.LogInformation("Output path changed to \"{Path}\" — relocating before finalize.", recomputedFinal);
 
-            var staleFinalDirectory = finalDirectory;
+            var staleFinalDirectory = ctx.FinalDirectory;
 
             // Re-apply dupe folder suffix — the recomputation above dropped it, and
             // CheckForDupeFolder decides whether one is needed (creating the directory
             // when the new location is fresh).
-            finalDirectory = CheckForDupeFolder(hasDupes, recomputedFinal, job);
+            ctx.FinalDirectory = CheckForDupeFolder(hasDupes, recomputedFinal, job);
 
             // Move the poster out of the stale location before removing it.
-            RelocatePoster(job, finalDirectory);
+            RelocatePoster(job, ctx.FinalDirectory);
 
             DeleteRawFiles(new[] { staleFinalDirectory });
-            job.Path = finalDirectory;
+            job.Path = ctx.FinalDirectory;
             await db.SaveChangesAsync(ct);
         }
 
-        await MoveFilesPostAsync(transcodeOutPath, job, ct);
+        await MoveFilesPostAsync(ctx.TranscodeOutPath!, job, ct);
 
         // Move the poster.png from the identification-time path to the correct
         // final directory (fixes orphaned posters left in "unidentified/").
-        RelocatePoster(job, job.Path ?? finalDirectory);
+        RelocatePoster(job, job.Path ?? ctx.FinalDirectory);
 
         await ScanEmbyAsync(job, ct);
 
-        await SetPermissionsAsync(job.Path ?? finalDirectory, job, ct);
+        await SetPermissionsAsync(job.Path ?? ctx.FinalDirectory, job, ct);
 
-        var delRaw = job.Config?.DelRawFiles ?? settings.Value.DelRawFiles;
-        if (delRaw)
-        {
-            if (transcodeSucceeded)
-            {
-                DeleteRawFiles(new[] { transcodeInPath, transcodeOutPath, makeMkvOutPath }.OfType<string>().ToArray());
-            }
-            else
-            {
-                logger.LogWarning("Transcode phase had errors — keeping raw files at {Paths} so the job can be retried",
-                    string.Join(", ", new[] { transcodeInPath, transcodeOutPath, makeMkvOutPath }.OfType<string>()));
-            }
-        }
-        else
-        {
-            logger.LogInformation("DelRawFiles is disabled — keeping raw files at {Paths}",
-                string.Join(", ", new[] { transcodeInPath, transcodeOutPath, makeMkvOutPath }.OfType<string>()));
-        }
+        CleanupRawFiles(job, ctx, transcodeSucceeded);
 
         await NotifyExitAsync(job, ct);
 
@@ -381,7 +458,34 @@ public sealed class ArmRipperService(
         await BroadcastJobUpdateAsync(job);
 
         logger.LogInformation("************* ARM processing complete *************");
-        return job.Path ?? finalDirectory;
+        return job.Path ?? ctx.FinalDirectory;
+    }
+
+    /// <summary>
+    /// Deletes raw source files when <see cref="ArmSettings.DelRawFiles"/> is
+    /// enabled, but only if the transcode succeeded — otherwise the files are
+    /// kept so the job can be retried.
+    /// </summary>
+    private void CleanupRawFiles(Job job, RipContext ctx, bool transcodeSucceeded)
+    {
+        var delRaw = job.Config?.DelRawFiles ?? settings.Value.DelRawFiles;
+        if (delRaw)
+        {
+            if (transcodeSucceeded)
+            {
+                DeleteRawFiles(new[] { ctx.TranscodeInPath, ctx.TranscodeOutPath, ctx.MakeMkvOutPath }.OfType<string>().ToArray());
+            }
+            else
+            {
+                logger.LogWarning("Transcode phase had errors — keeping raw files at {Paths} so the job can be retried",
+                    string.Join(", ", new[] { ctx.TranscodeInPath, ctx.TranscodeOutPath, ctx.MakeMkvOutPath }.OfType<string>()));
+            }
+        }
+        else
+        {
+            logger.LogInformation("DelRawFiles is disabled — keeping raw files at {Paths}",
+                string.Join(", ", new[] { ctx.TranscodeInPath, ctx.TranscodeOutPath, ctx.MakeMkvOutPath }.OfType<string>()));
+        }
     }
 
     private async Task<string?> PrepareTranscodeInputPathAsync(Job job, string jobTitle, string makeMkvOutPath, CancellationToken ct)
