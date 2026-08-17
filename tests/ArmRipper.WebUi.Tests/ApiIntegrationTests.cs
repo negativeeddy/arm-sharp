@@ -3,77 +3,19 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-
-using ArmRipper.Core.Configuration;
 
 namespace ArmRipper.WebUi.Tests;
 
-public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
+public class ApiIntegrationTests : IClassFixture<ApiTestWebApplicationFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
-    private readonly SqliteConnection _dbConnection;
+    private readonly ApiTestWebApplicationFactory _factory;
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
-    public ApiIntegrationTests(WebApplicationFactory<Program> factory)
+    public ApiIntegrationTests(ApiTestWebApplicationFactory factory)
     {
-        _dbConnection = new SqliteConnection("DataSource=:memory:");
-        _dbConnection.Open();
-
-        _factory = factory.WithWebHostBuilder(builder =>
-        {
-            var webUiDir = Path.GetFullPath(Path.Combine(
-                AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "ArmRipper.WebUi"));
-            builder.UseContentRoot(webUiDir);
-            builder.ConfigureServices(services =>
-            {
-                services.PostConfigure<ArmSettings>(a => a.DisableLogin = false);
-                var dbDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<ArmDbContext>));
-                if (dbDescriptor != null) services.Remove(dbDescriptor);
-                services.AddDbContext<ArmDbContext>(options => options.UseSqlite(_dbConnection));
-
-                using var scope = services.BuildServiceProvider().CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-                db.Database.EnsureCreated();
-
-                db.Users.Add(new User
-                {
-                    Username = "admin",
-                    PasswordHash = new PasswordHasher<User>().HashPassword(new User(), "admin"),
-                    IsAdmin = true
-                });
-
-                db.Jobs.Add(new Job
-                {
-                    Title = "Test Movie",
-                    Year = "2026",
-                    VideoType = VideoContentType.Movie,
-                    DiscType = DiscType.Dvd,
-                    Status = JobState.Active,
-                    StartTime = DateTime.UtcNow,
-                    DevPath = "/dev/sr99",
-                    Config = new ConfigSnapshot
-                    {
-                        MinLength = 300,
-                        MaxLength = 9999,
-                        RipMethod = "mkv",
-                        MainFeature = true,
-                        GetAudioTitle = ""
-                    }
-                });
-
-                db.SaveChanges();
-            });
-        });
-    }
-
-    public void Dispose()
-    {
-        _dbConnection.Close();
-        _dbConnection.Dispose();
+        _factory = factory;
     }
 
     private int _testJobId;
@@ -84,7 +26,19 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
         if (_seedLoaded) return;
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-        _testJobId = (await db.Jobs.FirstAsync<Job>()).Id;
+        var job = await db.Jobs.FirstAsync<Job>();
+        _testJobId = job.Id;
+
+        // ShutdownJobCancellationService marks Active jobs as Stopping on
+        // startup. Restore Active status so tests that assert on active jobs
+        // see the seeded job.
+        if (job.Status == JobState.Stopping)
+        {
+            job.Status = JobState.Active;
+            job.StopTime = null;
+            await db.SaveChangesAsync();
+        }
+
         _seedLoaded = true;
     }
 
@@ -151,6 +105,15 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
         Assert.Contains("Default (Main)", html); // labels the global default
         Assert.Contains(@"value=""all"" selected", html); // drive override is selected
         Assert.Contains("Rip", html);
+
+        // Clean up test drive so it doesn't leak into Drives_ReturnsEmptyArray.
+        using (var cleanupScope = _factory.Services.CreateScope())
+        {
+            var cleanupDb = cleanupScope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            foreach (var d in cleanupDb.SystemDrives.Where(d => d.SerialId == "SR-PARTIAL-1"))
+                cleanupDb.SystemDrives.Remove(d);
+            await cleanupDb.SaveChangesAsync();
+        }
     }
 
     [Fact]
@@ -189,6 +152,22 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
     public async Task ActiveJobs_ReturnsPartialView()
     {
         await EnsureSeedLoadedAsync();
+
+        // ShutdownJobCancellationService runs in a background Task.Run and may
+        // mark the seeded job as Stopping after EnsureSeedLoadedAsync returns.
+        // Explicitly restore Active status so this test always sees it.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = await db.Jobs.FirstAsync(j => j.Id == _testJobId);
+            if (job.Status != JobState.Active)
+            {
+                job.Status = JobState.Active;
+                job.StopTime = null;
+                await db.SaveChangesAsync();
+            }
+        }
+
         var client = await CreateAuthenticatedClientAsync();
         var response = await client.GetAsync("/api/jobs/active");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -214,6 +193,32 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
 
         var html = await response.Content.ReadAsStringAsync();
         Assert.DoesNotContain("Test Movie", html, StringComparison.OrdinalIgnoreCase);
+
+        // Restore the seed job so subsequent tests are not affected.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            db.Jobs.Add(new Job
+            {
+                Title = "Test Movie",
+                Year = "2026",
+                VideoType = VideoContentType.Movie,
+                DiscType = DiscType.Dvd,
+                Status = JobState.Active,
+                StartTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99",
+                Config = new ConfigSnapshot
+                {
+                    MinLength = 300,
+                    MaxLength = 9999,
+                    RipMethod = "mkv",
+                    MainFeature = true,
+                    GetAudioTitle = ""
+                }
+            });
+            await db.SaveChangesAsync();
+            _seedLoaded = false; // reset so EnsureSeedLoadedAsync re-reads the new ID
+        }
     }
 
     [Fact]
@@ -290,6 +295,15 @@ public class ApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
         var json = await response.Content.ReadAsStringAsync();
         var doc = JsonDocument.Parse(json);
         Assert.Equal(2, doc.RootElement.GetProperty("count").GetInt32());
+
+        // Clean up test notifications so they don't leak into other tests.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            foreach (var n in db.Notifications.Where(n => n.EventType == "test"))
+                db.Notifications.Remove(n);
+            await db.SaveChangesAsync();
+        }
     }
 
     [Fact]

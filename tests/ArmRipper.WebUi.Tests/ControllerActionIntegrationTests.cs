@@ -1,63 +1,22 @@
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
+using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Metadata;
 using ArmRipper.Core.Models;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-
-using ArmRipper.Core.Configuration;
 
 namespace ArmRipper.WebUi.Tests;
 
-public class ControllerActionIntegrationTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
+public class ControllerActionIntegrationTests : IClassFixture<CustomWebApplicationFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
-    private readonly SqliteConnection _dbConnection;
+    private readonly CustomWebApplicationFactory _factory;
 
-    public ControllerActionIntegrationTests(WebApplicationFactory<Program> factory)
+    public ControllerActionIntegrationTests(CustomWebApplicationFactory factory)
     {
-        _dbConnection = new SqliteConnection("DataSource=:memory:");
-        _dbConnection.Open();
-
-        _factory = factory.WithWebHostBuilder(builder =>
-        {
-            var webUiDir = Path.GetFullPath(Path.Combine(
-                AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "ArmRipper.WebUi"));
-            builder.UseContentRoot(webUiDir);
-            builder.ConfigureServices(services =>
-            {
-                services.PostConfigure<ArmSettings>(a => a.DisableLogin = false);
-                var dbDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<ArmDbContext>));
-                if (dbDescriptor != null) services.Remove(dbDescriptor);
-                services.AddDbContext<ArmDbContext>(options => options.UseSqlite(_dbConnection));
-
-                using var scope = services.BuildServiceProvider().CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-                db.Database.EnsureCreated();
-
-                var hasher = new PasswordHasher<User>();
-                if (!db.Users.Any(u => u.Username == "admin"))
-                {
-                    db.Users.Add(new User
-                    {
-                        Username = "admin",
-                        PasswordHash = hasher.HashPassword(new User(), "admin"),
-                        IsAdmin = true
-                    });
-                    db.SaveChanges();
-                }
-            });
-        });
-    }
-
-    public void Dispose()
-    {
-        _dbConnection.Close();
-        _dbConnection.Dispose();
+        _factory = factory;
     }
 
     private async Task<HttpClient> CreateAuthenticatedClientAsync()

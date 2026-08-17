@@ -1,56 +1,19 @@
 using System.Net;
 using System.Text.RegularExpressions;
-using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace ArmRipper.WebUi.Tests;
 
-public class WebUiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
+public class WebUiIntegrationTests : IClassFixture<CustomWebApplicationFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
-    private readonly SqliteConnection _dbConnection;
-    private bool _disposed;
+    private readonly CustomWebApplicationFactory _factory;
 
-    public WebUiIntegrationTests(WebApplicationFactory<Program> factory)
+    public WebUiIntegrationTests(CustomWebApplicationFactory factory)
     {
-        _dbConnection = new SqliteConnection("DataSource=:memory:");
-        _dbConnection.Open();
-
-        _factory = factory.WithWebHostBuilder(builder =>
-        {
-            var webUiDir = Path.GetFullPath(Path.Combine(
-                AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "ArmRipper.WebUi"));
-            builder.UseContentRoot(webUiDir);
-            builder.ConfigureServices(services =>
-            {
-                services.PostConfigure<ArmSettings>(a => a.DisableLogin = false);
-
-                var dbDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<ArmDbContext>));
-                if (dbDescriptor != null) services.Remove(dbDescriptor);
-                services.AddDbContext<ArmDbContext>(options => options.UseSqlite(_dbConnection));
-
-                using var scope = services.BuildServiceProvider().CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-                db.Database.EnsureCreated();
-
-                if (!db.Users.Any())
-                {
-                    var hasher = new PasswordHasher<User>();
-                    db.Users.Add(new User
-                    {
-                        Username = "admin",
-                        PasswordHash = hasher.HashPassword(new User(), "admin"),
-                        IsAdmin = true
-                    });
-                    db.SaveChanges();
-                }
-            });
-        });
+        _factory = factory;
     }
 
     [Fact]
@@ -273,14 +236,5 @@ public class WebUiIntegrationTests : IClassFixture<WebApplicationFactory<Program
         response.EnsureSuccessStatusCode();
 
         return client;
-    }
-
-    public void Dispose()
-    {
-        if (!_disposed)
-        {
-            _dbConnection?.Dispose();
-            _disposed = true;
-        }
     }
 }
