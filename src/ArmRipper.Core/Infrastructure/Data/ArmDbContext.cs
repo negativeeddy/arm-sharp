@@ -31,18 +31,18 @@ public class ArmDbContext : DbContext
     /// </summary>
     public async Task MarkStageCompleteAsync(Job job, RipStage stage, CancellationToken ct = default)
     {
-        var name = stage.ToString();
+        var key = stage.ToStageKey();
 
         // SQLite LIKE is case-insensitive for ASCII, matching MarkStageComplete's
         // OrdinalIgnoreCase dedupe so existing (possibly differently-cased) marks
         // are not duplicated.
         await Jobs
             .Where(j => j.Id == job.Id &&
-                        (j.CompletedStages == null || !EF.Functions.Like(j.CompletedStages, $"%{name}%")))
+                        (j.CompletedStages == null || !EF.Functions.Like(j.CompletedStages, $"%{key}%")))
             .ExecuteUpdateAsync(
                 setters => setters.SetProperty(
                     j => j.CompletedStages,
-                    j => j.CompletedStages == null ? name : j.CompletedStages + "|" + name),
+                    j => j.CompletedStages == null ? key : j.CompletedStages + "|" + key),
                 ct);
 
         // Keep the in-memory entity consistent with the DB. The tracked property is
