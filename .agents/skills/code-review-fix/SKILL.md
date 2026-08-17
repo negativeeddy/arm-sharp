@@ -99,11 +99,11 @@ git add <files>
 git commit -m "fix: <short description> (closes #<number>)"
 ```
 
-The `closes #<number>` will auto-close the issue when merged.
+**Important:** The `closes #<number>` in the commit message only auto-closes the issue when the commit lands on the default branch (via PR merge). It does NOT auto-close from a feature-branch push. The PR body `Fixes` keyword is the reliable mechanism — see Step 4.
 
 ### Step 4: Create a Pull Request (per issue)
 
-Create **one PR per issue** — the branch contains only that issue's fix, so the PR is small, focused, and easy to review. Cross-link both ways: the PR references the issue (`closes #N` so it auto-closes on merge), and the issue is updated with a comment linking to the PR.
+Create **one PR per issue** — the branch contains only that issue's fix, so the PR is small, focused, and easy to review. Cross-link both ways: the PR references the issue (`Fixes #N` so it auto-closes on merge), and the issue is updated with a comment linking to the PR.
 
 ```bash
 git push -u origin fix/code-review-#<issue-number>
@@ -114,8 +114,7 @@ gh pr create --repo negativeeddy/arm-sharp \
 
 Automated fix from periodic code review cleanup.
 
-### Issue
-- [x] #<number> — <title> (link to the issue)
+Fixes #<number>
 
 ### Changes
 <brief summary of the fix>
@@ -124,6 +123,18 @@ Automated fix from periodic code review cleanup.
 - All existing tests pass
 - <any new tests added>"
 ```
+
+**CRITICAL — `Fixes` keyword placement:** GitHub only auto-closes issues when `Fixes #N` appears on its own line as a **complete keyword phrase**. Bad formats that silently fail:
+
+| Format | Works? | Why |
+|--------|--------|-----|
+| `Fixes #67 and #69` | Only #67 | GitHub parses the first `#N` after `Fixes`, ignores the rest |
+| `fixes #67, #69` | Only #67 | Comma-separated list not recognized |
+| `closes #67 in PR body` | No | `closes` must be immediately followed by `#N` |
+| `Fixes #67` (own line) | **Yes** | Correct format |
+| `Fixes #67` then `Fixes #69` (separate lines) | **Both** | Each keyword closes its issue |
+
+Always put `Fixes #<number>` on its **own line** in the PR body. For multiple issues, use separate `Fixes` lines.
 
 #### 4a. Link the Issue to the PR
 
@@ -138,8 +149,29 @@ gh issue comment <issue-number> --repo negativeeddy/arm-sharp \
 ```
 
 Both directions are now linked:
-- **PR → Issue:** `closes #<number>` in the title/body (plus the `### Issue` section).
+- **PR → Issue:** `Fixes #<number>` on its own line in the PR body (the reliable auto-close mechanism).
 - **Issue → PR:** the comment above, so the issue thread shows where the fix lives.
+
+#### 4b. Verify Auto-Close After Merge
+
+After a PR is merged, verify the issue actually closed:
+
+```bash
+# Check the issue state — should be CLOSED
+gh issue view <issue-number> --repo negativeeddy/arm-sharp --json state --jq .state
+```
+
+If the issue is still OPEN after the PR merged, the `Fixes` keyword wasn't recognized. Close it manually:
+
+```bash
+gh issue close <issue-number> --repo negativeeddy/arm-sharp --reason completed
+```
+
+Then add a comment explaining:
+```bash
+gh issue comment <issue-number> --repo negativeeddy/arm-sharp \
+  --body "Closed manually — PR #<pr-number> was merged with this fix but auto-close did not trigger."
+```
 
 ### Step 5: Move to Next Issue
 
@@ -170,12 +202,17 @@ Print a summary with one row per issue/PR:
 | #N | <title> | 🟡 Medium | fix/code-review-#N → PR #NN |
 | #M | <title> | 🟢 Low | fix/code-review-#M → PR #MM |
 
-Each issue above has a comment linking to its PR, and each PR links back via `closes #N`.
+Each issue above has a comment linking to its PR, and each PR links back via `Fixes #N`.
 
 ### Skipped
 | Issue | Title | Reason |
 |-------|-------|--------|
 | #P | <title> | Needs deeper investigation |
+
+### Orphaned (auto-close failed)
+| Issue | Merged PR | Action Taken |
+|-------|-----------|--------------|
+| #Q | PR #RR | Closed manually after verifying fix |
 ```
 
 ## Handling `needs-investigation` Issues
@@ -193,16 +230,43 @@ These issues require a deep review before a fix can be prescribed. When working 
    - Comment with evidence of why it's safe
    - Close the issue: `gh issue close <number> --repo negativeeddy/arm-sharp`
 
+## Closing Orphaned Issues (Merged PRs That Didn't Auto-Close)
+
+Sometimes an issue remains OPEN even though a PR that fixes it has been merged. This happens when:
+- The PR body used `Fixes #N` in a non-standard format (e.g., `Fixes #67 and #69` — only the first gets closed)
+- The `Fixes` keyword was missing from the PR body and the commit message only had it on a feature branch
+- The PR used `closes`/`resolves` in a sentence rather than as a standalone keyword phrase
+
+**Procedure to find and close orphaned issues:**
+
+```bash
+# 1. List all merged PRs
+gh pr list --repo negativeeddy/arm-sharp --state merged --limit 100 \
+  --json number,title,body,headRefName
+
+# 2. For each PR body, extract issue references
+# Look for "Fixes #N", "Fixes #N, Fixes #M" patterns
+# Check if those issues are still OPEN
+
+# 3. For each orphaned issue, verify the fix is actually in the codebase
+# Then close it:
+gh issue close <number> --repo negativeeddy/arm-sharp --reason completed
+gh issue comment <number> --repo negativeeddy/arm-sharp \
+  --body "Closed manually — PR #<pr-number> merged with this fix but auto-close did not trigger. Root cause: <explanation>."
+```
+
 ## Safety Rules
 
 - **Never modify running services** — only build and test
 - **One issue per branch and PR** — never mix fixes for different issues in a single branch/PR; keep each issue's fix isolated
-- **Cross-link every issue and PR** — PR references the issue via `closes #N`, and a comment on the issue links the PR
+- **Cross-link every issue and PR** — PR body uses `Fixes #N` on its own line, and a comment on the issue links the PR
+- **`Fixes #N` must be on its own line** — GitHub ignores `Fixes #N` when embedded in prose like `Fixes #N and #M`
 - **One fix per commit** — easy to revert individual fixes
 - **Always run tests** before committing
 - **Skip if uncertain** — mark as needs-investigation and move on
 - **Respect the priority order** — critical first, then medium, then low
 - **Always branch from an up-to-date `master`** — pull before creating each issue branch so every PR is small and conflict-free
+- **Verify auto-close after merge** — check that each issue actually closed; if not, close it manually with a comment
 
 ## Quick Reference Commands
 
@@ -219,13 +283,30 @@ gh issue comment <number> --repo negativeeddy/arm-sharp --body "..."
 # Close an issue
 gh issue close <number> --repo negativeeddy/arm-sharp
 
+# Check if an issue was auto-closed after PR merge
+gh issue view <number> --repo negativeeddy/arm-sharp --json state --jq .state
+
 # Per-issue branch + PR workflow (repeat for each issue)
 git checkout master && git pull --ff-only
 git checkout -b fix/code-review-#<issue-number>
 # ... implement + verify + commit ...
 git push -u origin fix/code-review-#<issue-number>
-gh pr create --repo negativeeddy/arm-sharp --title "fix: <short description> (closes #<number>)" --body "..."
+gh pr create --repo negativeeddy/arm-sharp \
+  --title "fix: <short description> (closes #<number>)" \
+  --body "Automated fix from periodic code review cleanup.
+
+Fixes #<number>
+
+### Changes
+<brief summary>
+
+### Testing
+- All existing tests pass"
 # Cross-link the issue back to the PR so each references the other:
 pr_url=$(gh pr view fix/code-review-#<issue-number> --repo negativeeddy/arm-sharp --json url --jq .url)
 gh issue comment <issue-number> --repo negativeeddy/arm-sharp --body "Fix submitted in PR: $pr_url (auto-closes this issue on merge)."
+
+# Find orphaned issues (open issues with merged PRs that should have closed them)
+gh pr list --repo negativeeddy/arm-sharp --state merged --limit 100 \
+  --json number,title,body --jq '.[] | select(.body | test("Fixes #[0-9]+")) | "\(.number)\t\(.title)"'
 ```
