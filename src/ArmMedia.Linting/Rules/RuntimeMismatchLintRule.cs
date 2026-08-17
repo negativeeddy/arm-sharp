@@ -33,8 +33,12 @@ public sealed class RuntimeMismatchLintRule : ILintRule
             if (track.IsExtra) continue;
             if (track.Duration is null) continue;
 
+            // For multi-part tracks, scale the expected duration by episode count
+            var episodeCount = track.Episodes.Length > 0 ? track.Episodes.Length : 1;
+            var scaledExpected = TimeSpan.FromSeconds(expected.TotalSeconds * episodeCount);
+
             double actualSec = track.Duration.Value.TotalSeconds;
-            double diffRatio = Math.Abs(actualSec - expected.TotalSeconds) / expected.TotalSeconds;
+            double diffRatio = Math.Abs(actualSec - scaledExpected.TotalSeconds) / scaledExpected.TotalSeconds;
 
             if (diffRatio > 0.25)
             {
@@ -45,7 +49,7 @@ public sealed class RuntimeMismatchLintRule : ILintRule
                     TrackIndex = track.TrackIndex,
                     Message    = $"Track {track.TrackIndex} (S{track.Season:D2}E{string.Join("E", track.Episodes.Select(e => e.ToString("D2")))}): " +
                                  $"duration {track.Duration.Value.TotalMinutes:F0} min differs significantly from expected " +
-                                 $"{expected.TotalMinutes:F0} min ({diffRatio * 100:F0}% deviation). Verify episode assignment."
+                                 $"{scaledExpected.TotalMinutes:F0} min ({diffRatio * 100:F0}% deviation). Verify episode assignment."
                 };
             }
         }
