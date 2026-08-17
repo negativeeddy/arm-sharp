@@ -146,25 +146,25 @@ public class Job
     {
         if (string.IsNullOrEmpty(CompletedStages))
             return false;
-        var name = stage.ToString();
+        var key = stage.ToStageKey();
         return CompletedStages.Split('|', StringSplitOptions.RemoveEmptyEntries)
-            .Any(s => s.Equals(name, StringComparison.OrdinalIgnoreCase));
+            .Any(s => s.Equals(key, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>Marks a stage as completed. Appends to CompletedStages if not already present.</summary>
     public void MarkStageComplete(RipStage stage)
     {
-        var name = stage.ToString();
+        var key = stage.ToStageKey();
         var stages = string.IsNullOrEmpty(CompletedStages)
             ? Array.Empty<string>()
             : CompletedStages.Split('|', StringSplitOptions.RemoveEmptyEntries);
 
-        if (stages.Any(s => s.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        if (stages.Any(s => s.Equals(key, StringComparison.OrdinalIgnoreCase)))
             return;
 
         CompletedStages = string.IsNullOrEmpty(CompletedStages)
-            ? name
-            : $"{CompletedStages}|{name}";
+            ? key
+            : $"{CompletedStages}|{key}";
     }
 
     /// <summary>Transition to a new pipeline stage, recording the start time.</summary>
