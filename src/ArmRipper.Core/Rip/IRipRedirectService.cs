@@ -19,7 +19,8 @@ public interface IRipRedirectService
 
     /// <summary>
     /// Requests a redirect for the job. Marks a redirect as pending and cancels
-    /// the active rip (if any). Returns true when a rip was actually cancelled.
+    /// the active rip (if any). Returns true only when a rip was actively in
+    /// progress and was cancelled — returns false when MakeMKV has already exited.
     /// </summary>
     bool RequestRedirect(int jobId);
 
