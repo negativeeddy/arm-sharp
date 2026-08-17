@@ -189,7 +189,7 @@ public sealed class ArmRipperService(
     /// internal shuttle between the orchestrator and its extracted sub-phases
     /// so that each phase can stay small and independently testable.
     /// </summary>
-    private sealed class RipContext
+    internal sealed class RipContext
     {
         public required string JobTitle { get; init; }
         public required string TranscodeOutPath { get; set; }
@@ -233,7 +233,7 @@ public sealed class ArmRipperService(
     /// Computes all output paths, transitions the job to the Identify stage,
     /// and applies duplicate-folder suffixes when needed.
     /// </summary>
-    private async Task<RipContext> ComputeRipContextAsync(Job job, bool hasDupes, bool protection, CancellationToken ct)
+    internal async Task<RipContext> ComputeRipContextAsync(Job job, bool hasDupes, bool protection, CancellationToken ct)
     {
         var typeSubFolder = ConvertJobType(job.VideoType);
         var jobTitle = FixJobTitle(job);
@@ -299,7 +299,7 @@ public sealed class ArmRipperService(
     /// When <see cref="ArmSettings.TestMode"/> is enabled, trims every MKV in
     /// the transcode input directory to 30 seconds for quick validation.
     /// </summary>
-    private async Task TestModeTrimAsync(string? transcodeInPath, CancellationToken ct)
+    internal async Task TestModeTrimAsync(string? transcodeInPath, CancellationToken ct)
     {
         if (!settings.Value.TestMode || transcodeInPath is null || !Directory.Exists(transcodeInPath))
             return;
@@ -466,7 +466,7 @@ public sealed class ArmRipperService(
     /// enabled, but only if the transcode succeeded — otherwise the files are
     /// kept so the job can be retried.
     /// </summary>
-    private void CleanupRawFiles(Job job, RipContext ctx, bool transcodeSucceeded)
+    internal void CleanupRawFiles(Job job, RipContext ctx, bool transcodeSucceeded)
     {
         var delRaw = job.Config?.DelRawFiles ?? settings.Value.DelRawFiles;
         if (delRaw)
