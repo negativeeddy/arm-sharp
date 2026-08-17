@@ -195,7 +195,16 @@ public partial class MakeMkvService : IMakeMkvService
                     continue;
 
                 lineCount++;
-                var parsed = ParseLine(line);
+                MakeMkvOutputParser.ParsedLine? parsed;
+                try
+                {
+                    parsed = ParseLine(line);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Error parsing MakeMKV info line: {Line}", line);
+                    continue;
+                }
                 if (parsed is null) continue;
 
                 switch (parsed.Data)
