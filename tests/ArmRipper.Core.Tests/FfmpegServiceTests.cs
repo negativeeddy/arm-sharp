@@ -21,7 +21,7 @@ public sealed class FfmpegServiceTests
 
         _service = new FfmpegService(
             _runnerMock.Object,
-            NullLoggerFactory.Instance,
+            NullLogger<FfmpegService>.Instance,
             TestHelpers.CreateDbContext(),
             TestHelpers.CreateOptions(),
             Mock.Of<ITranscodeSlotLimiter>());

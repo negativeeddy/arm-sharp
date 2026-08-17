@@ -12,8 +12,8 @@ public sealed class DatabaseSubmitService(
     ArmDbContext db,
     IHttpClientFactory httpClientFactory,
     IOptions<ArmSettings> settings,
-    ILoggerFactory loggerFactory)
-    : SubmitServiceBase(db, loggerFactory.CreateLogger("DatabaseSubmitService")), IDatabaseSubmitService
+    ILogger<DatabaseSubmitService> logger)
+    : SubmitServiceBase(db, logger), IDatabaseSubmitService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

@@ -10,10 +10,9 @@ using Microsoft.Extensions.Options;
 
 namespace ArmRipper.Core.Infrastructure;
 
-public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILoggerFactory loggerFactory, IOptions<ArmSettings> settings, Func<string, bool>? mediaPresenceChecker = null)
+public sealed class BackgroundRipService(IServiceScopeFactory scopeFactory, ILogger<BackgroundRipService> logger, IOptions<ArmSettings> settings, Func<string, bool>? mediaPresenceChecker = null)
     : IBackgroundRipService
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("BackgroundRipService");
     private readonly IOptions<ArmSettings> _settings = settings;
     private readonly Func<string, bool> _isMediaPresent = mediaPresenceChecker ?? IsMediaPresent;
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _activeRips = new();

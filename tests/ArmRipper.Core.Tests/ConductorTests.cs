@@ -58,7 +58,7 @@ public sealed class ConductorTests : IDisposable
         var musicBrainzService = musicBrainz ?? new Mock<IMusicBrainzService>().Object;
         options ??= CreateTestOptions();
         return new Conductor(
-            NullLoggerFactory.Instance,
+            NullLogger<Conductor>.Instance,
             _db,
             runner,
             options,
@@ -66,7 +66,7 @@ public sealed class ConductorTests : IDisposable
             identify ?? new MockIdentifyService(),
             ripper ?? new MockArmRipperService(),
             musicBrainzService,
-            new NotificationService(NullLoggerFactory.Instance, _db, runner, Mock.Of<IHttpClientFactory>(), []),
+            new NotificationService(NullLogger<NotificationService>.Instance, _db, runner, Mock.Of<IHttpClientFactory>(), []),
             [],
             new JobFileLoggerProvider());
     }

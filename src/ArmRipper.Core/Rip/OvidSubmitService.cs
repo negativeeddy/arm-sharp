@@ -13,8 +13,8 @@ namespace ArmRipper.Core.Rip;
 public sealed class OvidSubmitService(
     ArmDbContext db,
     OvidApiClient ovidApiClient,
-    ILoggerFactory loggerFactory)
-    : SubmitServiceBase(db, loggerFactory.CreateLogger("OvidSubmitService")), IOvidSubmitService
+    ILogger<OvidSubmitService> logger)
+    : SubmitServiceBase(db, logger), IOvidSubmitService
 {
     public override async Task<SubmitResult> SubmitJobAsync(Job job, CancellationToken ct = default)
     {

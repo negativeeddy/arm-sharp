@@ -24,11 +24,11 @@ public sealed class DiscPollingService(
     IServiceScopeFactory scopeFactory,
     IOptions<ArmSettings> settings,
     ILoggerFactory loggerFactory,
+    ILogger<DiscPollingService> logger,
     INotificationBroadcaster broadcaster,
     IBackgroundRipService backgroundRipService)
     : BackgroundService, IDiscPollingNotifier
 {
-    private readonly ILogger _logger = loggerFactory.CreateLogger("DiscPollingService");
     private readonly IOptions<ArmSettings> _settings = settings;
 
     /// <summary>Seconds to wait after a uevent before reading sysfs.</summary>
@@ -60,11 +60,11 @@ public sealed class DiscPollingService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("DiscPollingService started (signal-driven mode)");
+        logger.LogInformation("DiscPollingService started (signal-driven mode)");
 
         if (!OperatingSystem.IsLinux())
         {
-            _logger.LogWarning("UeventMonitor requires Linux — disc detection unavailable");
+            logger.LogWarning("UeventMonitor requires Linux — disc detection unavailable");
             return;
         }
 
@@ -127,12 +127,12 @@ public sealed class DiscPollingService(
                 _monitor = monitor;
                 _pumpCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 _pumpTask = PumpUeventsAsync(monitor, _pumpCts.Token);
-                _logger.LogInformation("UeventMonitor active — disc detection is purely event-driven");
+                logger.LogInformation("UeventMonitor active — disc detection is purely event-driven");
             }
         }
         else if (!enabled && _pumpTask is not null)
         {
-            _logger.LogInformation("Disc detection disabled via configuration — stopping UeventMonitor");
+            logger.LogInformation("Disc detection disabled via configuration — stopping UeventMonitor");
             await StopPumpAsync(_pumpCts, _pumpTask);
             _monitor?.Dispose();
             _monitor = null;
@@ -145,7 +145,7 @@ public sealed class DiscPollingService(
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("DiscPollingService stopping");
+        logger.LogInformation("DiscPollingService stopping");
         // Unblock the main loop so it can exit promptly
         NotifySettingChanged();
         await base.StopAsync(cancellationToken);
@@ -187,7 +187,7 @@ public sealed class DiscPollingService(
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            _logger.LogWarning(ex, "Failed to query effective DiscPollingEnabled setting; using file config");
+            logger.LogWarning(ex, "Failed to query effective DiscPollingEnabled setting; using file config");
             return _settings.Value.DiscPollingEnabled;
         }
     }
@@ -220,7 +220,7 @@ public sealed class DiscPollingService(
                 if (msg.Subsystem == "block" && msg.DevName?.StartsWith("sr") == true)
                 {
                     var dmc = msg.Properties.TryGetValue("DISK_MEDIA_CHANGE", out var d) ? d : "(absent)";
-                    _logger.LogInformation(
+                    logger.LogInformation(
                         "Uevent: {Action} on /dev/{Dev} (mediaChange={IsMediaChange}, DISK_MEDIA_CHANGE={Dmc})",
                         msg.Action, msg.DevName, msg.IsMediaChange, dmc);
                 }
@@ -245,11 +245,11 @@ public sealed class DiscPollingService(
                 // Only one settle/check cycle per device at a time.
                 if (!_inflightChecks.TryAdd(msg.DevName, true))
                 {
-                    _logger.LogInformation("Settle already in progress for /dev/{Dev} — ignoring duplicate uevent", msg.DevName);
+                    logger.LogInformation("Settle already in progress for /dev/{Dev} — ignoring duplicate uevent", msg.DevName);
                     continue;
                 }
 
-                _logger.LogInformation("Media change detected on {Dev} — starting settle timer", devPath);
+                logger.LogInformation("Media change detected on {Dev} — starting settle timer", devPath);
 
                 // Handle asynchronously (settle + sysfs verify); release lock when done
                 _ = HandleMediaChangeAsync(devPath, ct);
@@ -261,7 +261,7 @@ public sealed class DiscPollingService(
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Uevent pump exited unexpectedly");
+            logger.LogWarning(ex, "Uevent pump exited unexpectedly");
         }
     }
 
@@ -278,12 +278,12 @@ public sealed class DiscPollingService(
 
             if (size > 0)
             {
-                _logger.LogInformation("Disc detected in /dev/{Dev} ({Size} sectors)", devName, size);
+                logger.LogInformation("Disc detected in /dev/{Dev} ({Size} sectors)", devName, size);
                 await HandleDiscInsertedAsync(devPath);
             }
             else
             {
-                _logger.LogInformation("Disc removed from /dev/{Dev}", devName);
+                logger.LogInformation("Disc removed from /dev/{Dev}", devName);
                 backgroundRipService.RecordManualEject(devPath);
                 await HandleDiscRemovedAsync(devPath);
             }
@@ -294,7 +294,7 @@ public sealed class DiscPollingService(
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error handling media change for {DevPath}", devPath);
+            logger.LogError(ex, "Error handling media change for {DevPath}", devPath);
         }
         finally
         {
@@ -315,7 +315,7 @@ public sealed class DiscPollingService(
         var verifySectors = await ReadSysfsSizeAsync(devName, CancellationToken.None);
         if (verifySectors <= 0)
         {
-            _logger.LogInformation(
+            logger.LogInformation(
                 "Ignoring insertion event for {DevPath} — no media present ({Sectors} sectors, likely tray closed without disc)",
                 devPath, verifySectors);
             return;
@@ -352,18 +352,18 @@ public sealed class DiscPollingService(
                 drive.ReadDvd = (caps & 0x04) != 0;
                 drive.ReadBd = (caps & 0x100) != 0;
 
-                _logger.LogDebug("Enriched drive /dev/{Dev} from sysfs: Model={Model}, Firmware={Fw}, Caps=0x{Caps:X}",
+                logger.LogDebug("Enriched drive /dev/{Dev} from sysfs: Model={Model}, Firmware={Fw}, Caps=0x{Caps:X}",
                     devName, drive.Model, drive.Firmware, caps);
 
                 db.SystemDrives.Add(drive);
                 await db.SaveChangesAsync();
-                _logger.LogInformation("Auto-registered new drive {DevPath} with mode 'autodetect'", devPath);
+                logger.LogInformation("Auto-registered new drive {DevPath} with mode 'autodetect'", devPath);
             }
 
             // ── Check drive mode ──
             if (drive.DriveMode != "autodetect")
             {
-                _logger.LogInformation(
+                logger.LogInformation(
                     "Drive {DevPath} is in '{Mode}' mode — skipping auto rip",
                     devPath, drive.DriveMode);
                 return;
@@ -381,7 +381,7 @@ public sealed class DiscPollingService(
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to broadcast disc-detected notification");
+                logger.LogWarning(ex, "Failed to broadcast disc-detected notification");
             }
 
             // ── Start the rip ──
@@ -389,7 +389,7 @@ public sealed class DiscPollingService(
             var ripResult = ripService.StartRip(devPath);
             if (ripResult.IsRejected)
             {
-                _logger.LogWarning("Rip rejected for {DevPath}: {Reason}", devPath, ripResult.RejectionReason);
+                logger.LogWarning("Rip rejected for {DevPath}: {Reason}", devPath, ripResult.RejectionReason);
                 try
                 {
                     await broadcaster.BroadcastAsync(new Notification
@@ -401,17 +401,17 @@ public sealed class DiscPollingService(
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to broadcast rip-rejected notification");
+                    logger.LogWarning(ex, "Failed to broadcast rip-rejected notification");
                 }
             }
             else
             {
-                _logger.LogInformation("Rip initiated for {DevPath}", devPath);
+                logger.LogInformation("Rip initiated for {DevPath}", devPath);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error handling disc insertion for {DevPath}", devPath);
+            logger.LogError(ex, "Error handling disc insertion for {DevPath}", devPath);
         }
     }
 
@@ -428,7 +428,7 @@ public sealed class DiscPollingService(
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to broadcast disc-removed notification");
+            logger.LogWarning(ex, "Failed to broadcast disc-removed notification");
         }
     }
 

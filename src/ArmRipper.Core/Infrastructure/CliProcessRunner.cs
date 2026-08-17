@@ -4,9 +4,8 @@ using Microsoft.Extensions.Logging;
 
 namespace ArmRipper.Core.Infrastructure;
 
-public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
+public class CliProcessRunner(ILogger<CliProcessRunner> logger) : ICliProcessRunner
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger(nameof(CliProcessRunner));
     public async Task<CliResult> RunAsync(
         string fileName,
         string arguments,

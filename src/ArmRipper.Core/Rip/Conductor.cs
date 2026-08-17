@@ -10,7 +10,7 @@ using Microsoft.Extensions.Options;
 namespace ArmRipper.Core.Rip;
 
 public sealed class Conductor(
-    ILoggerFactory loggerFactory,
+    ILogger<Conductor> logger,
     ArmDbContext db,
     ICliProcessRunner runner,
     IOptions<ArmSettings> settings,
@@ -22,7 +22,6 @@ public sealed class Conductor(
     IEnumerable<INotificationBroadcaster> broadcasters,
     JobFileLoggerProvider fileLogProvider) : IConductor
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger("Conductor");
     /// <summary>Broadcast job state to all connected UI clients with error handling.</summary>
     private async Task BroadcastJobUpdateAsync(Job job)
     {

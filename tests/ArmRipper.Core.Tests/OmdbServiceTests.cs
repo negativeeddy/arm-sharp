@@ -32,7 +32,7 @@ public sealed class OmdbServiceTests
     public async Task SearchAsync_WhenApiReturnsResults_ReturnsSearchResult()
     {
         var client = TestHelpers.CreateMockHttpClient(SearchResponse);
-        var service = new OmdbService(NullLoggerFactory.Instance, client);
+        var service = new OmdbService(NullLogger<OmdbService>.Instance, client);
 
         var result = await service.SearchAsync("fake_key", "The Matrix");
 
@@ -47,7 +47,7 @@ public sealed class OmdbServiceTests
     public async Task SearchAsync_WhenApiReturnsError_ReturnsErrorResult()
     {
         var client = TestHelpers.CreateMockHttpClient(ErrorResponse);
-        var service = new OmdbService(NullLoggerFactory.Instance, client);
+        var service = new OmdbService(NullLogger<OmdbService>.Instance, client);
 
         var result = await service.SearchAsync("fake_key", "NonExistentMovie");
 
@@ -62,7 +62,7 @@ public sealed class OmdbServiceTests
     public async Task SearchAsync_WhenApiReturns500_ReturnsNull()
     {
         var client = TestHelpers.CreateMockHttpClient("Server Error", HttpStatusCode.InternalServerError);
-        var service = new OmdbService(NullLoggerFactory.Instance, client);
+        var service = new OmdbService(NullLogger<OmdbService>.Instance, client);
 
         var result = await service.SearchAsync("fake_key", "The Matrix");
 
@@ -83,7 +83,7 @@ public sealed class OmdbServiceTests
             }
             """;
         var client = TestHelpers.CreateMockHttpClient(response);
-        var service = new OmdbService(NullLoggerFactory.Instance, client);
+        var service = new OmdbService(NullLogger<OmdbService>.Instance, client);
 
         var result = await service.LookupByImdbAsync("tt0133093", "fake_key");
 
@@ -96,7 +96,7 @@ public sealed class OmdbServiceTests
     public async Task LookupByImdbAsync_InvalidId_ReturnsErrorResponse()
     {
         var client = TestHelpers.CreateMockHttpClient(ErrorResponse);
-        var service = new OmdbService(NullLoggerFactory.Instance, client);
+        var service = new OmdbService(NullLogger<OmdbService>.Instance, client);
 
         var result = await service.LookupByImdbAsync("tt0000000", "fake_key");
 
@@ -117,7 +117,7 @@ public sealed class OmdbServiceTests
             }
             """;
         var client = TestHelpers.CreateMockHttpClient(response);
-        var service = new OmdbService(NullLoggerFactory.Instance, client);
+        var service = new OmdbService(NullLogger<OmdbService>.Instance, client);
 
         var (posterUrl, imdbId) = await service.GetPosterAsync("fake_key", imdbId: "tt0133093");
 

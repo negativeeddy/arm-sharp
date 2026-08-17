@@ -112,13 +112,13 @@ public sealed class RipVerificationIntegrationTests : IDisposable
             .ReturnsAsync(() => tracks.ToList());
 
         var service = new ArmRipperService(
-            NullLoggerFactory.Instance,
+            NullLogger<ArmRipperService>.Instance,
             _db,
             makeMkv.Object,
             Mock.Of<IHandBrakeService>(),
             ffmpeg.Object,
             runner.Object,
-            new NotificationService(NullLoggerFactory.Instance, _db, runner.Object, Mock.Of<IHttpClientFactory>(), []),
+            new NotificationService(NullLogger<NotificationService>.Instance, _db, runner.Object, Mock.Of<IHttpClientFactory>(), []),
             _options,
             [],
             Mock.Of<IIdentifyService>(),
