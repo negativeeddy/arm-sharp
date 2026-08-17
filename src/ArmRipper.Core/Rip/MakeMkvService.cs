@@ -146,7 +146,16 @@ public partial class MakeMkvService : IMakeMkvService
         {
             if (string.IsNullOrWhiteSpace(line)) continue;
 
-            var parsed = ParseLine(line);
+            MakeMkvOutputParser.ParsedLine? parsed;
+            try
+            {
+                parsed = ParseLine(line);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Error parsing MakeMKV output line: {Line}", line);
+                continue;
+            }
             if (parsed is null) continue;
 
             if (select.HasFlag(parsed.Type) && parsed.Data is T result)
