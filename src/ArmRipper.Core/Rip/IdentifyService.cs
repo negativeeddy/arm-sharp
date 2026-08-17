@@ -199,6 +199,7 @@ public sealed partial class IdentifyService(
                      mapping.Type.Equals("Series", StringComparison.OrdinalIgnoreCase)))
                 {
                     job.VideoType = VideoContentType.Tv;
+                    job.VideoTypeAuto = VideoContentType.Tv;
                 }
 
                 if (string.IsNullOrEmpty(job.YearAuto) && !string.IsNullOrEmpty(mapping.Year))
