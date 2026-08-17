@@ -204,6 +204,13 @@ public sealed class OvidApiClient
                 return (true, "Already registered", 409);
             }
 
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                var retryAfter = response.Headers.RetryAfter?.Delta;
+                _logger.LogWarning("OVID register rate limited for fingerprint {Fingerprint} (retry-after: {RetryAfter})", fingerprint, retryAfter?.TotalSeconds ?? 0);
+                return (false, $"Rate limited (429). Retry after {retryAfter?.TotalSeconds ?? 0}s", 429);
+            }
+
             _logger.LogWarning("OVID register failed ({Status}): {Body}", response.StatusCode, responseBody);
             return (false, $"HTTP {response.StatusCode}: {responseBody}", (int)response.StatusCode);
         }
@@ -280,6 +287,13 @@ public sealed class OvidApiClient
             {
                 _logger.LogInformation("OVID submit for {Title}: {Status}", title, response.StatusCode);
                 return (true, responseBody, (int)response.StatusCode);
+            }
+
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                var retryAfter = response.Headers.RetryAfter?.Delta;
+                _logger.LogWarning("OVID submit rate limited for {Title} (retry-after: {RetryAfter})", title, retryAfter?.TotalSeconds ?? 0);
+                return (false, $"Rate limited (429). Retry after {retryAfter?.TotalSeconds ?? 0}s", 429);
             }
 
             _logger.LogWarning("OVID submit failed ({Status}): {Body}", response.StatusCode, responseBody);
