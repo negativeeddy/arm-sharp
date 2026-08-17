@@ -40,6 +40,11 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
             }
         }
 
+        // Pass the effective MainFeature flag so the view matches the rip pipeline's
+        // fallback logic: job.Config?.MainFeature ?? effective.MainFeature.
+        var effective = await settingsService.GetEffectiveAsync(ct);
+        ViewBag.EffectiveMainFeature = effective.MainFeature;
+
         return View(job);
     }
 

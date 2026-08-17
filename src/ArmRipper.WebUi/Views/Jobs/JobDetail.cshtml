@@ -437,7 +437,7 @@ else
                 @{
                     var orderedTracks = Model.Tracks.OrderBy(t => t.TrackNumber).ToList();
                     var trackTableRippable = Model.Status.IsRippingState();
-                    var trackTableMainFeature = Model.Config?.MainFeature ?? true;
+                    var trackTableMainFeature = Model.Config?.MainFeature ?? (bool)(ViewBag.EffectiveMainFeature ?? true);
                     for (var idx = 0; idx < orderedTracks.Count; idx++)
                     {
                         var track = orderedTracks[idx];
