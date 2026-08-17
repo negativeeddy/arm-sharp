@@ -5,6 +5,7 @@ using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
 using ArmRipper.Core.Notifications;
 using ArmRipper.Core.Rip;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -408,5 +409,79 @@ public sealed class RipVerificationIntegrationTests : IDisposable
         Assert.Equal("2", job.MainFeatureOverrideTrackNumber);
         var savedTrack = _db.Tracks.First(t => t.JobId == job.Id && t.TrackNumber == "2");
         Assert.True(savedTrack.MainFeature);
+    }
+
+    [Fact]
+    public async Task StaleTrackedEntity_OverrideWrittenBySeparateScope_FallsBackToAsNoTracking()
+    {
+        // Simulates the production scenario: the pipeline holds a stale tracked Job
+        // entity (MainFeatureOverrideTrackNumber is null). A separate DbContext scope
+        // (e.g. the redirect API endpoint) writes the override. The pipeline then
+        // falls back to an AsNoTracking DB read and picks up the override.
+        var (service, job, makeMkv, ffmpeg, _) = CreateService(tracks: new List<Track>
+        {
+            new()
+            {
+                JobId = 1,
+                TrackNumber = "1",
+                FileName = "title_t00.mkv",
+                Length = 9000,
+                FileSize = 5_000_000_000L,
+                Chapters = 30,
+                AspectRatio = "16:9",
+                Fps = 23.976,
+                Source = "MakeMKV",
+                BaseName = "Test Movie"
+            },
+            new()
+            {
+                JobId = 1,
+                TrackNumber = "2",
+                FileName = "title_t01.mkv",
+                Length = 6000,
+                FileSize = 3_000_000_000L,
+                Chapters = 12,
+                AspectRatio = "4:3",
+                Fps = 23.976,
+                Source = "MakeMKV",
+                BaseName = "Test Movie"
+            }
+        });
+
+        // The pipeline's tracked entity has no override — it was loaded before
+        // the user clicked "Redirect" in the UI.
+        Assert.Null(job.MainFeatureOverrideTrackNumber);
+
+        // Simulate the production scenario: a separate DbContext scope (the API
+        // controller) writes the override. We use ExecuteSqlRaw on the same
+        // connection to bypass EF Core change tracking, then detach the tracked
+        // entity so the pipeline sees a stale copy (MainFeatureOverrideTrackNumber
+        // is still null in memory).
+        await _db.Database.ExecuteSqlAsync(
+            $"UPDATE Jobs SET MainFeatureOverrideTrackNumber = '2' WHERE Id = {job.Id}");
+        _db.Entry(job).State = EntityState.Detached;
+
+        var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
+        Directory.CreateDirectory(makeMkvOutPath);
+        var outputFile = Path.Combine(makeMkvOutPath, "title_t01.mkv");
+        using (var fs = new FileStream(outputFile, FileMode.CreateNew))
+            fs.SetLength(3_000_000_000L);
+
+        ffmpeg.Setup(f => f.ProbeDurationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(6000.0);
+
+        var result = await InvokeAsync(service, job, makeMkvOutPath);
+
+        Assert.Equal(makeMkvOutPath, result);
+
+        // Track 2 was ripped despite the pipeline's tracked entity being stale.
+        makeMkv.Verify(m => m.RipTrackAsync(
+                It.IsAny<Job>(), "2", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        makeMkv.Verify(m => m.RipTrackAsync(
+                It.IsAny<Job>(), "1", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 }
