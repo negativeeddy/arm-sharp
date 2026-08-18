@@ -271,9 +271,10 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
     }
 
     [HttpGet("titlesearch")]
-    public async Task<IActionResult> TitleSearch(string query, int? jobId, bool exact = false, CancellationToken ct = default)
+    public async Task<IActionResult> TitleSearch(string query, int? jobId, bool exact = false, int page = 1, string? type = null, CancellationToken ct = default)
     {
         query = (query ?? string.Empty).Trim();
+        page = Math.Max(1, page);
 
         ViewBag.Jobs = await db.Jobs
             .OrderByDescending(j => j.StartTime)
@@ -281,6 +282,8 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
             .ToListAsync(ct);
         ViewBag.SelectedJobId = jobId;
         ViewBag.ExactMatch = exact;
+        ViewBag.CurrentPage = page;
+        ViewBag.SelectedType = type;
 
         // If redirected from the Completed page with an import file path, pass it to the view
         // so search results display an "Import & Transcode" button.
@@ -296,7 +299,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
         }
 
         if (string.IsNullOrWhiteSpace(query))
-            return View(Array.Empty<OmdbSearchItem>());
+            return View(new OmdbSearchResult());
 
         // The OMDB key is stored in the DB ripper_settings row (Settings page) and merged
         // on top of the file config by SettingsHelper — read it the same way Conductor does,
@@ -305,15 +308,17 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
         var apiKey = effective.OmdbApiKey;
         if (!string.IsNullOrEmpty(apiKey))
         {
-            var result = await omdb.SearchAsync(apiKey, query, exact: exact, ct: ct);
-            if (result?.Search is { Count: > 0 })
-                return View(result.Search);
+            var result = await omdb.SearchAsync(apiKey, query, exact: exact, page: page, type: type, ct: ct);
+            if (result is not null)
+            {
+                if (!string.IsNullOrEmpty(result.Error))
+                    ViewBag.ApiError = result.Error;
 
-            if (!string.IsNullOrEmpty(result?.Error))
-                ViewBag.ApiError = result.Error;
+                return View(result);
+            }
         }
 
-        return View(Array.Empty<OmdbSearchItem>());
+        return View(new OmdbSearchResult());
     }
 
     [HttpGet("select-title")]
