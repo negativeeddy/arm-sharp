@@ -7,20 +7,25 @@ namespace ArmRipper.Core.Metadata;
 public sealed class OmdbService(ILoggerFactory loggerFactory, HttpClient httpClient)
 {
     private readonly ILogger logger = loggerFactory.CreateLogger("OmdbService");
-    public async Task<OmdbSearchResult?> SearchAsync(string apiKey, string title, string? year = null, string? plot = "short", bool exact = false, CancellationToken ct = default)
+    public async Task<OmdbSearchResult?> SearchAsync(string apiKey, string title, string? year = null, string? plot = "short", bool exact = false, int page = 1, string? type = null, CancellationToken ct = default)
     {
         if (exact)
             return await SearchExactAsync(apiKey, title, year, plot, ct);
 
-        var url = $"https://www.omdbapi.com/?s={Uri.EscapeDataString(title)}&plot={plot}&r=json&apikey={apiKey}";
+        var url = $"https://www.omdbapi.com/?s={Uri.EscapeDataString(title)}&plot={plot}&r=json&page={page}&apikey={apiKey}";
         if (!string.IsNullOrEmpty(year))
-            url = $"https://www.omdbapi.com/?s={Uri.EscapeDataString(title)}&y={Uri.EscapeDataString(year)}&plot={plot}&r=json&apikey={apiKey}";
+            url += $"&y={Uri.EscapeDataString(year)}";
+        if (!string.IsNullOrEmpty(type))
+            url += $"&type={Uri.EscapeDataString(type)}";
 
         try
         {
             var result = await httpClient.GetFromJsonAsync<OmdbSearchResult>(url, ct);
             if (result is not null && result.Response == "True")
+            {
+                result.CurrentPage = page;
                 return result;
+            }
 
             // Return the result even on error so callers can read the Error property
             return result;
@@ -136,6 +141,20 @@ public class OmdbSearchResult
 
     [JsonPropertyName("totalResults")]
     public string? TotalResults { get; set; }
+
+    [JsonIgnore]
+    public int CurrentPage { get; set; } = 1;
+
+    [JsonIgnore]
+    public int TotalPages
+    {
+        get
+        {
+            if (int.TryParse(TotalResults, out var total) && total > 0)
+                return (total + 9) / 10;
+            return 0;
+        }
+    }
 }
 
 public class OmdbSearchItem
