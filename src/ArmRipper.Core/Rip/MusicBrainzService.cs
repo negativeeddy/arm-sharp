@@ -11,12 +11,13 @@ namespace ArmRipper.Core.Rip;
 
 public sealed partial class MusicBrainzService(
     ICliProcessRunner runner,
-    ILogger<MusicBrainzService> logger,
+    ILoggerFactory loggerFactory,
     ArmDbContext db,
     IOptions<ArmSettings> settings,
     HttpClient httpClient,
     ISettingsService? settingsService = null) : IMusicBrainzService
 {
+    private readonly ILogger logger = loggerFactory.CreateLogger("MusicBrainzService");
     private readonly ISettingsService _settingsService = settingsService ?? new SettingsService(db, settings);
     public async Task<string> IdentifyAsync(Job job, CancellationToken ct = default)
     {

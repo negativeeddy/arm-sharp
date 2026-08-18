@@ -26,10 +26,10 @@ public partial class MakeMkvService : IMakeMkvService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ISettingsService _settingsService;
 
-    public MakeMkvService(ICliProcessRunner runner, ILogger<MakeMkvService> logger, IOptions<ArmSettings> settings, ArmDbContext db, IHttpClientFactory httpClientFactory, ISettingsService? settingsService = null)
+    public MakeMkvService(ICliProcessRunner runner, ILoggerFactory loggerFactory, IOptions<ArmSettings> settings, ArmDbContext db, IHttpClientFactory httpClientFactory, ISettingsService? settingsService = null)
     {
         _runner = runner;
-        _logger = logger;
+        _logger = loggerFactory.CreateLogger("MakeMkvService");
         _settings = settings;
         _settingsService = settingsService ?? new SettingsService(db, settings);
         _db = db;

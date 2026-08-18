@@ -9,7 +9,6 @@ using ArmRipper.Core.Notifications;
 using ArmRipper.Core.Rip;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 
@@ -23,7 +22,8 @@ namespace ArmRipper.Core.Tests;
 public sealed class ArmRipperServicePhaseTests : IDisposable
 {
     private readonly ArmDbContext _db;
-    private readonly Mock<ILogger<ArmRipperService>> _logger;
+    private readonly Mock<ILoggerFactory> _loggerFactory;
+    private readonly Mock<ILogger> _logger;
     private readonly Mock<IMakeMkvService> _makeMkv;
     private readonly Mock<IHandBrakeService> _handBrake;
     private readonly Mock<IFfmpegService> _ffmpeg;
@@ -40,7 +40,9 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
     public ArmRipperServicePhaseTests()
     {
         _db = TestHelpers.CreateDbContext();
-        _logger = new Mock<ILogger<ArmRipperService>>();
+        _loggerFactory = new Mock<ILoggerFactory>();
+        _logger = new Mock<ILogger>();
+        _loggerFactory.Setup(f => f.CreateLogger(It.IsAny<string>())).Returns(_logger.Object);
         _makeMkv = new Mock<IMakeMkvService>();
         _handBrake = new Mock<IHandBrakeService>();
         _ffmpeg = new Mock<IFfmpegService>();
@@ -49,7 +51,7 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
         _broadcasters = new Mock<IEnumerable<INotificationBroadcaster>>();
         _broadcasters.Setup(b => b.GetEnumerator()).Returns(Enumerable.Empty<INotificationBroadcaster>().GetEnumerator());
         _notifications = new NotificationService(
-            NullLogger<NotificationService>.Instance,
+            _loggerFactory.Object,
             _db,
             _runner.Object,
             Mock.Of<IHttpClientFactory>(),
@@ -70,7 +72,7 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
             : _options;
 
         return new ArmRipperService(
-            _logger.Object,
+            _loggerFactory.Object,
             _db,
             _makeMkv.Object,
             _handBrake.Object,

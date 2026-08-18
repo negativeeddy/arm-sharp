@@ -130,7 +130,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
 
         var httpClient = CreateHttpClient(MusicBrainzXml());
         var service = new MusicBrainzService(
-            _runnerMock.Object, NullLogger<MusicBrainzService>.Instance, _db, _options, httpClient);
+            _runnerMock.Object, NullLoggerFactory.Instance, _db, _options, httpClient);
 
         var job = TestHelpers.CreateTestJob(j => j.HasNiceTitle = false);
         _db.Jobs.Add(job);
@@ -152,7 +152,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
 
         var httpClient = CreateHttpClient(MusicBrainzXml());
         var service = new MusicBrainzService(
-            _runnerMock.Object, NullLogger<MusicBrainzService>.Instance, _db, _options, httpClient);
+            _runnerMock.Object, NullLoggerFactory.Instance, _db, _options, httpClient);
 
         var job = TestHelpers.CreateTestJob();
         _db.Jobs.Add(job);
@@ -177,7 +177,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
 
         var httpClient = CreateHttpClient(MusicBrainzXml(offsetCount: "5"));
         var service = new MusicBrainzService(
-            _runnerMock.Object, NullLogger<MusicBrainzService>.Instance, _db, _options, httpClient);
+            _runnerMock.Object, NullLoggerFactory.Instance, _db, _options, httpClient);
 
         var job = TestHelpers.CreateTestJob();
         _db.Jobs.Add(job);
@@ -197,7 +197,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
 
         var httpClient = CreateHttpClient(MusicBrainzXml(offsetCount: "not-a-number"));
         var service = new MusicBrainzService(
-            _runnerMock.Object, NullLogger<MusicBrainzService>.Instance, _db, _options, httpClient);
+            _runnerMock.Object, NullLoggerFactory.Instance, _db, _options, httpClient);
 
         var job = TestHelpers.CreateTestJob();
         _db.Jobs.Add(job);
@@ -217,7 +217,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
 
         var httpClient = CreateHttpClient(MusicBrainzXml());
         var service = new MusicBrainzService(
-            _runnerMock.Object, NullLogger<MusicBrainzService>.Instance, _db, _options, httpClient);
+            _runnerMock.Object, NullLoggerFactory.Instance, _db, _options, httpClient);
 
         var job = TestHelpers.CreateTestJob();
         _db.Jobs.Add(job);
@@ -241,7 +241,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
 
         var httpClient = CreateHttpClient("not valid xml");
         var service = new MusicBrainzService(
-            _runnerMock.Object, NullLogger<MusicBrainzService>.Instance, _db, _options, httpClient);
+            _runnerMock.Object, NullLoggerFactory.Instance, _db, _options, httpClient);
 
         var job = TestHelpers.CreateTestJob();
         _db.Jobs.Add(job);
@@ -261,7 +261,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
 
         var httpClient = TestHelpers.CreateMockHttpClient("", HttpStatusCode.InternalServerError);
         var service = new MusicBrainzService(
-            _runnerMock.Object, NullLogger<MusicBrainzService>.Instance, _db, _options, httpClient);
+            _runnerMock.Object, NullLoggerFactory.Instance, _db, _options, httpClient);
 
         var job = TestHelpers.CreateTestJob();
         _db.Jobs.Add(job);
@@ -281,7 +281,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
 
         var httpClient = CreateHttpClient(CdStubXml());
         var service = new MusicBrainzService(
-            _runnerMock.Object, NullLogger<MusicBrainzService>.Instance, _db, _options, httpClient);
+            _runnerMock.Object, NullLoggerFactory.Instance, _db, _options, httpClient);
 
         var job = TestHelpers.CreateTestJob();
         _db.Jobs.Add(job);
@@ -304,7 +304,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
 
         var httpClient = CreateHttpClient(CdStubXml(trackCount: 5));
         var service = new MusicBrainzService(
-            _runnerMock.Object, NullLogger<MusicBrainzService>.Instance, _db, _options, httpClient);
+            _runnerMock.Object, NullLoggerFactory.Instance, _db, _options, httpClient);
 
         var job = TestHelpers.CreateTestJob();
         _db.Jobs.Add(job);
@@ -325,7 +325,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
         var xml = CdStubXml().Replace(">2<", ">invalid<");
         var httpClient = CreateHttpClient(xml);
         var service = new MusicBrainzService(
-            _runnerMock.Object, NullLogger<MusicBrainzService>.Instance, _db, _options, httpClient);
+            _runnerMock.Object, NullLoggerFactory.Instance, _db, _options, httpClient);
 
         var job = TestHelpers.CreateTestJob();
         _db.Jobs.Add(job);
@@ -345,7 +345,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
 
         var httpClient = CreateHttpClient(MusicBrainzXml(), CoverArtJson("https://art.example.com/cover.jpg"));
         var service = new MusicBrainzService(
-            _runnerMock.Object, NullLogger<MusicBrainzService>.Instance, _db, _options, httpClient);
+            _runnerMock.Object, NullLoggerFactory.Instance, _db, _options, httpClient);
 
         var job = TestHelpers.CreateTestJob();
         _db.Jobs.Add(job);
@@ -365,7 +365,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
 
         var httpClient = CreateHttpClient(MusicBrainzXml(), null);
         var service = new MusicBrainzService(
-            _runnerMock.Object, NullLogger<MusicBrainzService>.Instance, _db, _options, httpClient);
+            _runnerMock.Object, NullLoggerFactory.Instance, _db, _options, httpClient);
 
         var job = TestHelpers.CreateTestJob();
         _db.Jobs.Add(job);
@@ -387,7 +387,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
 
         var httpClient = CreateHttpClient(MusicBrainzXml());
         var service = new MusicBrainzService(
-            _runnerMock.Object, NullLogger<MusicBrainzService>.Instance, _db, options, httpClient);
+            _runnerMock.Object, NullLoggerFactory.Instance, _db, options, httpClient);
 
         var job = TestHelpers.CreateTestJob(j => j.HasNiceTitle = false);
         _db.Jobs.Add(job);
@@ -416,7 +416,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
 
         var httpClient = CreateHttpClient(xml);
         var service = new MusicBrainzService(
-            _runnerMock.Object, NullLogger<MusicBrainzService>.Instance, _db, _options, httpClient);
+            _runnerMock.Object, NullLoggerFactory.Instance, _db, _options, httpClient);
 
         var job = TestHelpers.CreateTestJob();
         _db.Jobs.Add(job);
@@ -437,7 +437,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
         var xml = MusicBrainzXml().Replace("<format>CD</format>", "<format>DVD</format>");
         var httpClient = CreateHttpClient(xml);
         var service = new MusicBrainzService(
-            _runnerMock.Object, NullLogger<MusicBrainzService>.Instance, _db, _options, httpClient);
+            _runnerMock.Object, NullLoggerFactory.Instance, _db, _options, httpClient);
 
         var job = TestHelpers.CreateTestJob();
         _db.Jobs.Add(job);

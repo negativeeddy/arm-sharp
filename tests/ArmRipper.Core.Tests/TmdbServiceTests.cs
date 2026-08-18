@@ -58,7 +58,7 @@ public sealed class TmdbServiceTests
     public async Task SearchMovieAsync_FindsMovie_ReturnsProcessedResult()
     {
         var client = TestHelpers.CreateMockHttpClient(MovieSearchResponse);
-        var service = new TmdbService(NullLogger<TmdbService>.Instance, client);
+        var service = new TmdbService(NullLoggerFactory.Instance, client);
 
         var result = await service.SearchMovieAsync("fake_key", "The Matrix");
 
@@ -77,7 +77,7 @@ public sealed class TmdbServiceTests
         handler.AddResponse("/search/movie", EmptyResponse);
         handler.AddResponse("/search/tv", TvSearchResponse);
         var client = new HttpClient(handler);
-        var service = new TmdbService(NullLogger<TmdbService>.Instance, client);
+        var service = new TmdbService(NullLoggerFactory.Instance, client);
 
         var result = await service.SearchMovieAsync("fake_key", "Game of Thrones");
 
@@ -117,7 +117,7 @@ public sealed class TmdbServiceTests
     public async Task SearchMovieAsync_NoResults_ReturnsNull()
     {
         var client = TestHelpers.CreateMockHttpClient(EmptyResponse);
-        var service = new TmdbService(NullLogger<TmdbService>.Instance, client);
+        var service = new TmdbService(NullLoggerFactory.Instance, client);
 
         var result = await service.SearchMovieAsync("fake_key", "NonExistentMovie");
 
@@ -143,7 +143,7 @@ public sealed class TmdbServiceTests
             }
             """;
         var client = TestHelpers.CreateMockHttpClient(response);
-        var service = new TmdbService(NullLogger<TmdbService>.Instance, client);
+        var service = new TmdbService(NullLoggerFactory.Instance, client);
 
         var result = await service.FindByImdbAsync("tt0133093", "fake_key");
 
@@ -163,7 +163,7 @@ public sealed class TmdbServiceTests
             }
             """;
         var client = TestHelpers.CreateMockHttpClient(response);
-        var service = new TmdbService(NullLogger<TmdbService>.Instance, client);
+        var service = new TmdbService(NullLoggerFactory.Instance, client);
 
         var result = await service.FindByImdbAsync("tt0000000", "fake_key");
 
@@ -174,7 +174,7 @@ public sealed class TmdbServiceTests
     public async Task GetPosterAsync_WithValidQuery_ReturnsPoster()
     {
         var client = TestHelpers.CreateMockHttpClient(MovieSearchResponse);
-        var service = new TmdbService(NullLogger<TmdbService>.Instance, client);
+        var service = new TmdbService(NullLoggerFactory.Instance, client);
 
         var (posterUrl, imdbId) = await service.GetPosterAsync("fake_key", "The Matrix");
 
@@ -186,7 +186,7 @@ public sealed class TmdbServiceTests
     public async Task GetPosterAsync_NoResults_ReturnsNull()
     {
         var client = TestHelpers.CreateMockHttpClient(EmptyResponse);
-        var service = new TmdbService(NullLogger<TmdbService>.Instance, client);
+        var service = new TmdbService(NullLoggerFactory.Instance, client);
 
         var (posterUrl, imdbId) = await service.GetPosterAsync("fake_key", "NonExistent");
 

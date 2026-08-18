@@ -16,7 +16,6 @@ namespace ArmRipper.Core.Rip;
 public sealed partial class IdentifyService(
     ICliProcessRunner runner,
     ILoggerFactory loggerFactory,
-    ILogger<IdentifyService> logger,
     ArmDbContext db,
     IOptions<ArmSettings> settings,
     ISettingsService settingsService,
@@ -29,6 +28,7 @@ public sealed partial class IdentifyService(
     IOptions<OvidProviderOptions> ovidOptions,
     ArmMedia.Core.Abstractions.ITitleNormalizer? titleNormalizer = null) : IIdentifyService
 {
+    private readonly ILogger logger = loggerFactory.CreateLogger("IdentifyService");
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

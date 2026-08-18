@@ -11,11 +11,12 @@ namespace ArmRipper.Core.Rip;
 
 public sealed partial class FfmpegService(
     ICliProcessRunner runner,
-    ILogger<FfmpegService> logger,
+    ILoggerFactory loggerFactory,
     ArmDbContext db,
     IOptions<ArmSettings> settings,
     ITranscodeSlotLimiter transcodeSlotLimiter) : IFfmpegService
 {
+    private readonly ILogger logger = loggerFactory.CreateLogger("FfmpegService");
 
     public async Task<string> GetVersionAsync(CancellationToken ct = default)
     {

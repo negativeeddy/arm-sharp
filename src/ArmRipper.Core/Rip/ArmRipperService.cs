@@ -13,7 +13,7 @@ using Microsoft.Extensions.Options;
 namespace ArmRipper.Core.Rip;
 
 public sealed class ArmRipperService(
-    ILogger<ArmRipperService> logger,
+    ILoggerFactory loggerFactory,
     ArmDbContext db,
     IMakeMkvService makeMkv,
     IHandBrakeService handBrake,
@@ -28,6 +28,7 @@ public sealed class ArmRipperService(
     IRipRedirectService ripRedirectService,
     IEpisodeIdentificationOrchestrator? episodeOrchestrator = null) : IArmRipperService
 {
+    private readonly ILogger logger = loggerFactory.CreateLogger("ArmRipperService");
     private static readonly TimeSpan ProgressBroadcastInterval = TimeSpan.FromMilliseconds(200);
     private readonly ConcurrentDictionary<string, (int Percent, DateTime LastBroadcastUtc)> progressBroadcastState = new();
 

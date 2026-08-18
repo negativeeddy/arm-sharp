@@ -32,7 +32,7 @@ public sealed class MakeMkvServiceTests : IDisposable
 
         _service = new MakeMkvService(
             _runnerMock.Object,
-            NullLogger<MakeMkvService>.Instance,
+            NullLoggerFactory.Instance,
             TestHelpers.CreateOptions(),
             _db,
             Mock.Of<IHttpClientFactory>());
@@ -385,7 +385,7 @@ public sealed class MakeMkvServiceTests : IDisposable
         var db = TestHelpers.CreateDbContext();
         var service = new MakeMkvService(
             _runnerMock.Object,
-            NullLogger<MakeMkvService>.Instance,
+            NullLoggerFactory.Instance,
             TestHelpers.CreateOptions(),
             db,
             Mock.Of<IHttpClientFactory>());
@@ -481,7 +481,7 @@ public sealed class MakeMkvServiceTests : IDisposable
             var settings = TestHelpers.CreateOptions(a => a.MakeMkvPermaKey = "T-PERMA-KEY");
             var service = new MakeMkvService(
                 _runnerMock.Object,
-                NullLogger<MakeMkvService>.Instance,
+                NullLoggerFactory.Instance,
                 settings,
                 _db,
                 Mock.Of<IHttpClientFactory>());
