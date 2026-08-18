@@ -484,4 +484,61 @@ public sealed class RipVerificationIntegrationTests : IDisposable
                 It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(12)]
+    public async Task TitleScanCompleted_SetsNoOfTitlesOnJob(int trackCount)
+    {
+        var tracks = Enumerable.Range(1, trackCount)
+            .Select(i => new Track
+            {
+                JobId = 1,
+                TrackNumber = i.ToString(),
+                FileName = $"title_t{i - 1:D2}.mkv",
+                Length = 6000 + i * 100,
+                FileSize = 1_000_000_000L + i * 100_000_000L,
+                Chapters = 10 + i,
+                AspectRatio = "16:9",
+                Fps = 23.976,
+                Source = "MakeMKV",
+                BaseName = "Test Movie"
+            })
+            .ToList();
+
+        var (service, job, makeMkv, ffmpeg, _) = CreateService(tracks: tracks);
+
+        makeMkv.Setup(m => m.RipTrackAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MakeMkvRipResult());
+
+        var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
+        Directory.CreateDirectory(makeMkvOutPath);
+
+        // Create one output file per track so the post-rip file matching succeeds.
+        foreach (var track in tracks)
+        {
+            var file = Path.Combine(makeMkvOutPath, track.FileName!);
+            using var fs = new FileStream(file, FileMode.CreateNew);
+            fs.SetLength(track.FileSize ?? 1_000_000_000L);
+        }
+
+        ffmpeg.Setup(f => f.ProbeDurationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string file, CancellationToken _) =>
+            {
+                // Return the scan-length for whichever file MakeMKV "ripped".
+                var match = tracks.FirstOrDefault(t => t.FileName != null && file.EndsWith(t.FileName));
+                return (double)(match?.Length ?? 6000);
+            });
+
+        await InvokeAsync(service, job, makeMkvOutPath);
+
+        Assert.Equal(trackCount, job.NoOfTitles);
+
+        // Also verify the value was persisted to the database.
+        var dbJob = await _db.Jobs.FindAsync(job.Id);
+        Assert.Equal(trackCount, dbJob!.NoOfTitles);
+    }
 }

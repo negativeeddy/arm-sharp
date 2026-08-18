@@ -733,6 +733,9 @@ else
             // Update title count when ripping starts
             if (update.titleCount != null) {
                 setText(findDd('Titles'), String(update.titleCount));
+                // Trigger pipeline refresh so the UI picks up the new title
+                // count immediately after the MakeMKV scan completes.
+                refreshPipeline();
             }
 
             // Refresh pipeline when progress or stage changes

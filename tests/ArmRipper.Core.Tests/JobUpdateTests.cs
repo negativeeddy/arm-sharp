@@ -93,4 +93,26 @@ public sealed class JobUpdateTests
         Assert.Null(update.StartingEpisodeNumber);
         Assert.False(update.HasNiceTitle);
     }
+
+    [Fact]
+    public void FromJob_MapsNoOfTitlesToTitleCount()
+    {
+        var job = TestHelpers.CreateTestJob(j => j.NoOfTitles = 12);
+
+        var update = JobUpdate.FromJob(job);
+
+        Assert.Equal(12, update.NoOfTitles);
+        Assert.Equal(12, update.TitleCount);
+    }
+
+    [Fact]
+    public void FromJob_NullNoOfTitles_MapsNull()
+    {
+        var job = TestHelpers.CreateTestJob(j => j.NoOfTitles = null);
+
+        var update = JobUpdate.FromJob(job);
+
+        Assert.Null(update.NoOfTitles);
+        Assert.Null(update.TitleCount);
+    }
 }
