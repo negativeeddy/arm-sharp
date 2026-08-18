@@ -273,6 +273,8 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
     [HttpGet("titlesearch")]
     public async Task<IActionResult> TitleSearch(string query, int? jobId, bool exact = false, CancellationToken ct = default)
     {
+        query = (query ?? string.Empty).Trim();
+
         ViewBag.Jobs = await db.Jobs
             .OrderByDescending(j => j.StartTime)
             .Take(20)
