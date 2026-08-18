@@ -1,8 +1,10 @@
 using ArmMedia.OvidProvider;
+using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace ArmRipper.Core.Rip;
 
@@ -13,11 +15,19 @@ namespace ArmRipper.Core.Rip;
 public sealed class OvidSubmitService(
     ArmDbContext db,
     OvidApiClient ovidApiClient,
+    IOptions<ArmSettings> settings,
     ILoggerFactory loggerFactory)
     : SubmitServiceBase(db, loggerFactory.CreateLogger("OvidSubmitService")), IOvidSubmitService
 {
     public override async Task<SubmitResult> SubmitJobAsync(Job job, CancellationToken ct = default)
     {
+        // Skip if OVID submission is disabled
+        if (!settings.Value.OvidSubmitEnabled)
+        {
+            Logger.LogDebug("OVID submission disabled via configuration, skipping job {JobId}", job.Id);
+            return new SubmitResult { Success = true, JobId = job.Id, Title = job.Title, Message = "OVID submission disabled", Status = "skipped" };
+        }
+
         // Skip if already submitted
         if (job.OvidSubmitted)
         {
@@ -93,6 +103,9 @@ public sealed class OvidSubmitService(
 
     protected override async Task<List<Job>> GetPendingJobsAsync(CancellationToken ct)
     {
+        if (!settings.Value.OvidSubmitEnabled)
+            return [];
+
         return await Db.Jobs
             .Where(j => !string.IsNullOrEmpty(j.OvidFingerprint) &&
                         (j.HasNiceTitle || !string.IsNullOrEmpty(j.TitleManual)) &&
