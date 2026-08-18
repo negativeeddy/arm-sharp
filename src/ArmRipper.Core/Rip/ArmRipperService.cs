@@ -620,6 +620,12 @@ public sealed class ArmRipperService(
 
         foreach (var track in tracks)
             db.Tracks.Add(track);
+
+        // Publish the title count immediately after the scan so the UI
+        // can show how many titles MakeMKV found on the disc.  Previously
+        // this was only set during transcode (HandBrake/ffmpeg), leaving
+        // the JobDetail page blank until transcode started.
+        job.NoOfTitles = tracks.Count;
         await db.SaveChangesAsync(ct);
 
         // ── DiscDb track mapping: promote short tracks that have a DiscDb match ──
