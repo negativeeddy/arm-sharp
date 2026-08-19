@@ -267,7 +267,7 @@
                             <tr>
                                 <td>Video Type</td><td id="id-videotype-auto">@(Model.VideoTypeAuto?.ToString() ?? "—")</td>
                                 <td>
-                                    <select name="videoType" class="form-select form-select-sm">
+                                    <select name="videoType" class="form-select form-select-sm" id="videoType-select" onchange="toggleTvFields()">
                                         <option value="">—</option>
                                         <option value="movie" selected="@(Model.VideoTypeManual == VideoContentType.Movie)">movie</option>
                                         <option value="series" selected="@(Model.VideoTypeManual == VideoContentType.Series)">series</option>
@@ -281,19 +281,19 @@
                                 <td><input type="text" name="imdbId" class="form-control form-control-sm" value="@(Model.ImdbIdManual ?? "")" /></td>
                                 <td><strong id="id-imdb-final">@Model.ImdbId</strong></td>
                             </tr>
-                            <tr>
+                            <tr id="row-season">
                                 <td>Season</td>
                                 <td id="id-season-auto">@(Model.SeasonNumberAuto?.ToString() ?? "—")</td>
                                 <td><input type="number" name="seasonNumber" class="form-control form-control-sm" min="0" placeholder="Use auto" value="@(Model.SeasonNumberManual?.ToString() ?? "")" /></td>
                                 <td><strong id="id-season-final">@(Model.SeasonNumber?.ToString() ?? "—")</strong></td>
                             </tr>
-                            <tr>
+                            <tr id="row-disc">
                                 <td>Disc</td>
                                 <td id="id-disc-auto">@(Model.DiscNumberAuto?.ToString() ?? "—")</td>
                                 <td><input type="number" name="discNumber" class="form-control form-control-sm" min="1" placeholder="Use auto" value="@(Model.DiscNumberManual?.ToString() ?? "")" /></td>
                                 <td><strong id="id-disc-final">@(Model.DiscNumber?.ToString() ?? "—")</strong></td>
                             </tr>
-                            <tr>
+                            <tr id="row-startep">
                                 <td>Starting Episode</td>
                                 <td class="text-muted small">Manual entry</td>
                                 <td><input type="number" name="startingEpisodeNumber" class="form-control form-control-sm" min="1" placeholder="Optional" value="@(Model.StartingEpisodeNumber?.ToString() ?? "")" /></td>
@@ -512,6 +512,9 @@ else
         var wasTerminal = false;
         var lastStage = '@(Model.Stage?.ToString())';
 
+        // Hide season/disc/starting-episode unless the video type is Series or Episode
+        toggleTvFields();
+
         function findDd(label) {
             var container = document.querySelector('[data-job-id="' + jobId + '"]');
             if (!container) return null;
@@ -669,6 +672,16 @@ else
 
         // Populate the identification form (Auto/Final columns) when the disc is
         // auto-detected. Manual inputs are left alone so the user can still edit them.
+        function toggleTvFields() {
+            var sel = document.getElementById('videoType-select');
+            var val = sel ? sel.value : '';
+            var isTv = val === 'series' || val === 'episode';
+            ['row-season', 'row-disc', 'row-startep'].forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el) el.style.display = isTv ? '' : 'none';
+            });
+        }
+
         function updateIdentificationForm(update) {
             if (update.title != null || update.titleAuto != null) {
                 setCellText(document.getElementById('id-title-auto'), update.titleAuto);
@@ -686,6 +699,14 @@ else
                 setCellText(document.getElementById('id-videotype-auto'), update.videoTypeAuto);
                 setCellText(document.getElementById('id-videotype-final'),
                     update.videoType === 'Unknown' ? null : update.videoType);
+                // Sync dropdown and toggle TV fields when video type arrives via SignalR
+                var sel = document.getElementById('videoType-select');
+                if (sel && update.videoType != null) {
+                    var map = { movie: 'movie', series: 'series', episode: 'episode' };
+                    var mapped = map[update.videoType];
+                    if (mapped) sel.value = mapped;
+                }
+                toggleTvFields();
             }
             if (update.imdbIdAuto != null || update.imdbId != null) {
                 setCellText(document.getElementById('id-imdb-auto'), update.imdbIdAuto);
