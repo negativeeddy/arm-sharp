@@ -627,6 +627,7 @@ public sealed class ArmRipperService(
         // the JobDetail page blank until transcode started.
         job.NoOfTitles = tracks.Count;
         await db.SaveChangesAsync(ct);
+        await BroadcastJobUpdateAsync(job);
 
         // ── DiscDb track mapping: promote short tracks that have a DiscDb match ──
         if (settings.Value.DiscDbEnabled && !string.IsNullOrEmpty(job.DiscDbHash))
