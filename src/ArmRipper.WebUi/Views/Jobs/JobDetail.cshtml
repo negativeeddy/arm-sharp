@@ -136,6 +136,7 @@
                                         <input type="hidden" name="jobId" value="@Model.Id" />
                                         <button type="submit" class="btn btn-outline-danger btn-sm">Cancel Job</button>
                                     </form>
+                                    <button type="button" class="btn btn-sm btn-outline-warning ms-1" onclick="arm.abandonJob(@Model.Id)" title="Kill process and eject disc">Abandon</button>
                                 </dd>
                             }
                             else if (Model.Status.IsResumable() && !string.IsNullOrEmpty(Model.CompletedStages))
@@ -632,13 +633,15 @@ else
                     '<form method="post" action="/jobs/cancel" onsubmit="return confirm(\'Cancel this job?\')" style="display:inline">' +
                     '<input type="hidden" name="jobId" value="' + jobId + '" />' +
                     '<button type="submit" class="btn btn-outline-danger btn-sm">Cancel Job</button>' +
-                    '</form>';
+                    '</form>' +
+                    '<button type="button" class="btn btn-sm btn-outline-warning ms-1" onclick="arm.abandonJob(' + jobId + ')" title="Kill process and eject disc">Abandon</button>';
             } else {
                 actionsDd.innerHTML =
                     '<form method="post" action="/jobs/cancel" onsubmit="return confirm(\'Cancel this job?\')" style="display:inline">' +
                     '<input type="hidden" name="jobId" value="' + jobId + '" />' +
                     '<button type="submit" class="btn btn-outline-danger btn-sm">Cancel Job</button>' +
-                    '</form>';
+                    '</form>' +
+                    '<button type="button" class="btn btn-sm btn-outline-warning ms-1" onclick="arm.abandonJob(' + jobId + ')" title="Kill process and eject disc">Abandon</button>';
             }
         }
 
