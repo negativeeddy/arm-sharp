@@ -34,7 +34,13 @@ else
                 }
             </td>
             <td>@job.StartTime.ToLocalTime().ToString("g")</td>
-            <td><a href="/jobs/jobdetail?jobId=@job.Id" class="btn btn-sm btn-outline-primary">View</a></td>
+            <td>
+                <a href="/jobs/jobdetail?jobId=@job.Id" class="btn btn-sm btn-outline-primary">View</a>
+                @if (!job.Status.IsTerminal())
+                {
+                    <button type="button" class="btn btn-sm btn-outline-warning" onclick="arm.abandonJob(@job.Id)" title="Kill process and eject disc">Abandon</button>
+                }
+            </td>
         </tr>
         <tr class="pipeline-row">
             <td colspan="6" class="p-2 bg-light">
