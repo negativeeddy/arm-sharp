@@ -17,6 +17,8 @@ public class SystemDrive
     /// <summary>Per-drive Main Feature override. null = use the global setting,
     /// true = force rip main feature only, false = rip all titles.</summary>
     public bool? MainFeature { get; set; }
+    /// <summary>Per-drive Manual Selection override. null = use the global setting.</summary>
+    public bool? ManualSelection { get; set; }
     public bool Stale { get; set; }
     public string? Name { get; set; }
     public string? Description { get; set; }

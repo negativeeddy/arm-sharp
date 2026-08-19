@@ -283,6 +283,29 @@ public partial class ApiController(
     }
 
     /// <summary>
+    /// Submit manual track selections and resume the pipeline.
+    /// The request body should contain a JSON object with a "trackNumbers" array of strings.
+    /// </summary>
+    [HttpPost("jobs/{id:int}/manual-selection")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SubmitManualSelection(int id, [FromBody] ManualSelectionRequest request, CancellationToken ct = default)
+    {
+        var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == id, ct);
+        if (job is null)
+            return NotFound(new { success = false, error = "Job not found" });
+
+        if (job.Status != JobState.ManualSelectionStarted)
+            return Json(new { success = false, error = "Job is not in manual selection state" });
+
+        job.ManualSelectionTrackNumbers = System.Text.Json.JsonSerializer.Serialize(
+            request?.TrackNumbers ?? []);
+        job.ManualSelectionResume = true;
+        await db.SaveChangesAsync(ct);
+
+        return Json(new { success = true, job = id, message = "Manual selection submitted" });
+    }
+
+    /// <summary>
     /// Manually redirect a rip in progress to a specific track. The choice is
     /// remembered per disc fingerprint so future rips of the same disc pick the
     /// same feature. When the job is in Main Feature mode the running MakeMKV rip
@@ -433,3 +456,6 @@ public partial class ApiController(
         });
     }
 }
+
+/// <summary>Request body for the manual track selection endpoint.</summary>
+public record ManualSelectionRequest(List<string>? TrackNumbers);

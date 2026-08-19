@@ -12,6 +12,8 @@ public enum JobState
     TranscodeActive,
     TranscodeWaiting,
     ManualWaitStarted,
+    /// <summary>Job is paused waiting for user to select tracks to rip.</summary>
+    ManualSelectionStarted,
     /// <summary>Job was cancelled during app shutdown — safe to resume from completed stages.</summary>
     Stopping,
     Cancelled
@@ -27,6 +29,7 @@ public static class JobStateDbValues
     public const string Info = "info";
     public const string Transcoding = "transcoding";
     public const string WaitingTranscode = "waiting_transcode";
+    public const string ManualSelection = "manual_selection";
     public const string Cancelled = "cancelled";
     public const string Stopping = "stopping";
 }
@@ -45,6 +48,7 @@ public static class JobStateExtensions
         JobState.TranscodeActive => JobStateDbValues.Transcoding,
         JobState.TranscodeWaiting => JobStateDbValues.WaitingTranscode,
         JobState.ManualWaitStarted => JobStateDbValues.Waiting,
+        JobState.ManualSelectionStarted => JobStateDbValues.ManualSelection,
         JobState.Cancelled => JobStateDbValues.Cancelled,
         JobState.Stopping => JobStateDbValues.Stopping,
         _ => JobStateDbValues.Active
@@ -64,7 +68,7 @@ public static class JobStateExtensions
     {
         JobState.Active or JobState.VideoRipping or JobState.VideoWaiting
             or JobState.VideoInfo or JobState.AudioRipping
-            or JobState.ManualWaitStarted => true,
+            or JobState.ManualWaitStarted or JobState.ManualSelectionStarted => true,
         _ => false
     };
 
@@ -75,6 +79,7 @@ public static class JobStateExtensions
         JobStateDbValues.Active => JobState.Active,
         JobStateDbValues.Ripping => JobState.VideoRipping,
         JobStateDbValues.Waiting => JobState.VideoWaiting,
+        JobStateDbValues.ManualSelection => JobState.ManualSelectionStarted,
         JobStateDbValues.Info => JobState.VideoInfo,
         JobStateDbValues.Transcoding => JobState.TranscodeActive,
         JobStateDbValues.WaitingTranscode => JobState.TranscodeWaiting,
