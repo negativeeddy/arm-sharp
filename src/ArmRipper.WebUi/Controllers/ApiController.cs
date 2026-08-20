@@ -297,10 +297,14 @@ public partial class ApiController(
         if (job.Status != JobState.ManualSelectionStarted)
             return Json(new { success = false, error = "Job is not in manual selection state" });
 
+        // Persist selections to DB so the pipeline can read them after wake-up.
         job.ManualSelectionTrackNumbers = System.Text.Json.JsonSerializer.Serialize(
             request?.TrackNumbers ?? []);
-        job.ManualSelectionResume = true;
         await db.SaveChangesAsync(ct);
+
+        // Signal the parked pipeline — no polling involved.
+        if (!ArmRipperService.SignalManualSelection(id))
+            return Json(new { success = false, error = "Pipeline is not waiting for selection" });
 
         return Json(new { success = true, job = id, message = "Manual selection submitted" });
     }

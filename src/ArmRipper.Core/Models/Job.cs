@@ -47,8 +47,6 @@ public class Job
     public bool ManualMode { get; set; }
     /// <summary>Set to true by the UI to signal the Conductor to exit the manual wait loop early.</summary>
     public bool ManualWaitResume { get; set; }
-    /// <summary>Set to true by the UI to signal the Conductor to exit the manual selection wait loop.</summary>
-    public bool ManualSelectionResume { get; set; }
     /// <summary>JSON array of track numbers the user selected in Manual Selection mode.</summary>
     public string? ManualSelectionTrackNumbers { get; set; }
     public bool HasTrack99 { get; set; }
