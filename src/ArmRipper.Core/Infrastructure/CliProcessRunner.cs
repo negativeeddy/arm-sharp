@@ -205,15 +205,26 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
 
         var channel = System.Threading.Channels.Channel.CreateUnbounded<(string?, bool)>();
 
+        // Read stdout and stderr concurrently to avoid a classic pipe deadlock:
+        // if the child fills the OS pipe buffer (~64KB) on one stream while the
+        // parent is blocked reading the other, both processes stall forever.
+        var stdoutTask = Task.Run(async () =>
+        {
+            while (await process.StandardOutput.ReadLineAsync(ct) is { } line)
+                channel.Writer.TryWrite((line, false));
+        }, ct);
+
+        var stderrTask = Task.Run(async () =>
+        {
+            while (await process.StandardError.ReadLineAsync(ct) is { } line)
+                channel.Writer.TryWrite((line, true));
+        }, ct);
+
         var readerTask = Task.Run(async () =>
         {
             try
             {
-                while (await process.StandardOutput.ReadLineAsync(ct) is { } line)
-                    channel.Writer.TryWrite((line, false));
-
-                while (await process.StandardError.ReadLineAsync(ct) is { } line)
-                    channel.Writer.TryWrite((line, true));
+                await Task.WhenAll(stdoutTask, stderrTask);
             }
             finally
             {
