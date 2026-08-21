@@ -2,15 +2,19 @@
 @{
     // Global "Main Feature" setting used to label the default option.
     var globalMainFeature = ViewBag.MainFeature as bool? ?? true;
-    var selected = Model.MainFeature switch
+    var globalManualSelection = ViewBag.ManualSelection as bool? ?? false;
+    var selected = (Model.MainFeature, Model.ManualSelection) switch
     {
-        null => "default",
-        true => "main",
-        false => "all"
+        (_, true) => "manual",
+        (null, _) => "default",
+        (true, _) => "main",
+        (false, _) => "all"
     };
+    var defaultLabel = globalManualSelection ? "Manual" : (globalMainFeature ? "Main" : "All");
 }
 <select name="mainFeature" class="form-control form-control-sm d-inline-block" style="width:auto;" title="Main Feature mode for this rip (overrides the global setting)" aria-label="Main Feature mode">
-    <option value="default" selected="@(selected == "default")">Default (@(globalMainFeature ? "Main" : "All"))</option>
+    <option value="default" selected="@(selected == "default")">Default (@defaultLabel)</option>
     <option value="main" selected="@(selected == "main")">Main</option>
     <option value="all" selected="@(selected == "all")">All</option>
+    <option value="manual" selected="@(selected == "manual")">Manual</option>
 </select>

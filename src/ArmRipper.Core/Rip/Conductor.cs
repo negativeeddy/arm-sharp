@@ -480,6 +480,13 @@ public sealed class Conductor(
                 "Applying per-drive Main Feature override ({Mode}) for {DevPath}",
                 mainFeatureOverride ? "main" : "all", devicePath);
         }
+        if (drive?.ManualSelection is bool manualSelectionOverride)
+        {
+            config.ManualSelection = manualSelectionOverride;
+            logger.LogInformation(
+                "Applying per-drive Manual Selection override ({Mode}) for {DevPath}",
+                manualSelectionOverride ? "on" : "off", devicePath);
+        }
 
         db.ConfigSnapshots.Add(config);
         job.MarkStageComplete(RipStage.Setup);

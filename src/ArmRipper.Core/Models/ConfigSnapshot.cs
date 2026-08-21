@@ -9,6 +9,8 @@ public class ConfigSnapshot
 
     public bool SkipTranscode { get; set; }
     public bool MainFeature { get; set; }
+    /// <summary>When true, pause after title scan for manual track selection.</summary>
+    public bool ManualSelection { get; set; }
     public bool UseFfmpeg { get; set; }
     public bool ManualWait { get; set; }
     public int ManualWaitTime { get; set; } = 60;
@@ -97,6 +99,7 @@ public class ConfigSnapshot
             JobId = jobId,
             SkipTranscode     = settings.SkipTranscode,
             MainFeature       = carryForward?.MainFeature ?? settings.MainFeature,
+            ManualSelection   = carryForward?.ManualSelection ?? settings.ManualSelection,
             UseFfmpeg         = settings.UseFfmpeg,
             ManualWait        = settings.ManualWait,
             ManualWaitTime    = settings.ManualWaitTime,

@@ -32,6 +32,31 @@ public sealed class ArmRipperService(
     private static readonly TimeSpan ProgressBroadcastInterval = TimeSpan.FromMilliseconds(200);
     private readonly ConcurrentDictionary<string, (int Percent, DateTime LastBroadcastUtc)> progressBroadcastState = new();
 
+    /// <summary>Per-job signals used to park the pipeline during Manual Selection
+    /// wait without polling. Keyed by job ID.</summary>
+    private static readonly ConcurrentDictionary<int, TaskCompletionSource<bool>> manualSelectionSignals = new();
+
+    /// <summary>
+    /// Signal the waiting pipeline to resume with the user's track selections.
+    /// Called by the API endpoint when the user clicks "Continue Rip".
+    /// Returns false if the job was not waiting.</summary>
+    public static bool SignalManualSelection(int jobId)
+    {
+        if (manualSelectionSignals.TryRemove(jobId, out var tcs))
+        {
+            tcs.TrySetResult(true);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>Cancel a waiting manual selection (e.g. on job cancellation).</summary>
+    public static void CancelManualSelection(int jobId)
+    {
+        if (manualSelectionSignals.TryRemove(jobId, out var tcs))
+            tcs.TrySetCanceled();
+    }
+
     /// <summary>Fraction of the longest duration that counts as a "near tie".</summary>
     private const double MainFeatureTieToleranceRatio = 0.03;
 
@@ -697,6 +722,99 @@ public sealed class ArmRipperService(
             logger.LogInformation(
                 "DiscDb: skipping track mapping (enabled={Enabled}, hash={Hash}) for job {JobId}",
                 settings.Value.DiscDbEnabled, job.DiscDbHash ?? "(null)", job.Id);
+        }
+
+        // ── Manual Selection wait ──
+        // When Manual Selection mode is enabled, pause after the title scan and
+        // wait for the user to choose which tracks to rip. The UI shows the track
+        // table with checkboxes; the user clicks "Continue" to submit selections.
+        if (config?.ManualSelection == true)
+        {
+            logger.LogInformation(
+                "Manual Selection mode: pausing for user to select tracks for job {JobId}", job.Id);
+
+            job.Status = JobState.ManualSelectionStarted;
+            job.ProgressMessage = "Waiting for manual track selection...";
+            await db.SaveChangesAsync(ct);
+            await BroadcastJobUpdateAsync(job);
+
+            // Park the pipeline — no polling. The TCS is completed when the
+            // API endpoint receives the user's selection.
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            manualSelectionSignals[job.Id] = tcs;
+
+            // Respect cancellation token — link it so abort/cancel wakes us up.
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var cancellationRegistration = linkedCts.Token.Register(() =>
+            {
+                CancelManualSelection(job.Id);
+                linkedCts.Cancel();
+            });
+
+            try
+            {
+                var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(Timeout.Infinite, linkedCts.Token));
+
+                if (completedTask != tcs.Task || tcs.Task.IsCanceled)
+                {
+                    // Cancelled via token (job abort/shutdown)
+                    logger.LogInformation("Job cancelled during manual selection wait");
+                    return null;
+                }
+
+                logger.LogInformation("Manual selection resumed by user for job {JobId}", job.Id);
+            }
+            finally
+            {
+                await cancellationRegistration.DisposeAsync();
+                manualSelectionSignals.TryRemove(job.Id, out _);
+            }
+
+            // Apply the user's track selections: parse the JSON array of track
+            // numbers, set Process=true only for selected tracks, false for the rest.
+            if (!string.IsNullOrEmpty(job.ManualSelectionTrackNumbers))
+            {
+                try
+                {
+                    var selectedNumbers = System.Text.Json.JsonSerializer.Deserialize<List<string>>(
+                        job.ManualSelectionTrackNumbers) ?? [];
+                    var selectedSet = new HashSet<string>(selectedNumbers, StringComparer.Ordinal);
+
+                    foreach (var track in tracks)
+                    {
+                        track.Process = track.TrackNumber is not null
+                            && selectedSet.Contains(track.TrackNumber);
+                    }
+
+                    // Also update the MainFeature flag to the first selected track
+                    // so downstream stages (transcode) know which is primary.
+                    var firstSelected = tracks.FirstOrDefault(t => t.Process);
+                    foreach (var track in tracks)
+                        track.MainFeature = ReferenceEquals(track, firstSelected);
+
+                    // Persist the updated Process flags
+                    foreach (var track in tracks)
+                        db.Entry(track).Property(x => x.Process).IsModified = true;
+
+                    logger.LogInformation(
+                        "Manual Selection: user selected {Count} of {Total} tracks for job {JobId}",
+                        selectedNumbers.Count, tracks.Count, job.Id);
+                }
+                catch (System.Text.Json.JsonException ex)
+                {
+                    logger.LogError(ex, "Failed to parse ManualSelectionTrackNumbers for job {JobId}", job.Id);
+                    job.Status = JobState.Failure;
+                    job.Errors = "Invalid track selection data";
+                    await db.SaveChangesAsync(ct);
+                    await BroadcastJobUpdateAsync(job);
+                    return null;
+                }
+            }
+
+            job.Status = JobState.VideoRipping;
+            job.ProgressMessage = "Starting rip...";
+            await db.SaveChangesAsync(ct);
+            await BroadcastJobUpdateAsync(job);
         }
 
         logger.LogInformation("************* Ripping disc with MakeMKV *************");
