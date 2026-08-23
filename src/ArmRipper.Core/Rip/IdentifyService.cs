@@ -40,14 +40,12 @@ public sealed partial class IdentifyService(
         var devPath = job.DevPath ?? throw new InvalidOperationException($"Job {job.Id} has no DevPath");
 
         job.ProgressMessage = "Mounting disc...";
-        await db.SaveChangesAsync(ct);
 
         var mounted = await CheckMountAsync(job, ct);
 
         if (mounted)
         {
             job.ProgressMessage = "Detecting disc type...";
-            await db.SaveChangesAsync(ct);
             var mountPoint = job.MountPoint ?? throw new InvalidOperationException($"Job {job.Id} has no MountPoint after successful mount");
             job.DiscType = await DetectDiscTypeAsync(job, mountPoint, ct);
         }
@@ -68,7 +66,6 @@ public sealed partial class IdentifyService(
             }
 
             job.ProgressMessage = "Detecting disc type (fallback)...";
-            await db.SaveChangesAsync(ct);
             job.DiscType = await DetectDiscTypeAsync(job, job.MountPoint, ct);
         }
 
@@ -117,12 +114,14 @@ public sealed partial class IdentifyService(
         }
 
         job.ProgressMessage = "Computing disc fingerprint...";
-        await db.SaveChangesAsync(ct);
         await ComputeDiscFingerprintAsync(job, ct);
 
         job.ProgressMessage = "Unmounting disc...";
-        await db.SaveChangesAsync(ct);
         await UnmountAsync(job, ct);
+
+        // Persist remaining mutations (title normalization, disc fingerprint, etc.)
+        // that were set after IdentifyVideoDiscAsync's single-save boundary.
+        await db.SaveChangesAsync(ct);
     }
 
     private async Task IdentifyVideoDiscAsync(Job job, CancellationToken ct)
@@ -136,7 +135,6 @@ public sealed partial class IdentifyService(
         if (string.IsNullOrEmpty(job.OvidFingerprint))
         {
             job.ProgressMessage = "Computing OVID fingerprint...";
-            await db.SaveChangesAsync(ct);
             await ComputeOvidFingerprintAsync(job, ct);
         }
 
@@ -148,6 +146,13 @@ public sealed partial class IdentifyService(
 
         // Phase 3: Fallback title/metadata lookups (fill gaps only)
         await RunFallbackTitleLookupAsync(job, ct);
+
+        // ── Accumulate-then-apply ──
+        // All metadata mutations above accumulated on the in-memory `job` object.
+        // Persist them in a single save to eliminate fragile partial state:
+        // if the process crashes before this line, the job retains only the
+        // operational state saved earlier (MountPoint, DiscType, Status/Errors).
+        await db.SaveChangesAsync(ct);
     }
 
     private async Task QueryDiscDbAsync(Job job, CancellationToken ct)
@@ -156,7 +161,6 @@ public sealed partial class IdentifyService(
             return;
 
         job.ProgressMessage = "Querying TheDiscDb...";
-        await db.SaveChangesAsync(ct);
 
         // MountPoint is already validated non-null by the guard above
         var hash = await discDbHashService.ComputeHashAsync(job.MountPoint, job.DiscType, ct);
@@ -222,8 +226,6 @@ public sealed partial class IdentifyService(
         {
             logger.LogWarning("DiscDb hash computation returned null (unsupported disc or I/O error)");
         }
-
-        await db.SaveChangesAsync(ct);
     }
 
     private async Task RunFallbackTitleLookupAsync(Job job, CancellationToken ct)
@@ -246,7 +248,6 @@ public sealed partial class IdentifyService(
             // are guarded by null/empty checks so they won't overwrite
             // values already provided by DiscDb or OVID.
             job.ProgressMessage = "Fetching metadata...";
-            await db.SaveChangesAsync(ct);
             await GetVideoDetailsAsync(job, ct);
         }
         else if (!job.HasNiceTitle)
@@ -258,8 +259,6 @@ public sealed partial class IdentifyService(
                 logger.LogWarning("{Warning}", job.Warnings);
             }
         }
-
-        await db.SaveChangesAsync(ct);
 
         logger.LogInformation("Disc title post-ident: title={Title} year={Year} video_type={VideoType} disctype={DiscType}",
             job.Title, job.Year, job.VideoType, job.DiscType);
@@ -275,7 +274,6 @@ public sealed partial class IdentifyService(
             return;
 
         job.ProgressMessage = "Looking up OVID database...";
-        await db.SaveChangesAsync(ct);
 
         logger.LogInformation("Querying OVID API for fingerprint {Fingerprint}", fingerprint);
 
@@ -325,8 +323,6 @@ public sealed partial class IdentifyService(
         logger.LogInformation(
             "OVID API identified disc: {Title} ({Year}), content type: {ContentType}, tmdb_id: {TmdbId}",
             record.Release.Title, record.Release.Year, record.Release.ContentType, record.Release.TmdbId);
-
-        await db.SaveChangesAsync(ct);
     }
 
     private async Task<bool> CheckMountAsync(Job job, CancellationToken ct)
@@ -709,7 +705,6 @@ public sealed partial class IdentifyService(
             else
             {
                 job.ProgressMessage = "Computing CRC64 hash...";
-                await db.SaveChangesAsync(ct);
                 crc64 = await ComputeDvdCrc64Async(job.MountPoint, ct);
                 logger.LogInformation("DVD CRC64 hash is: {Crc64}", crc64);
                 job.CrcId = crc64;
@@ -926,7 +921,6 @@ public sealed partial class IdentifyService(
                     job.Label.Replace("_", " ").ToLowerInvariant());
                 job.Title = job.TitleAuto = blurayTitle;
                 job.Year = "";
-                await db.SaveChangesAsync(ct);
                 return true;
             }
 
@@ -966,7 +960,6 @@ public sealed partial class IdentifyService(
             if (string.IsNullOrEmpty(job.YearAuto))
                 job.Year = job.YearAuto = year;
 
-            await db.SaveChangesAsync(ct);
             return true;
         }
         catch (Exception ex)
@@ -979,7 +972,6 @@ public sealed partial class IdentifyService(
                     job.Label.Replace("_", " ").ToLowerInvariant());
                 job.Title = job.TitleAuto = blurayTitle;
                 job.Year = "";
-                await db.SaveChangesAsync(ct);
                 return true;
             }
 
@@ -1076,8 +1068,6 @@ public sealed partial class IdentifyService(
                     {
                         job.PosterUrl = job.PosterUrlAuto = resultPoster;
                     }
-
-                    await db.SaveChangesAsync(ct);
 
                     // Try to get full details via IMDb ID lookup for richer metadata
                     if (!string.IsNullOrEmpty(resultImdb))
@@ -1314,7 +1304,6 @@ public sealed partial class IdentifyService(
 
             job.DiscFingerprint = $"{label}::{sectors}";
             logger.LogInformation("Disc fingerprint: {Fingerprint}", job.DiscFingerprint);
-            await db.SaveChangesAsync(ct);
         }
         catch (Exception ex)
         {
