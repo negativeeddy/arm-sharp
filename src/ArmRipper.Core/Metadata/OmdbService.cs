@@ -110,18 +110,10 @@ public sealed class OmdbService(ILoggerFactory loggerFactory, HttpClient httpCli
                 return (first.Poster, first.ImdbID);
             }
 
-            // Try exact title lookup
-            var exactUrl = $"https://www.omdbapi.com/?t={Uri.EscapeDataString(title)}&y={Uri.EscapeDataString(year ?? "")}&plot={plot}&r=json&apikey={apiKey}";
-            try
-            {
-                var exact = await httpClient.GetFromJsonAsync<OmdbTitleResult>(exactUrl, ct);
-                if (exact is not null && exact.Response == "True")
-                    return (exact.Poster, exact.ImdbID);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "OMDB exact lookup failed for title={Title}", title);
-            }
+            // Fall back to exact title lookup (t= endpoint)
+            var exactResult = await SearchExactAsync(apiKey, title, year, plot, ct);
+            if (exactResult is not null && exactResult.Search is { Count: > 0 })
+                return (exactResult.Search[0].Poster, exactResult.Search[0].ImdbID);
         }
 
         return (null, null);
