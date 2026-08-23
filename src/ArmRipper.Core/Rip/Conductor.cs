@@ -262,7 +262,7 @@ public sealed class Conductor(
             var directory = await armRipperService.RipVisualMediaAsync(job, job.LogFile ?? "", false, false, ct);
             job.Path = directory;
 
-            if (job.Status is not JobState.Failure)
+            if (!job.Status.IsTerminal())
                 job.Status = JobState.Success;
             job.StopTime = DateTime.UtcNow;
             if (job.StartTime != default)
@@ -395,7 +395,7 @@ public sealed class Conductor(
             var directory = await armRipperService.RipVisualMediaAsync(job, job.LogFile ?? "", false, false, ct);
             job.Path = directory;
 
-            if (job.Status is not JobState.Failure)
+            if (!job.Status.IsTerminal())
                 job.Status = JobState.Success;
             job.StopTime = DateTime.UtcNow;
             if (job.StartTime != default)
@@ -714,7 +714,7 @@ public sealed class Conductor(
         }
 
         // Verify output files exist before marking Success
-        if (job.Status is not JobState.Failure && job.Path is not null && Directory.Exists(job.Path))
+        if (!job.Status.IsTerminal() && job.Path is not null && Directory.Exists(job.Path))
         {
             if (!Directory.EnumerateFileSystemEntries(job.Path).Any())
             {
@@ -725,7 +725,7 @@ public sealed class Conductor(
             }
         }
 
-        if (job.Status is not JobState.Failure)
+        if (!job.Status.IsTerminal())
             job.Status = JobState.Success;
         job.StopTime = DateTime.UtcNow;
         if (job.StartTime != default)
