@@ -35,6 +35,9 @@ public class ArmSettings
     public int MinLength { get; set; } = 300;
     public int MaxLength { get; set; } = 99999;
 
+    /// <summary>Timeout in minutes for the MakeMKV info scan. Blu-ray discs with many titles may need longer.</summary>
+    public int MakeMkvInfoScanTimeoutMinutes { get; set; } = 5;
+
     /// <summary>GPU index for NVENC/NVDEC hardware acceleration (null = HandBrake default, 0 = first GPU, etc.).</summary>
     public int? GpuIndex { get; set; }
 

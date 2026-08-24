@@ -246,6 +246,7 @@
                 ["AllowDuplicates"] = "When disabled, if the same disc (by volume label) has already been ripped successfully, the rip is skipped to prevent re-ripping the same disc after eject/reload",
                 ["PreferWidescreen"] = "When enabled and two or more tracks have very similar file sizes (e.g. widescreen + fullscreen versions of the same movie), the 16:9 track is selected as the main feature instead of 4:3",
                 ["DiscPollingEnabled"] = "Automatically detect and rip newly inserted discs (requires app restart to take effect)",
+                ["MakeMkvInfoScanTimeoutMinutes"] = "Maximum time in minutes to wait for the MakeMKV info scan. Increase for large Blu-ray collections with many titles.",
             };
             static string tip(string key, Dictionary<string, string> tips) =>
                 $"<span class=\"text-info ml-1\" data-toggle=\"tooltip\" title=\"{tips[key]}\" style=\"cursor:help\">&#9432;</span>";
@@ -281,6 +282,7 @@
                     </div>
                     <small class="form-text text-muted">= <strong id="maxLengthPreview">@FormatSeconds((int)(armSettings?.MaxLength ?? 0))</strong></small>
                 </td></tr>
+                <tr><td><label>Info Scan Timeout (min):</label>@Html.Raw(tip("MakeMkvInfoScanTimeoutMinutes", tips))</td><td><input type="number" name="MakeMkvInfoScanTimeoutMinutes" value="@(armSettings?.MakeMkvInfoScanTimeoutMinutes ?? 5)" class="form-control" min="1" max="60" step="1" /></td></tr>
                 <tr><td><label>Eject Cooldown (s):</label><span class="text-info ml-1" data-toggle="tooltip" title="Seconds to wait after a rip completes before the same drive is eligible for a new auto-rip. Prevents false re-triggering while the disc is still ejecting." style="cursor:help">&#9432;</span></td><td><input type="number" name="EjectCooldownSeconds" value="@(armSettings?.EjectCooldownSeconds ?? 15)" class="form-control" min="0" max="120" step="1" /></td></tr>
                 <tr><td><label>Recent Completed Jobs:</label><span class="text-info ml-1" data-toggle="tooltip" title="Number of most-recent completed jobs to show on the main page beneath the in-progress section." style="cursor:help">&#9432;</span></td><td><input type="number" name="RecentCompletedJobsCount" value="@(armSettings?.RecentCompletedJobsCount ?? 10)" class="form-control" min="0" max="100" step="1" /></td></tr>
                 <tr><td><label for="MainFeature">Main Feature:</label>@Html.Raw(tip("MainFeature", tips))</td><td><input type="hidden" name="MainFeature" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="MainFeature" name="MainFeature" value="true" checked="@armSettings?.MainFeature" /><label class="custom-control-label" for="MainFeature"></label></div></td></tr>

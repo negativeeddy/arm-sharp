@@ -187,7 +187,7 @@ public partial class MakeMkvService : IMakeMkvService
 
         var lineCount = 0;
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromMinutes(5));
+        timeoutCts.CancelAfter(TimeSpan.FromMinutes(_settings.Value.MakeMkvInfoScanTimeoutMinutes));
 
         try
         {
