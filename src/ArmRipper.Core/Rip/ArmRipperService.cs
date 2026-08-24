@@ -76,8 +76,14 @@ public sealed class ArmRipperService(
             .First();
     }
 
-    /// <summary>Bytes to compare tracks by, falling back to an estimate from duration.</summary>
-    private static long MainFeatureSizeOf(Track t) => t.FileSize ?? (long)(t.Length ?? 0) * 1024;
+    /// <summary>
+    /// Bytes to compare tracks by, falling back to duration (seconds) when
+    /// file size is unknown.  The old <c>* 1024</c> multiplier assumed ~1 KB/s
+    /// which is wildly wrong for video content; using raw duration lets the
+    /// existing <c>ThenByDescending(t =&gt; t.Length)</c> tiebreaker handle
+    /// size-unknown tracks correctly.
+    /// </summary>
+    private static long MainFeatureSizeOf(Track t) => t.FileSize ?? (t.Length ?? 0);
 
     /// <summary>
     /// Applies a manual main-feature override for the job (or one remembered for
