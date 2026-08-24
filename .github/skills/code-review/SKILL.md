@@ -6,7 +6,7 @@ argument-hint: '[scope] — e.g. "full codebase", "ArmRipper.Core", "recent chan
 
 # Code Review → GitHub Issues
 
-Performs a structured code review of the ARM-Sharp codebase and creates labeled GitHub issues for each finding. Issues are tagged with `code-review`, a priority label, and optionally `needs-investigation`.
+Performs a structured code review of the ARM-Sharp codebase and creates labeled GitHub issues for each finding. Issues are tagged with `code-review`, `agent-ready`, a priority label, and optionally `needs-investigation`.
 
 ## When to Use
 
@@ -69,13 +69,13 @@ For each finding, collect:
 
 ### Step 3: Check for Duplicates
 
-Before creating issues, check existing `code-review` labeled issues:
+Before creating issues, check existing issues (both open and in-progress):
 
 ```bash
 gh issue list --repo negativeeddy/arm-sharp --label code-review --state open --limit 200 --json number,title
 ```
 
-Skip any finding that matches an existing open issue's title or description.
+Skip any finding that matches an existing open issue's title or description. The `code-review` label tracks all findings; `agent-ready` indicates the issue is available for automated fixing.
 
 ### Step 4: Create GitHub Issues
 
@@ -86,6 +86,7 @@ gh issue create --repo negativeeddy/arm-sharp \
   --title "<title>" \
   --body-file <temp-file> \
   --label "code-review" \
+  --label "agent-ready" \
   --label "priority: <critical|medium|low>" \
   [--label "needs-investigation"]  # if deeper review needed
 ```
@@ -142,7 +143,7 @@ Print a summary for the user:
 **Total:** N new issues created
 **Skipped:** N duplicates (already tracked)
 
-View all: gh issue list --repo negativeeddy/arm-sharp --label code-review
+View all: gh issue list --repo negativeeddy/arm-sharp --label agent-ready
 ```
 
 ## Labels
@@ -152,6 +153,7 @@ The following GitHub labels must exist (create if missing):
 | Label | Color | Description |
 |-------|-------|-------------|
 | `code-review` | `0052CC` | Code review finding |
+| `agent-ready` | `aaaaaa` | Ready for an agent to pick up and fix |
 | `priority: critical` | `D93F0B` | Must-fix: correctness or data-loss risk |
 | `priority: medium` | `FBCA04` | Correctness or maintainability concern |
 | `priority: low` | `0E8A16` | Polish, consistency, or minor performance |
@@ -160,6 +162,7 @@ The following GitHub labels must exist (create if missing):
 Create missing labels:
 ```bash
 gh api repos/negativeeddy/arm-sharp/labels -f name="code-review" -f color="0052CC" -f description="Code review finding" 2>/dev/null
+gh api repos/negativeeddy/arm-sharp/labels -f name="agent-ready" -f color="aaaaaa" -f description="Ready for an agent to pick up and fix" 2>/dev/null
 gh api repos/negativeeddy/arm-sharp/labels -f name="priority: critical" -f color="D93F0B" -f description="Must-fix: correctness or data-loss risk" 2>/dev/null
 gh api repos/negativeeddy/arm-sharp/labels -f name="priority: medium" -f color="FBCA04" -f description="Correctness or maintainability concern" 2>/dev/null
 gh api repos/negativeeddy/arm-sharp/labels -f name="priority: low" -f color="0E8A16" -f description="Polish, consistency, or minor performance" 2>/dev/null

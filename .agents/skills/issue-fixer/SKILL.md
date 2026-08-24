@@ -1,19 +1,22 @@
 ---
-name: code-review-fix
-description: 'Work through open code review issues from the GitHub issue board. Use when: fixing code review findings, working through cleanup tasks, resolving code-review labeled issues, running periodic code review fixes, addressing technical debt.'
+name: issue-fixer
+description: 'Work through open agent-ready issues from the GitHub issue board. Use when: fixing issues, working through cleanup tasks, resolving agent-ready labeled issues, running periodic fix sessions, addressing technical debt. Picks up any issue tagged agent-ready, not just code review findings.'
 argument-hint: '[count|priority|issue#] — e.g. "3", "critical", "#82", "medium+low"'
 ---
 
-# Code Review Fix Worker
+# Issue Fix Worker
 
-Picks up open `code-review` labeled issues from the GitHub issue board and implements fixes **one issue at a time — each on its own branch and its own pull request**. Designed to be run periodically (e.g., weekly) to work through accumulated code review findings.
+Picks up open `agent-ready` labeled issues from the GitHub issue board and implements fixes **one issue at a time — each on its own branch and its own pull request**. Designed to be run periodically (e.g., weekly) to work through accumulated ready-to-fix items.
+
+The `agent-ready` label is the universal signal that an issue is available for automated fixing. Any process — the code review skill, manual issue creation, or other workflows — can add this label to indicate an issue is ready for an agent to pick up and complete.
 
 ## When to Use
 
 - Periodic cleanup sessions (weekly/biweekly)
-- When the user says "fix some code review items"
+- When the user says "fix some issues" or "work through the backlog"
 - When the user specifies an issue number or priority to work on
 - Sprint tech-debt reduction
+- After the code review skill has created new findings
 
 ## Procedure
 
@@ -23,7 +26,7 @@ Parse the argument hint to decide which issues to work on. Every issue selected 
 
 | Argument | Behavior |
 |----------|----------|
-| (none) | Pick the highest-priority open `code-review` issue |
+| (none) | Pick the highest-priority open `agent-ready` issue |
 | `N` (number) | Fix the next N issues in priority order, one branch/PR per issue |
 | `critical` | Fix all `priority: critical` issues, one branch/PR per issue |
 | `medium` | Fix all `priority: medium` issues, one branch/PR per issue |
@@ -36,13 +39,21 @@ Fetch open issues:
 
 ```bash
 gh issue list --repo negativeeddy/arm-sharp \
-  --label code-review --state open \
+  --label agent-ready --state open \
   --limit 200 --json number,title,labels
 ```
 
 Sort by priority: critical → medium → low. Skip `needs-investigation` issues unless explicitly requested (they need review first, not a blind fix).
 
-### Step 2: Create a Working Branch (one per issue)
+### Step 2: Pick Up the Issue
+
+Before starting work, remove the `agent-ready` label to signal that the issue is now being worked on:
+
+```bash
+gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-ready"
+```
+
+### Step 3: Create a Working Branch (one per issue)
 
 Always start from an up-to-date `master`, and give the branch a **per-issue** name. Never reuse a branch for more than one issue.
 
@@ -51,68 +62,66 @@ git checkout master
 # Ensure the branch contains the latest merged fixes so each PR is small and conflict-free.
 git pull --ff-only
 # One branch per issue, named after that issue:
-git checkout -b fix/code-review-#<issue-number>
+git checkout -b fix/issue-#<issue-number>
 ```
 
 If a branch for this issue already exists (e.g. from a previous interrupted run), rebase it onto the latest `master` before continuing:
 
 ```bash
-git checkout fix/code-review-#<issue-number>
+git checkout fix/issue-#<issue-number>
 git rebase master
 ```
 
-### Step 3: For Each Issue
+### Step 4: For Each Issue
 
-#### 3a. Read the Issue
+#### 4a. Read the Issue
 
 ```bash
 gh issue view <number> --repo negativeeddy/arm-sharp --json title,body,labels
 ```
 
-#### 3b. Understand the Problem
+#### 4b. Understand the Problem
 
 - Read the affected files mentioned in the issue
 - Understand the current behavior
 - Review the proposed fix
 
-#### 3c. Implement the Fix
+#### 4c. Implement the Fix
 
 - Make the code changes following the proposed fix in the issue
 - If the proposed fix has multiple options, implement the recommended one
 - If the fix requires more investigation than expected, comment on the issue and skip:
   ```bash
   gh issue comment <number> --repo negativeeddy/arm-sharp \
-    --body "Investigation reveals this needs more analysis: <explanation>. Converting to needs-investigation."
-  gh issue edit <number> --repo negativeeddy/arm-sharp --add-label "needs-investigation"
+    --body "Investigation reveals this needs more analysis: <explanation>. Re-adding agent-ready label for future pickup."
+  gh issue edit <number> --repo negativeeddy/arm-sharp --add-label "agent-ready"
   ```
 
-#### 3d. Verify the Fix
+#### 4d. Verify the Fix
 
 - Run the build: `dotnet build ArmRipper.slnx -c Debug`
 - Run relevant tests: `dotnet test` (scoped to affected project if possible)
 - If no tests exist for the changed code, consider adding one
 
-#### 3e. Commit and Reference
+#### 4e. Commit and Reference
 
 ```bash
 git add <files>
 git commit -m "fix: <short description> (closes #<number>)"
 ```
 
-**Important:** The `closes #<number>` in the commit message only auto-closes the issue when the commit lands on the default branch (via PR merge). It does NOT auto-close from a feature-branch push. The PR body `Fixes` keyword is the reliable mechanism — see Step 4.
+**Important:** The `closes #<number>` in the commit message only auto-closes the issue when the commit lands on the default branch (via PR merge). It does NOT auto-close from a feature-branch push. The PR body `Fixes` keyword is the reliable mechanism — see Step 5.
 
-### Step 4: Create a Pull Request (per issue)
+### Step 5: Create a Pull Request (per issue)
 
 Create **one PR per issue** — the branch contains only that issue's fix, so the PR is small, focused, and easy to review. Cross-link both ways: the PR references the issue (`Fixes #N` so it auto-closes on merge), and the issue is updated with a comment linking to the PR.
 
 ```bash
-git push -u origin fix/code-review-#<issue-number>
+git push -u origin fix/issue-#<issue-number>
 
 gh pr create --repo negativeeddy/arm-sharp \
   --title "fix: <short description> (closes #<number>)" \
-  --body "## Code Review Fix
-
-Automated fix from periodic code review cleanup.
+  --body "## Automated Fix
 
 Fixes #<number>
 
@@ -136,13 +145,13 @@ Fixes #<number>
 
 Always put `Fixes #<number>` on its **own line** in the PR body. For multiple issues, use separate `Fixes` lines.
 
-#### 4a. Link the Issue to the PR
+#### 5a. Link the Issue to the PR
 
 After the PR is created, comment on the issue with the PR link so anyone viewing the issue can find the fix:
 
 ```bash
 # Capture the PR URL from the create output, or look it up by branch:
-pr_url=$(gh pr view fix/code-review-#<issue-number> --repo negativeeddy/arm-sharp --json url --jq .url)
+pr_url=$(gh pr view fix/issue-#<issue-number> --repo negativeeddy/arm-sharp --json url --jq .url)
 
 gh issue comment <issue-number> --repo negativeeddy/arm-sharp \
   --body "Fix submitted in PR: $pr_url (auto-closes this issue on merge)."
@@ -152,7 +161,7 @@ Both directions are now linked:
 - **PR → Issue:** `Fixes #<number>` on its own line in the PR body (the reliable auto-close mechanism).
 - **Issue → PR:** the comment above, so the issue thread shows where the fix lives.
 
-#### 4b. Verify Auto-Close After Merge
+#### 5b. Verify Auto-Close After Merge
 
 After a PR is merged, verify the issue actually closed:
 
@@ -173,7 +182,7 @@ gh issue comment <issue-number> --repo negativeeddy/arm-sharp \
   --body "Closed manually — PR #<pr-number> was merged with this fix but auto-close did not trigger."
 ```
 
-### Step 5: Move to Next Issue
+### Step 6: Move to Next Issue
 
 After the PR for the current issue is created (and the issue is linked), start the next issue from a fresh branch off the latest `master`:
 
@@ -182,16 +191,16 @@ After the PR for the current issue is created (and the issue is linked), start t
 git checkout master
 git pull --ff-only
 
-# Repeat Steps 3–4 for the next issue
-git checkout -b fix/code-review-#<next-issue-number>
+# Repeat Steps 4–5 for the next issue
+git checkout -b fix/issue-#<next-issue-number>
 ```
 
-### Step 6: Report Summary
+### Step 7: Report Summary
 
 Print a summary with one row per issue/PR:
 
 ```
-## Code Review Fix Session Complete
+## Issue Fix Session Complete
 
 **Issues Fixed:** N
 **Issues Skipped:** N (needs investigation)
@@ -199,8 +208,8 @@ Print a summary with one row per issue/PR:
 ### Fixed (one PR each, cross-linked)
 | Issue | Title | Priority | Branch/PR |
 |-------|-------|----------|-----------|
-| #N | <title> | 🟡 Medium | fix/code-review-#N → PR #NN |
-| #M | <title> | 🟢 Low | fix/code-review-#M → PR #MM |
+| #N | <title> | 🟡 Medium | fix/issue-#N → PR #NN |
+| #M | <title> | 🟢 Low | fix/issue-#M → PR #MM |
 
 Each issue above has a comment linking to its PR, and each PR links back via `Fixes #N`.
 
@@ -223,12 +232,12 @@ These issues require a deep review before a fix can be prescribed. When working 
 2. **Explore the code** using read-only subagents
 3. **Determine** if the code is actually robust (close the issue) or has real bugs
 4. If bugs found:
-   - Create a **new GitHub issue** for each bug, using the same template as the `code-review` skill:
+   - Create a **new GitHub issue** for each bug, using the same template:
      ```bash
      gh issue create --repo negativeeddy/arm-sharp \
        --title "<concise bug title>" \
        --body-file <temp-file> \
-       --label "code-review" \
+       --label "agent-ready" \
        --label "priority: <critical|medium|low>"
      ```
      Issue body template:
@@ -290,16 +299,17 @@ gh issue comment <number> --repo negativeeddy/arm-sharp \
 - **`Fixes #N` must be on its own line** — GitHub ignores `Fixes #N` when embedded in prose like `Fixes #N and #M`
 - **One fix per commit** — easy to revert individual fixes
 - **Always run tests** before committing
-- **Skip if uncertain** — mark as needs-investigation and move on
+- **Skip if uncertain** — add `needs-investigation` label and move on
 - **Respect the priority order** — critical first, then medium, then low
 - **Always branch from an up-to-date `master`** — pull before creating each issue branch so every PR is small and conflict-free
 - **Verify auto-close after merge** — check that each issue actually closed; if not, close it manually with a comment
+- **Remove `agent-ready` when picking up an issue** — signals the issue is being worked on
 
 ## Quick Reference Commands
 
 ```bash
-# List open code-review issues
-gh issue list --repo negativeeddy/arm-sharp --label code-review --state open
+# List open agent-ready issues
+gh issue list --repo negativeeddy/arm-sharp --label agent-ready --state open
 
 # View a specific issue
 gh issue view <number> --repo negativeeddy/arm-sharp
@@ -315,12 +325,12 @@ gh issue view <number> --repo negativeeddy/arm-sharp --json state --jq .state
 
 # Per-issue branch + PR workflow (repeat for each issue)
 git checkout master && git pull --ff-only
-git checkout -b fix/code-review-#<issue-number>
+git checkout -b fix/issue-#<issue-number>
 # ... implement + verify + commit ...
-git push -u origin fix/code-review-#<issue-number>
+git push -u origin fix/issue-#<issue-number>
 gh pr create --repo negativeeddy/arm-sharp \
   --title "fix: <short description> (closes #<number>)" \
-  --body "Automated fix from periodic code review cleanup.
+  --body "Automated fix.
 
 Fixes #<number>
 
@@ -330,7 +340,7 @@ Fixes #<number>
 ### Testing
 - All existing tests pass"
 # Cross-link the issue back to the PR so each references the other:
-pr_url=$(gh pr view fix/code-review-#<issue-number> --repo negativeeddy/arm-sharp --json url --jq .url)
+pr_url=$(gh pr view fix/issue-#<issue-number> --repo negativeeddy/arm-sharp --json url --jq .url)
 gh issue comment <issue-number> --repo negativeeddy/arm-sharp --body "Fix submitted in PR: $pr_url (auto-closes this issue on merge)."
 
 # Find orphaned issues (open issues with merged PRs that should have closed them)
