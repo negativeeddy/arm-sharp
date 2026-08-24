@@ -10,6 +10,11 @@ Picks up open `agent-ready` labeled issues from the GitHub issue board and imple
 
 The `agent-ready` label is the universal signal that an issue is available for automated fixing. Any process — the code review skill, manual issue creation, or other workflows — can add this label to indicate an issue is ready for an agent to pick up and complete.
 
+**Label lifecycle:**
+- `agent-ready` → issue is available for pickup
+- `agent-in-progress` → issue is actively being worked on (set when picking up, removed when done)
+- Neither label → issue is completed or not part of the automated workflow
+
 ## When to Use
 
 - Periodic cleanup sessions (weekly/biweekly)
@@ -47,10 +52,10 @@ Sort by priority: critical → medium → low. Skip `needs-investigation` issues
 
 ### Step 2: Pick Up the Issue
 
-Before starting work, remove the `agent-ready` label to signal that the issue is now being worked on:
+Before starting work, transition the labels from `agent-ready` to `agent-in-progress`:
 
 ```bash
-gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-ready"
+gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-ready" --add-label "agent-in-progress"
 ```
 
 ### Step 3: Create a Working Branch (one per issue)
@@ -90,11 +95,11 @@ gh issue view <number> --repo negativeeddy/arm-sharp --json title,body,labels
 
 - Make the code changes following the proposed fix in the issue
 - If the proposed fix has multiple options, implement the recommended one
-- If the fix requires more investigation than expected, comment on the issue and skip:
+- If the fix requires more investigation than expected, comment on the issue and skip — swap `agent-in-progress` back to `agent-ready`:
   ```bash
   gh issue comment <number> --repo negativeeddy/arm-sharp \
     --body "Investigation reveals this needs more analysis: <explanation>. Re-adding agent-ready label for future pickup."
-  gh issue edit <number> --repo negativeeddy/arm-sharp --add-label "agent-ready"
+  gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-in-progress" --add-label "agent-ready"
   ```
 
 #### 4d. Verify the Fix
@@ -299,17 +304,20 @@ gh issue comment <number> --repo negativeeddy/arm-sharp \
 - **`Fixes #N` must be on its own line** — GitHub ignores `Fixes #N` when embedded in prose like `Fixes #N and #M`
 - **One fix per commit** — easy to revert individual fixes
 - **Always run tests** before committing
-- **Skip if uncertain** — add `needs-investigation` label and move on
+- **Skip if uncertain** — add `needs-investigation` label, swap `agent-in-progress` back to `agent-ready`, and move on
 - **Respect the priority order** — critical first, then medium, then low
 - **Always branch from an up-to-date `master`** — pull before creating each issue branch so every PR is small and conflict-free
 - **Verify auto-close after merge** — check that each issue actually closed; if not, close it manually with a comment
-- **Remove `agent-ready` when picking up an issue** — signals the issue is being worked on
+- **Label lifecycle** — `agent-ready` → `agent-in-progress` (on pickup) → removed (on completion or skip)
 
 ## Quick Reference Commands
 
 ```bash
 # List open agent-ready issues
 gh issue list --repo negativeeddy/arm-sharp --label agent-ready --state open
+
+# List issues currently being worked on
+gh issue list --repo negativeeddy/arm-sharp --label agent-in-progress --state open
 
 # View a specific issue
 gh issue view <number> --repo negativeeddy/arm-sharp
