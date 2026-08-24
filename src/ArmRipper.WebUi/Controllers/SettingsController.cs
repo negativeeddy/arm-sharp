@@ -137,6 +137,7 @@ public class SettingsController(
     public async Task<IActionResult> SaveRipper(
         string? RipMethod, string? MkvArgs, int? MinLength, int? MaxLength,
         int? EjectCooldownSeconds, int? RecentCompletedJobsCount,
+        int? MakeMkvInfoScanTimeoutMinutes,
         CancellationToken ct = default)
     {
         // Read checkboxes from raw form values — the hidden-false trick sends
@@ -157,6 +158,7 @@ public class SettingsController(
             ["MaxLength"] = JsonSerialize(MaxLength ?? 99999),
             ["EjectCooldownSeconds"] = JsonSerialize(EjectCooldownSeconds ?? 15),
             ["RecentCompletedJobsCount"] = JsonSerialize(RecentCompletedJobsCount ?? 10),
+            ["MakeMkvInfoScanTimeoutMinutes"] = JsonSerialize(MakeMkvInfoScanTimeoutMinutes ?? 5),
             ["MainFeature"] = JsonSerialize(MainFeature),
             ["AutoEject"] = JsonSerialize(AutoEject),
             ["DiscPollingEnabled"] = JsonSerialize(DiscPollingEnabled),
