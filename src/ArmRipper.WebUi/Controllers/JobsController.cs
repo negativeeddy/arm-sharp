@@ -223,7 +223,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
     }
 
     [HttpPost("resume")]
-    public IActionResult Resume(int jobId)
+    public async Task<IActionResult> Resume(int jobId, CancellationToken ct = default)
     {
         var job = db.Jobs
             .Include(j => j.Config)
@@ -251,7 +251,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
         job.StopTime = null;
         job.Errors = null;
         job.ProgressMessage = "Resuming from checkpoint...";
-        db.SaveChanges();
+        await db.SaveChangesAsync(ct);
 
         // Write to job log file
         AppendToJobLog(job, $"Job resumed by user (previous status: {prevStatus}, completed stages: {job.CompletedStages})");

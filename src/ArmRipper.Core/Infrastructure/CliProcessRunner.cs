@@ -161,7 +161,7 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
         foreach (var errLine in stderr)
             logger.LogDebug("STDERR {FileName}: {Line}", fileName, errLine);
 
-        process.WaitForExit();
+        await process.WaitForExitAsync(ct);
 
         logger.LogInformation("Process exited ({Name}) code={Code}", fileName, process.ExitCode);
 
@@ -247,7 +247,7 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
         }
 
         await readerTask;
-        process.WaitForExit();
+        await process.WaitForExitAsync(ct);
         var exitCode = process.ExitCode;
         logger.LogInformation("Process exited ({Name}) code={Code}", fileName, exitCode);
         yield return (null, false, exitCode);
