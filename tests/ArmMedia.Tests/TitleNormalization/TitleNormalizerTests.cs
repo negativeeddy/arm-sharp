@@ -90,6 +90,7 @@ public sealed class TitleNormalizerTests
     [Theory]
     [InlineData("Weeds_S2_Disc_1", "weeds", 2, 1)]
     [InlineData("WEEDS_SEASON_1_DISC_2", "weeds", 1, 2)]
+    [InlineData("TRUEBLOOD_S5_DISC2", "trueblood", 5, 2)]
     public void Normalize_UnderscoreSeparatedDiscNames_ExtractsSeriesSeasonDisc(
         string input,
         string expectedSeries,
