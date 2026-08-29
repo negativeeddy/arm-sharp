@@ -269,9 +269,9 @@
                                 <td>
                                     <select name="videoType" class="form-select form-select-sm" id="videoType-select" onchange="toggleTvFields()">
                                         <option value="">—</option>
-                                        <option value="movie" selected="@(Model.VideoTypeManual == VideoContentType.Movie)">movie</option>
-                                        <option value="series" selected="@(Model.VideoTypeManual == VideoContentType.Series)">series</option>
-                                        <option value="episode" selected="@(Model.VideoTypeManual == VideoContentType.Episode)">episode</option>
+                                        <option value="movie" selected="@(Model.VideoType == VideoContentType.Movie || Model.VideoTypeManual == VideoContentType.Movie)">movie</option>
+                                        <option value="series" selected="@(Model.VideoType == VideoContentType.Series || Model.VideoType == VideoContentType.Tv || Model.VideoTypeManual == VideoContentType.Series)">series</option>
+                                        <option value="episode" selected="@(Model.VideoType == VideoContentType.Episode || Model.VideoTypeManual == VideoContentType.Episode)">episode</option>
                                     </select>
                                 </td>
                                 <td><strong id="id-videotype-final">@(Model.VideoType == VideoContentType.Unknown ? "—" : Model.VideoType.ToString())</strong></td>
@@ -699,12 +699,20 @@ else
                 setCellText(document.getElementById('id-videotype-auto'), update.videoTypeAuto);
                 setCellText(document.getElementById('id-videotype-final'),
                     update.videoType === 'Unknown' ? null : update.videoType);
-                // Sync dropdown and toggle TV fields when video type arrives via SignalR
+                // Sync dropdown and toggle TV fields when video type arrives via SignalR.
+                // Map both "Series" and "Tv" (DiscDb reports "Tv") to the "series" option.
                 var sel = document.getElementById('videoType-select');
-                if (sel && update.videoType != null) {
-                    var map = { movie: 'movie', series: 'series', episode: 'episode' };
-                    var mapped = map[update.videoType];
-                    if (mapped) sel.value = mapped;
+                if (sel) {
+                    var vt = update.videoType;
+                    // Fall back to the auto-detected type when the final type is Unknown.
+                    if ((vt == null || vt === 'Unknown') && update.videoTypeAuto != null) {
+                        vt = update.videoTypeAuto;
+                    }
+                    if (vt != null) {
+                        var map = { movie: 'movie', series: 'series', tv: 'series', Tv: 'series', episode: 'episode' };
+                        var mapped = map[vt];
+                        if (mapped) sel.value = mapped;
+                    }
                 }
                 toggleTvFields();
             }
