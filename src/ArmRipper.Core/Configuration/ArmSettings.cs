@@ -13,6 +13,9 @@ public class ArmSettings
 
     public bool SkipTranscode { get; set; }
     public bool MainFeature { get; set; } = true;
+    /// <summary>When true, the pipeline pauses after the MakeMKV title scan
+    /// and waits for the user to manually select which tracks to rip.</summary>
+    public bool ManualSelection { get; set; }
     public bool UseFfmpeg { get; set; }
     public bool ManualWait { get; set; } = true;
     public int ManualWaitTime { get; set; } = 60;

@@ -45,6 +45,7 @@ public class SettingsController(
         var mergedSettings = await settingsService.GetEffectiveAsync(ct);
         ViewBag.ArmSettings = mergedSettings;
         ViewBag.MainFeature = mergedSettings.MainFeature;
+        ViewBag.ManualSelection = mergedSettings.ManualSelection;
         ViewBag.Hostname = Environment.MachineName;
         ViewBag.OsDesc = RuntimeInformation.OSDescription;
         ViewBag.ProcCount = Environment.ProcessorCount;
@@ -144,6 +145,7 @@ public class SettingsController(
         // multiple values for the same key; bool.TryParse on the first value
         // would incorrectly return false. Instead check if "true" is present.
         bool MainFeature = Request.Form["MainFeature"].Contains("true");
+        bool ManualSelection = Request.Form["ManualSelection"].Contains("true");
         bool AutoEject = Request.Form["AutoEject"].Contains("true");
         bool DiscPollingEnabled = Request.Form["DiscPollingEnabled"].Contains("true");
         bool FileBotNonStrict = Request.Form["FileBotNonStrict"].Contains("true");
@@ -160,6 +162,7 @@ public class SettingsController(
             ["RecentCompletedJobsCount"] = JsonSerialize(RecentCompletedJobsCount ?? 10),
             ["MakeMkvInfoScanTimeoutMinutes"] = JsonSerialize(MakeMkvInfoScanTimeoutMinutes ?? 5),
             ["MainFeature"] = JsonSerialize(MainFeature),
+            ["ManualSelection"] = JsonSerialize(ManualSelection),
             ["AutoEject"] = JsonSerialize(AutoEject),
             ["DiscPollingEnabled"] = JsonSerialize(DiscPollingEnabled),
             ["FileBotNonStrict"] = JsonSerialize(FileBotNonStrict),
@@ -385,11 +388,16 @@ public class SettingsController(
             "all" => false,
             _ => null
         };
+        bool? manualSelectionOverride = mainFeature?.Trim().ToLowerInvariant() == "manual" ? true : null;
         if (drive.MainFeature != mainFeatureOverride)
         {
             drive.MainFeature = mainFeatureOverride;
-            await db.SaveChangesAsync(ct);
         }
+        if (drive.ManualSelection != manualSelectionOverride)
+        {
+            drive.ManualSelection = manualSelectionOverride;
+        }
+        await db.SaveChangesAsync(ct);
 
         // Check if a job is already actively ripping on this device.
         // Jobs that are transcoding (or in other non-ripping states) don't

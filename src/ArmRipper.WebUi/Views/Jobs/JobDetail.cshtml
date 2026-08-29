@@ -132,6 +132,11 @@
                                             <button type="submit" class="btn btn-success me-2">▶ Skip Wait — Start Now</button>
                                         </form>
                                     }
+                                    @if (Model.Status is JobState.ManualSelectionStarted)
+                                    {
+                                        <button type="button" class="btn btn-success me-2" id="continueManualSelection" onclick="submitManualSelection()">▶ Continue Rip</button>
+                                        <small class="text-muted">Select tracks below, then click Continue.</small>
+                                    }
                                     <form method="post" action="/jobs/cancel" onsubmit="return confirm('Cancel this job?')" style="display:inline">
                                         <input type="hidden" name="jobId" value="@Model.Id" />
                                         <button type="submit" class="btn btn-outline-danger btn-sm">Cancel Job</button>
@@ -432,7 +437,13 @@ else
 {
     <div class="table-responsive">
         <table class="table table-striped table-hover table-sm">
-            <thead><tr><th>#</th><th>MKV #</th><th>Title</th><th>Length</th><th>Chapters</th><th>Size</th><th>FPS</th><th>Aspect</th><th>Source</th><th>Type</th><th>Ripped</th><th>Main</th><th>Status</th><th>Redirect</th></tr></thead>
+            <thead><tr>
+                @if (Model.Status is JobState.ManualSelectionStarted)
+                {
+                    <th><input type="checkbox" id="selectAllTracks" checked title="Select / deselect all" /></th>
+                }
+                <th>#</th><th>MKV #</th><th>Title</th><th>Length</th><th>Chapters</th><th>Size</th><th>FPS</th><th>Aspect</th><th>Source</th><th>Type</th><th>Ripped</th><th>Main</th><th>Status</th><th>Redirect</th>
+            </tr></thead>
             <tbody>
                 @{
                     var orderedTracks = Model.Tracks.OrderBy(t => t.TrackNumber).ToList();
@@ -441,8 +452,10 @@ else
                     for (var idx = 0; idx < orderedTracks.Count; idx++)
                     {
                         var track = orderedTracks[idx];
-                    <tr class="@(track.MainFeature ? "table-primary" : "")">
-                        <td>@(idx + 1)</td>
+                    <tr class="@(track.MainFeature ? "table-primary" : "")">                        @if (Model.Status is JobState.ManualSelectionStarted)
+                        {
+                            <td><input type="checkbox" class="track-select" value="@track.TrackNumber" @(track.Process ? "checked" : "") /></td>
+                        }                        <td>@(idx + 1)</td>
                         <td>@track.TrackNumber</td>
                         <td>
                             @if (!string.IsNullOrEmpty(track.EpisodeTitle))
@@ -507,6 +520,35 @@ else
     @section Scripts {
     @Html.AntiForgeryToken()
     <script>
+    @if (Model.Status is JobState.ManualSelectionStarted)
+    {
+        <text>
+    function submitManualSelection() {
+        var checkboxes = document.querySelectorAll('.track-select');
+        var selected = [];
+        checkboxes.forEach(function(cb) { if (cb.checked) selected.push(cb.value); });
+        var tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
+        fetch('/api/jobs/' + @Model.Id + '/manual-selection', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': tokenInput ? tokenInput.value : ''
+            },
+            body: JSON.stringify({ trackNumbers: selected })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) location.reload();
+            else alert('Failed: ' + (data.error || 'unknown error'));
+        })
+        .catch(function(err) { alert('Error: ' + err); });
+    }
+    document.getElementById('selectAllTracks').addEventListener('change', function() {
+        var checked = this.checked;
+        document.querySelectorAll('.track-select').forEach(function(cb) { cb.checked = checked; });
+    });
+        </text>
+    }
     (function () {
         var jobId = @Model.Id;
         var wasTerminal = false;
@@ -616,6 +658,7 @@ else
             if (!actionsDd) return;
 
             var isManualWait = status === 'waiting'; // ManualWaitStarted
+            var isManualSelection = status === 'manual_selection'; // ManualSelectionStarted
             var isTerminal_ = terminalStatuses.indexOf(status) !== -1;
 
             if (isTerminal_) {
@@ -623,7 +666,15 @@ else
                 return;
             }
 
-            if (isManualWait) {
+            if (isManualSelection) {
+                actionsDd.innerHTML =
+                    '<button type="button" class="btn btn-success me-2" onclick="submitManualSelection()">▶ Continue Rip</button>' +
+                    '<small class="text-muted">Select tracks below, then click Continue.</small>' +
+                    '<form method="post" action="/jobs/cancel" onsubmit="return confirm(\'Cancel this job?\')" style="display:inline">' +
+                    '<input type="hidden" name="jobId" value="' + jobId + '" />' +
+                    '<button type="submit" class="btn btn-outline-danger btn-sm ms-2">Cancel Job</button>' +
+                    '</form>';
+            } else if (isManualWait) {
                 actionsDd.innerHTML =
                     '<form method="post" action="/jobs/continue-wait" style="display:inline">' +
                     '<input type="hidden" name="jobId" value="' + jobId + '" />' +
