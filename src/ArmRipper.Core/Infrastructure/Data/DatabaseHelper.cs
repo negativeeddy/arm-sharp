@@ -55,6 +55,7 @@ public static class DatabaseHelper
         TryAlterColumn(db, "jobs", "CompletedStages");
         TryAlterColumn(db, "jobs", "OriginalJobId", "INTEGER");
         TryAlterColumn(db, "jobs", "MainFeatureOverrideTrackNumber");
+        TryAlterColumn(db, "jobs", "ManualSelectionTrackNumbers");
         TryAlterColumn(db, "disc_metadata", "MainFeatureTrackNumber");
         // MaxConcurrentRips removed — per-drive gating supersedes the global slot.
 
@@ -68,6 +69,8 @@ public static class DatabaseHelper
 
         // ── ConfigSnapshot columns added after the Initial migration ──
         TryAlterColumn(db, "config", "PreferWidescreen", "INTEGER");
+        TryAlterColumn(db, "config", "ManualSelection", "INTEGER");
+        TryAlterColumn(db, "system_drives", "ManualSelection", "INTEGER");
 
         // ── Seed migration history always ──
         db.Database.ExecuteSql($"INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('20260610044322_Initial', '10.0.0');");
