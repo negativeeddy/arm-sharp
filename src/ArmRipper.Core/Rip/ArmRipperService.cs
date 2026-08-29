@@ -728,6 +728,10 @@ public sealed class ArmRipperService(
         // When Manual Selection mode is enabled, pause after the title scan and
         // wait for the user to choose which tracks to rip. The UI shows the track
         // table with checkboxes; the user clicks "Continue" to submit selections.
+        // Set to true when the user's selection is applied below; the rip branch
+        // logic uses it to skip MainFeature/fast-path modes and respect the
+        // chosen Process flags.
+        var manualSelectionApplied = false;
         if (config?.ManualSelection == true)
         {
             logger.LogInformation(
@@ -770,6 +774,11 @@ public sealed class ArmRipperService(
                 manualSelectionSignals.TryRemove(job.Id, out _);
             }
 
+            // Reload the job from the DB — the user's selection was persisted by
+            // the API endpoint through a different DbContext, so the tracked
+            // entity here is stale (ManualSelectionTrackNumbers would be null).
+            await db.Entry(job).ReloadAsync(ct);
+
             // Apply the user's track selections: parse the JSON array of track
             // numbers, set Process=true only for selected tracks, false for the rest.
             if (!string.IsNullOrEmpty(job.ManualSelectionTrackNumbers))
@@ -796,6 +805,8 @@ public sealed class ArmRipperService(
                     foreach (var track in tracks)
                         db.Entry(track).Property(x => x.Process).IsModified = true;
 
+                    manualSelectionApplied = true;
+
                     logger.LogInformation(
                         "Manual Selection: user selected {Count} of {Total} tracks for job {JobId}",
                         selectedNumbers.Count, tracks.Count, job.Id);
@@ -811,15 +822,15 @@ public sealed class ArmRipperService(
                 }
             }
 
-            job.Status = JobState.VideoRipping;
-            job.ProgressMessage = "Starting rip...";
-            await db.SaveChangesAsync(ct);
-            await BroadcastJobUpdateAsync(job);
+            // Leave the status as ManualSelectionStarted here — the guard below
+            // validates the identify→rip transition, and the status advances to
+            // VideoRipping right after it. Setting it earlier would trip the
+            // guard and record a spurious stage error (yellow Identify in the UI).
         }
 
         logger.LogInformation("************* Ripping disc with MakeMKV *************");
         job.TransitionToStage(RipStage.Identify);
-        GuardStage(job, "identify", "Active/VideoInfo", () => job.Status is JobState.Active or JobState.VideoInfo);
+        GuardStage(job, "identify", "Active/VideoInfo/ManualSelectionStarted", () => job.Status is JobState.Active or JobState.VideoInfo or JobState.ManualSelectionStarted);
         job.TransitionToStage(RipStage.Rip);
         job.Status = JobState.VideoRipping;
         job.ProgressMessage = "Starting rip...";
@@ -849,12 +860,13 @@ public sealed class ArmRipperService(
                 else
                     ripResults.Add(await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping track 0", ct), ct));
             }
-            else if (config?.MainFeature ?? settings.Value.MainFeature)
+            else if (!manualSelectionApplied && (config?.MainFeature ?? settings.Value.MainFeature))
             {
                 // MainFeature mode: only rip the single longest track (or the track
                 // chosen by a manual/fingerprint override). DiscDb metadata mapping
                 // still runs (for poster, title, etc.) but promoted extras are NOT
-                // ripped in this mode.
+                // ripped in this mode. Skipped when the user made a manual selection
+                // — the individual-track branch below respects the chosen Process flags.
                 try
                 {
                     while (true)
@@ -909,11 +921,13 @@ public sealed class ArmRipperService(
                     ripRedirectService.EndRip(job.Id);
                 }
             }
-            else if (maxLength > 99998 && eligibleTracks.All(t => string.IsNullOrEmpty(t.EpisodeTitle)))
+            else if (!manualSelectionApplied && maxLength > 99998 && eligibleTracks.All(t => string.IsNullOrEmpty(t.EpisodeTitle)))
             {
                 // Fast path: rip everything >= minLength in a single MakeMKV pass.
                 // Only safe when NO tracks have been DiscDb-promoted (no EpisodeTitle),
                 // otherwise individual iteration is needed to respect Process flags.
+                // Skipped when the user made a manual selection — the individual-track
+                // branch below respects the chosen Process flags.
                 ripResults.Add(await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, "Ripping all titles", ct), ct));
                 ripCount = eligibleTracks.Count;
             }

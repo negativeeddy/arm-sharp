@@ -220,7 +220,7 @@ Query disc structure to identify available tracks, filter by length, identify ma
 | # | Criterion | Check |
 |---|-----------|-------|
 | 5.1.1 | `job.DiscType == DiscType.Dvd` or `DiscType.Bluray` | Disc is video |
-| 5.1.2 | `job.Status == JobState.Active` or `JobState.VideoInfo` | From identify stage |
+| 5.1.2 | `job.Status == JobState.Active`, `JobState.VideoInfo`, or `JobState.ManualSelectionStarted` | From identify stage (manual selection) |
 | 5.1.3 | `job.DiscFingerprint` is non-null | Fingerprint computed |
 | 5.1.4 | Device is accessible (mounted or via MakeMKV) | `job.MountPoint` or raw device |
 

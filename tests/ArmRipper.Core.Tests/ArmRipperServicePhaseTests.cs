@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using ArmMedia.Core.Abstractions;
 using ArmMedia.Core.Models;
@@ -548,5 +549,110 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
         Assert.Equal("/new", ctx.TranscodeOutPath);
         Assert.Equal("/new2", ctx.FinalDirectory);
         Assert.Null(ctx.TranscodeInPath);
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    // Manual Selection
+    // ───────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ManualSelection_AppliesUserSelection_AfterResume()
+    {
+        // Job with BOTH Manual Selection and Main Feature enabled — the manual
+        // selection must win over the MainFeature branch.
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.Config!.ManualSelection = true;
+            j.Config!.MainFeature = true;
+        });
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        // MakeMKV scan returns 3 tracks; the longest (track "2") would be the
+        // auto-selected main feature.
+        var tracks = new List<Track>
+        {
+            new() { Id = 1, JobId = job.Id, TrackNumber = "0", Length = 1000, FileName = "C1_t00.mkv" },
+            new() { Id = 2, JobId = job.Id, TrackNumber = "1", Length = 2000, FileName = "D1_t01.mkv" },
+            new() { Id = 3, JobId = job.Id, TrackNumber = "2", Length = 3000, FileName = "B1_t02.mkv" },
+        };
+        _makeMkv.Setup(m => m.GetTrackInfoWithCacheAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tracks);
+        _makeMkv.Setup(m => m.RipTrackAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<int>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
+            .Callback<Job, string, string, string, int, IProgress<int>?, CancellationToken>(
+                (_, trackNumber, outputPath, _, _, _, _) =>
+                {
+                    // Simulate MakeMKV writing the output file so the post-rip
+                    // file-matching marks the track as Ripped.
+                    Directory.CreateDirectory(outputPath);
+                    File.WriteAllBytes(
+                        Path.Combine(outputPath, $"title_t{int.Parse(trackNumber):D2}.mkv"),
+                        [1, 2, 3]);
+                })
+            .ReturnsAsync(new MakeMkvRipResult());
+
+        var service = CreateService();
+
+        // Start the private pipeline method via reflection.
+        var method = typeof(ArmRipperService).GetMethod(
+            "PrepareTranscodeInputPathAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var rawPath = Path.Combine(Path.GetTempPath(), $"arm_manual_sel_{Guid.NewGuid():N}");
+        var pipelineTask = (Task<string?>)method!.Invoke(service,
+            new object[] { job, "Test Movie (2024)", rawPath, CancellationToken.None })!;
+
+        // Wait until the pipeline parks in the manual-selection wait (it registers
+        // its signal in the static dictionary right before parking).
+        var signalsField = typeof(ArmRipperService).GetField(
+            "manualSelectionSignals", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(signalsField);
+        var signals = (ConcurrentDictionary<int, TaskCompletionSource<bool>>)signalsField!.GetValue(null)!;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (!signals.ContainsKey(job.Id) && sw.ElapsedMilliseconds < 10_000)
+            await Task.Delay(25);
+        Assert.True(signals.ContainsKey(job.Id), "Pipeline did not park in manual selection wait");
+
+        // Simulate the API endpoint: persist the selection through a SEPARATE
+        // DbContext sharing the same connection (the real API uses its own
+        // request-scoped context, so the pipeline's tracked entity is stale).
+        using (var apiDb = new ArmDbContext(
+            new DbContextOptionsBuilder<ArmDbContext>()
+                .UseSqlite(_db.Database.GetDbConnection())
+                .Options))
+        {
+            var apiJob = await apiDb.Jobs.FirstAsync(j => j.Id == job.Id);
+            apiJob.ManualSelectionTrackNumbers = "[\"0\"]";
+            await apiDb.SaveChangesAsync();
+        }
+
+        // Resume the pipeline.
+        Assert.True(ArmRipperService.SignalManualSelection(job.Id));
+
+        var result = await pipelineTask;
+        Assert.Equal(rawPath, result);
+
+        // The rip must have used the individual-track branch (respecting the
+        // selection) rather than the MainFeature branch or the fast path.
+        _makeMkv.Verify(m => m.RipTrackAsync(
+            It.IsAny<Job>(), "0", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+            It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()), Times.Once);
+        _makeMkv.Verify(m => m.RipTrackAsync(
+            It.IsAny<Job>(), "2", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+            It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()), Times.Never);
+        _makeMkv.Verify(m => m.RipAllTitlesAsync(
+            It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+            It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // The DB tracks reflect the selection: only track "0" is Process=true.
+        var dbTracks = await _db.Tracks.Where(t => t.JobId == job.Id).ToListAsync();
+        var processed = Assert.Single(dbTracks, t => t.Process);
+        Assert.Equal("0", processed.TrackNumber);
+
+        // No spurious stage error should be recorded for the identify stage —
+        // the status transition must not trip the guard (yellow Identify in UI).
+        Assert.DoesNotContain("identify", job.StageErrors ?? "");
     }
 }
