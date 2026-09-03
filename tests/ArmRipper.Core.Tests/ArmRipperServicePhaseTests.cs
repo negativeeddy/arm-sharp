@@ -707,4 +707,90 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
         Assert.Equal(JobState.Failure, dbJob.Status);
         Assert.Contains("timed out", dbJob.Errors ?? "");
     }
+
+    [Fact]
+    public async Task ManualSelection_SignalRegisteredBeforeStatusVisible_NoRace()
+    {
+        // Regression test for issue #169: the pipeline must register its signal
+        // in the static dictionary BEFORE persisting the ManualSelectionStarted
+        // status. Otherwise the API endpoint (which checks the status and then
+        // calls SignalManualSelection) could land in the gap and the signal would
+        // be missed, leaving the job parked forever.
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.Config!.ManualSelection = true;
+        });
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var tracks = new List<Track>
+        {
+            new() { Id = 1, JobId = job.Id, TrackNumber = "0", Length = 1000, FileName = "C1_t00.mkv" },
+        };
+        _makeMkv.Setup(m => m.GetTrackInfoWithCacheAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tracks);
+        _makeMkv.Setup(m => m.RipTrackAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<int>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
+            .Callback<Job, string, string, string, int, IProgress<int>?, CancellationToken>(
+                (_, trackNumber, outputPath, _, _, _, _) =>
+                {
+                    Directory.CreateDirectory(outputPath);
+                    File.WriteAllBytes(
+                        Path.Combine(outputPath, $"title_t{int.Parse(trackNumber):D2}.mkv"),
+                        [1, 2, 3]);
+                })
+            .ReturnsAsync(new MakeMkvRipResult());
+
+        var service = CreateService();
+
+        var method = typeof(ArmRipperService).GetMethod(
+            "PrepareTranscodeInputPathAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var rawPath = Path.Combine(Path.GetTempPath(), $"arm_manual_sel_race_{Guid.NewGuid():N}");
+        var pipelineTask = (Task<string?>)method!.Invoke(service,
+            new object[] { job, "Test Movie (2024)", rawPath, CancellationToken.None })!;
+
+        var signalsField = typeof(ArmRipperService).GetField(
+            "manualSelectionSignals", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(signalsField);
+        var signals = (ConcurrentDictionary<int, TaskCompletionSource<bool>>)signalsField!.GetValue(null)!;
+
+        // Wait until the job's status is visible as ManualSelectionStarted in the
+        // DB (the point at which the API endpoint would call SignalManualSelection).
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < 10_000)
+        {
+            var status = await _db.Jobs.AsNoTracking()
+                .Where(j => j.Id == job.Id)
+                .Select(j => j.Status)
+                .FirstOrDefaultAsync();
+            if (status == JobState.ManualSelectionStarted)
+                break;
+            await Task.Delay(25);
+        }
+        Assert.Equal(JobState.ManualSelectionStarted,
+            (await _db.Jobs.AsNoTracking().FirstAsync(j => j.Id == job.Id)).Status);
+
+        // The signal MUST already be registered — this is the crux of the race fix.
+        Assert.True(signals.ContainsKey(job.Id),
+            "Signal must be registered before the ManualSelectionStarted status is visible");
+
+        // Persist a selection through a separate DbContext (as the real API does),
+        // then resume the pipeline and confirm it completes cleanly.
+        using (var apiDb = new ArmDbContext(
+            new DbContextOptionsBuilder<ArmDbContext>()
+                .UseSqlite(_db.Database.GetDbConnection())
+                .Options))
+        {
+            var apiJob = await apiDb.Jobs.FirstAsync(j => j.Id == job.Id);
+            apiJob.ManualSelectionTrackNumbers = "[\"0\"]";
+            await apiDb.SaveChangesAsync();
+        }
+
+        Assert.True(ArmRipperService.SignalManualSelection(job.Id));
+        var result = await pipelineTask;
+        Assert.Equal(rawPath, result);
+    }
 }
