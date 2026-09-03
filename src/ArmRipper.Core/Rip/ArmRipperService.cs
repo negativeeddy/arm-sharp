@@ -761,18 +761,41 @@ public sealed class ArmRipperService(
                 linkedCts.Cancel();
             });
 
+            // A configurable timeout so a job left waiting (user walked away, UI
+            // closed) cannot block the optical drive indefinitely. Reuses the
+            // ManualWaitTime setting (default 60s), mirroring the ManualWait
+            // feature's timeout behavior (see issue #170).
+            var waitTimeSeconds = config.ManualWaitTime > 0 ? config.ManualWaitTime : 60;
+            var waitTimeout = TimeSpan.FromSeconds(waitTimeSeconds);
+
             try
             {
-                var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(Timeout.Infinite, linkedCts.Token));
+                var delayTask = Task.Delay(waitTimeout, linkedCts.Token);
+                var completedTask = await Task.WhenAny(tcs.Task, delayTask);
 
-                if (completedTask != tcs.Task || tcs.Task.IsCanceled)
+                if (completedTask == tcs.Task && !tcs.Task.IsCanceled)
+                {
+                    logger.LogInformation("Manual selection resumed by user for job {JobId}", job.Id);
+                }
+                else if (delayTask.IsCanceled)
                 {
                     // Cancelled via token (job abort/shutdown)
                     logger.LogInformation("Job cancelled during manual selection wait");
                     return null;
                 }
-
-                logger.LogInformation("Manual selection resumed by user for job {JobId}", job.Id);
+                else
+                {
+                    // Timed out waiting for the user's selection — fail the job so
+                    // the drive is released and the UI shows a clear reason.
+                    logger.LogWarning(
+                        "Manual selection timed out after {Seconds}s for job {JobId}",
+                        waitTimeSeconds, job.Id);
+                    job.Status = JobState.Failure;
+                    job.Errors = $"Manual selection timed out after {waitTimeSeconds} seconds";
+                    await db.SaveChangesAsync(ct);
+                    await BroadcastJobUpdateAsync(job);
+                    return null;
+                }
             }
             finally
             {

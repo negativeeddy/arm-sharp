@@ -655,4 +655,56 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
         // the status transition must not trip the guard (yellow Identify in UI).
         Assert.DoesNotContain("identify", job.StageErrors ?? "");
     }
+
+    [Fact]
+    public async Task ManualSelection_TimesOut_FailsJobAndReleasesDrive()
+    {
+        // Regression test for issue #170: a manual-selection wait with no user
+        // response must time out (using ManualWaitTime) and fail the job rather
+        // than block the optical drive indefinitely.
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.Config!.ManualSelection = true;
+            j.Config!.ManualWaitTime = 1; // 1 second timeout for a fast test
+        });
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var tracks = new List<Track>
+        {
+            new() { Id = 1, JobId = job.Id, TrackNumber = "0", Length = 1000, FileName = "C1_t00.mkv" },
+        };
+        _makeMkv.Setup(m => m.GetTrackInfoWithCacheAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tracks);
+
+        var service = CreateService();
+
+        var method = typeof(ArmRipperService).GetMethod(
+            "PrepareTranscodeInputPathAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var rawPath = Path.Combine(Path.GetTempPath(), $"arm_manual_sel_timeout_{Guid.NewGuid():N}");
+        var pipelineTask = (Task<string?>)method!.Invoke(service,
+            new object[] { job, "Test Movie (2024)", rawPath, CancellationToken.None })!;
+
+        // Wait for the pipeline to park in the manual-selection wait, then let the
+        // 1-second timeout elapse without signaling.
+        var signalsField = typeof(ArmRipperService).GetField(
+            "manualSelectionSignals", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(signalsField);
+        var signals = (ConcurrentDictionary<int, TaskCompletionSource<bool>>)signalsField!.GetValue(null)!;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (!signals.ContainsKey(job.Id) && sw.ElapsedMilliseconds < 10_000)
+            await Task.Delay(25);
+        Assert.True(signals.ContainsKey(job.Id), "Pipeline did not park in manual selection wait");
+
+        // Do NOT signal — the timeout should fire and fail the job.
+        var result = await pipelineTask;
+        Assert.Null(result);
+
+        // The job must be marked as failed with a clear error message.
+        var dbJob = await _db.Jobs.AsNoTracking().FirstAsync(j => j.Id == job.Id);
+        Assert.Equal(JobState.Failure, dbJob.Status);
+        Assert.Contains("timed out", dbJob.Errors ?? "");
+    }
 }
