@@ -657,6 +657,79 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
     }
 
     [Fact]
+    public async Task ManualSelection_EmptySelection_FailsJobCleanly()
+    {
+        // Regression test for issue #173: deselecting all tracks (empty selection)
+        // must fail the job with a clear message instead of proceeding with zero
+        // eligible tracks and hitting the confusing "MakeMKV rip produced no
+        // ripped tracks" error downstream.
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.Config!.ManualSelection = true;
+        });
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var tracks = new List<Track>
+        {
+            new() { Id = 1, JobId = job.Id, TrackNumber = "0", Length = 1000, FileName = "C1_t00.mkv" },
+            new() { Id = 2, JobId = job.Id, TrackNumber = "1", Length = 2000, FileName = "D1_t01.mkv" },
+        };
+        _makeMkv.Setup(m => m.GetTrackInfoWithCacheAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tracks);
+
+        var service = CreateService();
+
+        // Start the private pipeline method via reflection.
+        var method = typeof(ArmRipperService).GetMethod(
+            "PrepareTranscodeInputPathAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var rawPath = Path.Combine(Path.GetTempPath(), $"arm_manual_empty_{Guid.NewGuid():N}");
+        var pipelineTask = (Task<string?>)method!.Invoke(service,
+            new object[] { job, "Test Movie (2024)", rawPath, CancellationToken.None })!;
+
+        // Wait until the pipeline parks in the manual-selection wait.
+        var signalsField = typeof(ArmRipperService).GetField(
+            "manualSelectionSignals", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(signalsField);
+        var signals = (ConcurrentDictionary<int, TaskCompletionSource<bool>>)signalsField!.GetValue(null)!;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (!signals.ContainsKey(job.Id) && sw.ElapsedMilliseconds < 10_000)
+            await Task.Delay(25);
+        Assert.True(signals.ContainsKey(job.Id), "Pipeline did not park in manual selection wait");
+
+        // Simulate an empty selection persisted through a separate DbContext
+        // (the API normally rejects it, but the pipeline must still handle it).
+        using (var apiDb = new ArmDbContext(
+            new DbContextOptionsBuilder<ArmDbContext>()
+                .UseSqlite(_db.Database.GetDbConnection())
+                .Options))
+        {
+            var apiJob = await apiDb.Jobs.FirstAsync(j => j.Id == job.Id);
+            apiJob.ManualSelectionTrackNumbers = "[]";
+            await apiDb.SaveChangesAsync();
+        }
+
+        // Resume the pipeline.
+        Assert.True(ArmRipperService.SignalManualSelection(job.Id));
+
+        var result = await pipelineTask;
+        Assert.Null(result);
+
+        // The job must have failed with a clear message, and no rip may have run.
+        var dbJob = await _db.Jobs.AsNoTracking().FirstAsync(j => j.Id == job.Id);
+        Assert.Equal(JobState.Failure, dbJob.Status);
+        Assert.Contains("No tracks selected", dbJob.Errors ?? "");
+        _makeMkv.Verify(m => m.RipTrackAsync(
+            It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+            It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()), Times.Never);
+        _makeMkv.Verify(m => m.RipAllTitlesAsync(
+            It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+            It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ManualSelection_TimesOut_FailsJobAndReleasesDrive()
     {
         // Regression test for issue #170: a manual-selection wait with no user
