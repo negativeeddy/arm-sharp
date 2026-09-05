@@ -76,41 +76,9 @@ public sealed partial class IdentifyService(
 
         // ── Auto-populate season/disc from title normalization (series only) ──
         if (titleNormalizer is not null &&
-            job.VideoType is VideoContentType.Series or VideoContentType.Tv &&
-            !string.IsNullOrWhiteSpace(job.Title))
+            job.VideoType is VideoContentType.Series or VideoContentType.Tv)
         {
-            var norm = titleNormalizer.Normalize(job.Title);
-            logger.LogDebug(
-                "[IdentifyService] Title normalized: '{Title}' → season={Season}, disc={Disc}",
-                job.Title, norm.Season, norm.Disc);
-
-            if (norm.Season is int s)
-            {
-                job.SeasonNumberAuto = s;
-                job.SeasonNumber ??= s;
-            }
-
-            if (norm.Disc is int d)
-            {
-                job.DiscNumberAuto = d;
-                job.DiscNumber ??= d;
-            }
-
-            // Also try the label (e.g. "S3D1" or "Season 3 Disc 2")
-            if (norm.Season is null && !string.IsNullOrWhiteSpace(job.Label))
-            {
-                var labelNorm = titleNormalizer.Normalize(job.Label);
-                if (labelNorm.Season is int ls)
-                {
-                    job.SeasonNumberAuto = ls;
-                    job.SeasonNumber ??= ls;
-                }
-                if (labelNorm.Disc is int ld)
-                {
-                    job.DiscNumberAuto = ld;
-                    job.DiscNumber ??= ld;
-                }
-            }
+            ApplySeasonDiscFromTitleAndLabel(job, titleNormalizer, logger);
         }
 
         job.ProgressMessage = "Computing disc fingerprint...";
@@ -122,6 +90,56 @@ public sealed partial class IdentifyService(
         // Persist remaining mutations (title normalization, disc fingerprint, etc.)
         // that were set after IdentifyVideoDiscAsync's single-save boundary.
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Auto-populates season/disc numbers from the title and disc label.
+    /// The title and label are resolved independently so a missing season or
+    /// disc in one source can be filled from the other — e.g. title
+    /// "Show Season 5" + label "SHOW_S5_D2" → season 5 from the title,
+    /// disc 2 from the label.
+    /// </summary>
+    internal static void ApplySeasonDiscFromTitleAndLabel(
+        Job job, ArmMedia.Core.Abstractions.ITitleNormalizer titleNormalizer, ILogger logger)
+    {
+        if (string.IsNullOrWhiteSpace(job.Title))
+            return;
+
+        var norm = titleNormalizer.Normalize(job.Title);
+        logger.LogDebug(
+            "[IdentifyService] Title normalized: '{Title}' → season={Season}, disc={Disc}",
+            job.Title, norm.Season, norm.Disc);
+
+        if (norm.Season is int s)
+        {
+            job.SeasonNumberAuto = s;
+            job.SeasonNumber ??= s;
+        }
+
+        if (norm.Disc is int d)
+        {
+            job.DiscNumberAuto = d;
+            job.DiscNumber ??= d;
+        }
+
+        // Also try the label (e.g. "S3D1" or "Season 3 Disc 2") to fill in any
+        // season/disc the title didn't provide. Resolve independently so a title
+        // like "Show Season 5" still picks up the disc from a label like
+        // "SHOW_S5_D2".
+        if (!string.IsNullOrWhiteSpace(job.Label))
+        {
+            var labelNorm = titleNormalizer.Normalize(job.Label);
+            if (labelNorm.Season is int ls && norm.Season is null)
+            {
+                job.SeasonNumberAuto = ls;
+                job.SeasonNumber ??= ls;
+            }
+            if (labelNorm.Disc is int ld && norm.Disc is null)
+            {
+                job.DiscNumberAuto = ld;
+                job.DiscNumber ??= ld;
+            }
+        }
     }
 
     private async Task IdentifyVideoDiscAsync(Job job, CancellationToken ct)
