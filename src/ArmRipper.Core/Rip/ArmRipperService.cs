@@ -743,15 +743,19 @@ public sealed class ArmRipperService(
             logger.LogInformation(
                 "Manual Selection mode: pausing for user to select tracks for job {JobId}", job.Id);
 
+            // Register the signal BEFORE making the ManualSelectionStarted status
+            // visible to the API. The API endpoint checks the status and then calls
+            // SignalManualSelection; if the TCS were registered after the status was
+            // saved, a fast API call could land in the gap and the signal would be
+            // missed, leaving the job parked forever. Registering first closes that
+            // race (see issue #169).
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            manualSelectionSignals[job.Id] = tcs;
+
             job.Status = JobState.ManualSelectionStarted;
             job.ProgressMessage = "Waiting for manual track selection...";
             await db.SaveChangesAsync(ct);
             await BroadcastJobUpdateAsync(job);
-
-            // Park the pipeline — no polling. The TCS is completed when the
-            // API endpoint receives the user's selection.
-            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            manualSelectionSignals[job.Id] = tcs;
 
             // Respect cancellation token — link it so abort/cancel wakes us up.
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
