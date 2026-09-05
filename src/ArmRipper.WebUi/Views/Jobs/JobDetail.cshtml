@@ -520,6 +520,33 @@ else
     @section Scripts {
     @Html.AntiForgeryToken()
     <script>
+    // Tracks whether the user has already submitted a manual track selection in
+    // this page session. Prevents a stale SignalR broadcast from re-adding the
+    // Continue Rip button while the pipeline is resuming (issue #182).
+    var manualSelectionSubmitted = false;
+
+    // Remove the manual-selection UI (Continue button + track checkboxes) from
+    // the DOM. The server-rendered page only shows these in ManualSelectionStarted,
+    // so both the optimistic submit path and the live-update path must strip them
+    // once the job leaves that state (issue #182).
+    function removeManualSelectionUi() {
+        var continueBtn = document.getElementById('continueManualSelection');
+        if (continueBtn) {
+            var hint = continueBtn.nextElementSibling;
+            if (hint && hint.classList.contains('text-muted')) hint.remove();
+            continueBtn.remove();
+        }
+        var selectAll = document.getElementById('selectAllTracks');
+        if (selectAll) {
+            var th = selectAll.closest('th');
+            if (th) th.remove();
+        }
+        document.querySelectorAll('.track-select').forEach(function (cb) {
+            var td = cb.closest('td');
+            if (td) td.remove();
+        });
+    }
+
     @if (Model.Status is JobState.ManualSelectionStarted)
     {
         <text>
@@ -538,10 +565,44 @@ else
         })
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            if (data.success) location.reload();
+            if (data.success) {
+                // Switch the UI out of manual-selection mode immediately. The
+                // pipeline needs a few DB round-trips before the status actually
+                // leaves manual_selection, so a blind reload would re-render the
+                // button (issue #182).
+                manualSelectionSubmitted = true;
+                removeManualSelectionUi();
+                waitForSelectionApplied();
+            }
             else alert('Failed: ' + (data.error || 'unknown error'));
         })
         .catch(function(err) { alert('Error: ' + err); });
+    }
+
+    // Poll the job until it leaves manual_selection, then reload so the
+    // server-rendered page reflects the applied selections. Falls back to a
+    // reload after ~10s so the page can never get stuck.
+    function waitForSelectionApplied() {
+        var attempts = 0;
+        var maxAttempts = 20; // 20 × 500 ms = 10 s
+        var timer = setInterval(function () {
+            attempts++;
+            fetch('/api/jobs/' + @Model.Id)
+                .then(function (r) { return r.json(); })
+                .then(function (job) {
+                    // JobState.ManualSelectionStarted serializes as 10.
+                    if (job.status !== 10 || attempts >= maxAttempts) {
+                        clearInterval(timer);
+                        location.reload();
+                    }
+                })
+                .catch(function () {
+                    if (attempts >= maxAttempts) {
+                        clearInterval(timer);
+                        location.reload();
+                    }
+                });
+        }, 500);
     }
     document.getElementById('selectAllTracks').addEventListener('change', function() {
         var checked = this.checked;
@@ -663,18 +724,32 @@ else
 
             if (isTerminal_) {
                 actionsDd.innerHTML = '';
+                removeManualSelectionUi();
                 return;
             }
 
             if (isManualSelection) {
-                actionsDd.innerHTML =
-                    '<button type="button" class="btn btn-success me-2" onclick="submitManualSelection()">▶ Continue Rip</button>' +
-                    '<small class="text-muted">Select tracks below, then click Continue.</small>' +
-                    '<form method="post" action="/jobs/cancel" onsubmit="return confirm(\'Cancel this job?\')" style="display:inline">' +
-                    '<input type="hidden" name="jobId" value="' + jobId + '" />' +
-                    '<button type="submit" class="btn btn-outline-danger btn-sm ms-2">Cancel Job</button>' +
-                    '</form>';
+                if (manualSelectionSubmitted) {
+                    // The user already submitted a selection and the pipeline is
+                    // resuming — don't re-add the Continue button if a stale
+                    // broadcast arrives (issue #182).
+                    removeManualSelectionUi();
+                    actionsDd.innerHTML =
+                        '<form method="post" action="/jobs/cancel" onsubmit="return confirm(\'Cancel this job?\')" style="display:inline">' +
+                        '<input type="hidden" name="jobId" value="' + jobId + '" />' +
+                        '<button type="submit" class="btn btn-outline-danger btn-sm">Cancel Job</button>' +
+                        '</form>';
+                } else {
+                    actionsDd.innerHTML =
+                        '<button type="button" class="btn btn-success me-2" onclick="submitManualSelection()">▶ Continue Rip</button>' +
+                        '<small class="text-muted">Select tracks below, then click Continue.</small>' +
+                        '<form method="post" action="/jobs/cancel" onsubmit="return confirm(\'Cancel this job?\')" style="display:inline">' +
+                        '<input type="hidden" name="jobId" value="' + jobId + '" />' +
+                        '<button type="submit" class="btn btn-outline-danger btn-sm ms-2">Cancel Job</button>' +
+                        '</form>';
+                }
             } else if (isManualWait) {
+                removeManualSelectionUi();
                 actionsDd.innerHTML =
                     '<form method="post" action="/jobs/continue-wait" style="display:inline">' +
                     '<input type="hidden" name="jobId" value="' + jobId + '" />' +
@@ -685,6 +760,7 @@ else
                     '<button type="submit" class="btn btn-outline-danger btn-sm">Cancel Job</button>' +
                     '</form>';
             } else {
+                removeManualSelectionUi();
                 actionsDd.innerHTML =
                     '<form method="post" action="/jobs/cancel" onsubmit="return confirm(\'Cancel this job?\')" style="display:inline">' +
                     '<input type="hidden" name="jobId" value="' + jobId + '" />' +

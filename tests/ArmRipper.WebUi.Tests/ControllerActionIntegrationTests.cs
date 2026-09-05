@@ -929,6 +929,57 @@ public class ControllerActionIntegrationTests : IClassFixture<CustomWebApplicati
     }
 
     [Fact]
+    public async Task JobDetail_ManualSelectionState_RendersSelectionUiAndSubmitHelpers()
+    {
+        // Regression test for issue #182: the manual-selection page must render
+        // the optimistic-removal + polling helpers so the Continue Rip button
+        // disappears immediately after a selection is submitted (instead of
+        // lingering until a manual refresh).
+        int jobId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = new Job
+            {
+                Title = "Manual Selection Job",
+                TitleAuto = "Manual Selection Job",
+                Year = "2026",
+                VideoType = VideoContentType.Movie,
+                DiscType = DiscType.Dvd,
+                Status = JobState.ManualSelectionStarted,
+                StartTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99",
+                Config = new ConfigSnapshot { MinLength = 300, MaxLength = 9999, RipMethod = "mkv", GetAudioTitle = "" }
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+
+            // Tracks are required — the checkbox column only renders when the
+            // track table is present.
+            db.Tracks.AddRange(
+                new Track { JobId = jobId, TrackNumber = "0", FileName = "title00.mkv", Length = 6000, Process = true, MainFeature = true },
+                new Track { JobId = jobId, TrackNumber = "1", FileName = "title01.mkv", Length = 300, Process = false });
+            await db.SaveChangesAsync();
+        }
+
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync($"/jobs/jobdetail?jobId={jobId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var html = await response.Content.ReadAsStringAsync();
+        // The Continue Rip button and track checkboxes are rendered in this state.
+        Assert.Contains("id=\"continueManualSelection\"", html);
+        Assert.Contains("id=\"selectAllTracks\"", html);
+        Assert.Contains("class=\"track-select\"", html);
+        // The optimistic-removal and polling helpers must be present so the UI
+        // switches out of manual mode immediately after submission.
+        Assert.Contains("function removeManualSelectionUi()", html);
+        Assert.Contains("function waitForSelectionApplied()", html);
+        Assert.Contains("function submitManualSelection()", html);
+    }
+
+    [Fact]
     public async Task ActiveRips_ReturnsPageWithActiveJobs()
     {
         using (var scope = _factory.Services.CreateScope())
