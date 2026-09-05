@@ -1,18 +1,21 @@
 ---
 name: issue-fixer
-description: 'Work through open agent-ready issues from the GitHub issue board. Use when: fixing issues, working through cleanup tasks, resolving agent-ready labeled issues, running periodic fix sessions, addressing technical debt. Picks up any issue tagged agent-ready, not just code review findings.'
+description: 'Work through open agent-ready and agent-changes-requested issues from the GitHub issue board. Use when: fixing issues, working through cleanup tasks, resolving agent-ready labeled issues, running periodic fix sessions, addressing technical debt. Picks up any issue tagged agent-ready or agent-changes-requested, not just code review findings.'
 argument-hint: '[count|priority|issue#] — e.g. "3", "critical", "#82", "medium+low"'
 ---
 
 # Issue Fix Worker
 
-Picks up open `agent-ready` labeled issues from the GitHub issue board and implements fixes **one issue at a time — each on its own branch and its own pull request**. Designed to be run periodically (e.g., weekly) to work through accumulated ready-to-fix items.
+Picks up open `agent-ready` and `agent-changes-requested` labeled issues from the GitHub issue board and implements fixes **one issue at a time — each on its own branch and its own pull request**. Designed to be run periodically (e.g., weekly) to work through accumulated ready-to-fix items.
 
-The `agent-ready` label is the universal signal that an issue is available for automated fixing. Any process — the code review skill, manual issue creation, or other workflows — can add this label to indicate an issue is ready for an agent to pick up and complete.
+The `agent-ready` label is the universal signal that an issue is available for automated fixing. Any process — the code review skill, manual issue creation, or other workflows — can add this label to indicate an issue is ready for an agent to pick up and complete. The `agent-changes-requested` label marks an issue sent back from review — the fixer picks these up too and reworks the existing PR.
 
 **Label lifecycle:**
 - `agent-ready` → issue is available for pickup
+- `agent-changes-requested` → review requested changes; issue is back in the fixer queue for rework
 - `agent-in-progress` → issue is actively being worked on (set when picking up, removed when done)
+- `agent-needs-review` → fix is complete, PR is open, awaiting review (set when PR is created)
+- `agent-ready-for-merge` → PR approved by reviewer, ready for a human to merge (merge closes the issue)
 - Neither label → issue is completed or not part of the automated workflow
 
 ## When to Use
@@ -31,7 +34,7 @@ Parse the argument hint to decide which issues to work on. Every issue selected 
 
 | Argument | Behavior |
 |----------|----------|
-| (none) | Pick the highest-priority open `agent-ready` issue |
+| (none) | Pick the highest-priority open `agent-ready` or `agent-changes-requested` issue |
 | `N` (number) | Fix the next N issues in priority order, one branch/PR per issue |
 | `critical` | Fix all `priority: critical` issues, one branch/PR per issue |
 | `medium` | Fix all `priority: medium` issues, one branch/PR per issue |
@@ -44,7 +47,7 @@ Fetch open issues:
 
 ```bash
 gh issue list --repo negativeeddy/arm-sharp \
-  --label agent-ready --state open \
+  --label agent-ready --label agent-changes-requested --state open \
   --limit 200 --json number,title,labels
 ```
 
@@ -52,10 +55,10 @@ Sort by priority: critical → medium → low. Skip `needs-investigation` issues
 
 ### Step 2: Pick Up the Issue
 
-Before starting work, transition the labels from `agent-ready` to `agent-in-progress`:
+Before starting work, transition the labels from `agent-ready`/`agent-changes-requested` to `agent-in-progress`:
 
 ```bash
-gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-ready" --add-label "agent-in-progress"
+gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-ready" --remove-label "agent-changes-requested" --add-label "agent-in-progress"
 ```
 
 ### Step 3: Create a Working Branch (one per issue)
@@ -70,12 +73,14 @@ git pull --ff-only
 git checkout -b fix/issue-#<issue-number>
 ```
 
-If a branch for this issue already exists (e.g. from a previous interrupted run), rebase it onto the latest `master` before continuing:
+If a branch for this issue already exists (e.g. from a previous interrupted run, or the issue was sent back from review), rebase it onto the latest `master` before continuing:
 
 ```bash
 git checkout fix/issue-#<issue-number>
 git rebase master
 ```
+
+**Rework from review:** if the issue was sent back from review (tagged `agent-changes-requested` with an existing PR), read the PR's review comments first to see what changes are requested, then update the **existing** branch and push to it — do not create a new branch or PR.
 
 ### Step 4: For Each Issue
 
@@ -83,6 +88,13 @@ git rebase master
 
 ```bash
 gh issue view <number> --repo negativeeddy/arm-sharp --json title,body,labels
+```
+
+If the issue already has a PR (sent back from review), also read the PR's review comments to see what changes are requested:
+
+```bash
+gh pr view <pr-number> --repo negativeeddy/arm-sharp --json reviews,comments \
+  --jq '{reviews: [.reviews[].body], comments: [.comments[].body]}'
 ```
 
 #### 4b. Understand the Problem
@@ -119,7 +131,7 @@ git commit -m "fix: <short description> (closes #<number>)"
 
 ### Step 5: Create a Pull Request (per issue)
 
-Create **one PR per issue** — the branch contains only that issue's fix, so the PR is small, focused, and easy to review. Cross-link both ways: the PR references the issue (`Fixes #N` so it auto-closes on merge), and the issue is updated with a comment linking to the PR.
+Create **one PR per issue** — the branch contains only that issue's fix, so the PR is small, focused, and easy to review. Cross-link both ways: the PR references the issue (`Fixes #N` so it auto-closes on merge), and the issue is updated with a comment linking to the PR. If the issue already has a PR (sent back from review), skip `gh pr create` — push to the existing branch and the PR updates automatically.
 
 ```bash
 git push -u origin fix/issue-#<issue-number>
@@ -136,6 +148,10 @@ Fixes #<number>
 ### Testing
 - All existing tests pass
 - <any new tests added>"
+```
+
+# Mark the issue as awaiting review
+gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-in-progress" --add-label "agent-needs-review"
 ```
 
 **CRITICAL — `Fixes` keyword placement:** GitHub only auto-closes issues when `Fixes #N` appears on its own line as a **complete keyword phrase**. Bad formats that silently fail:
@@ -216,7 +232,7 @@ Print a summary with one row per issue/PR:
 | #N | <title> | 🟡 Medium | fix/issue-#N → PR #NN |
 | #M | <title> | 🟢 Low | fix/issue-#M → PR #MM |
 
-Each issue above has a comment linking to its PR, and each PR links back via `Fixes #N`.
+Each issue above has a comment linking to its PR, each PR links back via `Fixes #N`, and each issue is tagged `agent-needs-review` awaiting review.
 
 ### Skipped
 | Issue | Title | Reason |
@@ -308,7 +324,7 @@ gh issue comment <number> --repo negativeeddy/arm-sharp \
 - **Respect the priority order** — critical first, then medium, then low
 - **Always branch from an up-to-date `master`** — pull before creating each issue branch so every PR is small and conflict-free
 - **Verify auto-close after merge** — check that each issue actually closed; if not, close it manually with a comment
-- **Label lifecycle** — `agent-ready` → `agent-in-progress` (on pickup) → removed (on completion or skip)
+- **Label lifecycle** — `agent-ready`/`agent-changes-requested` → `agent-in-progress` (on pickup) → `agent-needs-review` (PR created) → `agent-ready-for-merge` (approved) or `agent-changes-requested` (changes requested)
 
 ## Quick Reference Commands
 
@@ -318,6 +334,12 @@ gh issue list --repo negativeeddy/arm-sharp --label agent-ready --state open
 
 # List issues currently being worked on
 gh issue list --repo negativeeddy/arm-sharp --label agent-in-progress --state open
+
+# List issues sent back for rework
+gh issue list --repo negativeeddy/arm-sharp --label agent-changes-requested --state open
+
+# List issues awaiting review
+gh issue list --repo negativeeddy/arm-sharp --label agent-needs-review --state open
 
 # View a specific issue
 gh issue view <number> --repo negativeeddy/arm-sharp
@@ -350,6 +372,9 @@ Fixes #<number>
 # Cross-link the issue back to the PR so each references the other:
 pr_url=$(gh pr view fix/issue-#<issue-number> --repo negativeeddy/arm-sharp --json url --jq .url)
 gh issue comment <issue-number> --repo negativeeddy/arm-sharp --body "Fix submitted in PR: $pr_url (auto-closes this issue on merge)."
+
+# Mark the issue as awaiting review:
+gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-in-progress" --add-label "agent-needs-review"
 
 # Find orphaned issues (open issues with merged PRs that should have closed them)
 gh pr list --repo negativeeddy/arm-sharp --state merged --limit 100 \
