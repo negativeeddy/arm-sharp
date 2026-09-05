@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using ArmRipper.Core.Infrastructure.Data;
@@ -477,6 +478,76 @@ public class ApiIntegrationTests : IClassFixture<ApiTestWebApplicationFactory>
         var json = await response.Content.ReadAsStringAsync();
         var doc = JsonDocument.Parse(json);
         Assert.False(doc.RootElement.GetProperty("success").GetBoolean());
+    }
+
+    [Fact]
+    public async Task SubmitManualSelection_EmptySelection_RejectsAndKeepsJobWaiting()
+    {
+        // Regression test for issue #173: submitting an empty track selection
+        // (deselect all tracks) must be rejected with a clear error and the job
+        // must stay parked in ManualSelectionStarted so the user can correct the
+        // selection and resubmit (or cancel the job).
+        // Start the host first — ShutdownJobCancellationService marks non-terminal
+        // jobs as Stopping on startup, so the job must be created after startup.
+        var (client, token) = await CreateAuthenticatedWithTokenAsync();
+
+        int jobId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = new Job
+            {
+                Title = "Manual Selection Job",
+                TitleAuto = "Manual Selection Job",
+                Year = "2026",
+                VideoType = VideoContentType.Movie,
+                DiscType = DiscType.Dvd,
+                Status = JobState.ManualSelectionStarted,
+                StartTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99",
+                Config = new ConfigSnapshot { MinLength = 300, MaxLength = 9999, RipMethod = "mkv", GetAudioTitle = "" }
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+        }
+
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/jobs/{jobId}/manual-selection")
+        {
+            Content = new StringContent("{\"trackNumbers\":[]}", Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("RequestVerificationToken", token);
+        var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var json = await response.Content.ReadAsStringAsync();
+        var doc = JsonDocument.Parse(json);
+        Assert.False(doc.RootElement.GetProperty("success").GetBoolean());
+        Assert.Contains("select at least one track",
+            doc.RootElement.GetProperty("error").GetString());
+
+        // The job must still be waiting for a selection — the pipeline was not
+        // signaled and no selection was persisted.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = await db.Jobs.FirstAsync(j => j.Id == jobId);
+            Assert.Equal(JobState.ManualSelectionStarted, job.Status);
+            Assert.Null(job.ManualSelectionTrackNumbers);
+        }
+
+        // Clean up the test job so it doesn't leak into other tests (e.g. the
+        // stats endpoint counts jobs in the shared DB).
+        using (var cleanupScope = _factory.Services.CreateScope())
+        {
+            var cleanupDb = cleanupScope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = await cleanupDb.Jobs.FirstOrDefaultAsync(j => j.Id == jobId);
+            if (job is not null)
+            {
+                cleanupDb.Jobs.Remove(job);
+                await cleanupDb.SaveChangesAsync();
+            }
+        }
     }
 
     private async Task<HttpClient> CreateAuthenticatedClientAsync()

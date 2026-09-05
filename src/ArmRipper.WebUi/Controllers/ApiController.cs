@@ -297,9 +297,17 @@ public partial class ApiController(
         if (job.Status != JobState.ManualSelectionStarted)
             return Json(new { success = false, error = "Job is not in manual selection state" });
 
+        // Reject an empty selection — the user must pick at least one track. The
+        // job stays parked in ManualSelectionStarted so they can correct the
+        // selection and resubmit (or cancel the job). Without this, the pipeline
+        // would wake up with zero eligible tracks and fail with a confusing
+        // "no ripped tracks" error (issue #173).
+        var trackNumbers = request?.TrackNumbers ?? [];
+        if (trackNumbers.Count == 0)
+            return Json(new { success = false, error = "Please select at least one track to rip." });
+
         // Persist selections to DB so the pipeline can read them after wake-up.
-        job.ManualSelectionTrackNumbers = System.Text.Json.JsonSerializer.Serialize(
-            request?.TrackNumbers ?? []);
+        job.ManualSelectionTrackNumbers = System.Text.Json.JsonSerializer.Serialize(trackNumbers);
         await db.SaveChangesAsync(ct);
 
         // Signal the parked pipeline — no polling involved.
