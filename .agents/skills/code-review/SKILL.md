@@ -154,7 +154,11 @@ The following GitHub labels must exist (create if missing):
 |-------|-------|-------------|
 | `code-review` | `0052CC` | Code review finding |
 | `agent-ready` | `aaaaaa` | Ready for an agent to pick up and fix |
-| `agent-in-progress` | `E4A80B` | Currently being worked on by an agent |
+| `agent-changes-requested` | `B60205` | Review requested changes; back in the fixer queue for rework |
+| `agent-in-progress` | `fbca04` | Currently being worked on by an agent |
+| `agent-needs-review` | `1D76DB` | Fix complete, PR open, awaiting review |
+| `agent-in-progress-review` | `E4A80B` | PR is being reviewed by an agent |
+| `agent-ready-for-merge` | `2DA44E` | PR approved, ready for human merge |
 | `priority: critical` | `D93F0B` | Must-fix: correctness or data-loss risk |
 | `priority: medium` | `FBCA04` | Correctness or maintainability concern |
 | `priority: low` | `0E8A16` | Polish, consistency, or minor performance |
@@ -164,7 +168,11 @@ Create missing labels:
 ```bash
 gh api repos/negativeeddy/arm-sharp/labels -f name="code-review" -f color="0052CC" -f description="Code review finding" 2>/dev/null
 gh api repos/negativeeddy/arm-sharp/labels -f name="agent-ready" -f color="aaaaaa" -f description="Ready for an agent to pick up and fix" 2>/dev/null
-gh api repos/negativeeddy/arm-sharp/labels -f name="agent-in-progress" -f color="E4A80B" -f description="Currently being worked on by an agent" 2>/dev/null
+gh api repos/negativeeddy/arm-sharp/labels -f name="agent-changes-requested" -f color="B60205" -f description="Review requested changes; back in the fixer queue for rework" 2>/dev/null
+gh api repos/negativeeddy/arm-sharp/labels -f name="agent-in-progress" -f color="fbca04" -f description="Currently being worked on by an agent" 2>/dev/null
+gh api repos/negativeeddy/arm-sharp/labels -f name="agent-needs-review" -f color="1D76DB" -f description="Fix complete, PR open, awaiting review" 2>/dev/null
+gh api repos/negativeeddy/arm-sharp/labels -f name="agent-in-progress-review" -f color="E4A80B" -f description="PR is being reviewed by an agent" 2>/dev/null
+gh api repos/negativeeddy/arm-sharp/labels -f name="agent-ready-for-merge" -f color="2DA44E" -f description="PR approved, ready for human merge" 2>/dev/null
 gh api repos/negativeeddy/arm-sharp/labels -f name="priority: critical" -f color="D93F0B" -f description="Must-fix: correctness or data-loss risk" 2>/dev/null
 gh api repos/negativeeddy/arm-sharp/labels -f name="priority: medium" -f color="FBCA04" -f description="Correctness or maintainability concern" 2>/dev/null
 gh api repos/negativeeddy/arm-sharp/labels -f name="priority: low" -f color="0E8A16" -f description="Polish, consistency, or minor performance" 2>/dev/null
