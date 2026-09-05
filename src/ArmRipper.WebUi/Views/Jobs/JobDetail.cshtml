@@ -554,6 +554,14 @@ else
         var checkboxes = document.querySelectorAll('.track-select');
         var selected = [];
         checkboxes.forEach(function(cb) { if (cb.checked) selected.push(cb.value); });
+        // Guard against an empty selection (deselect all tracks): the server
+        // rejects it too, but failing fast here avoids a round-trip and keeps
+        // the checkboxes visible so the user can pick at least one track
+        // (issue #173).
+        if (selected.length === 0) {
+            alert('Please select at least one track to rip.');
+            return;
+        }
         var tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
         fetch('/api/jobs/' + @Model.Id + '/manual-selection', {
             method: 'POST',

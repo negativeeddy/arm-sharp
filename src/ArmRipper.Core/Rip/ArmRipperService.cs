@@ -822,6 +822,23 @@ public sealed class ArmRipperService(
                         job.ManualSelectionTrackNumbers) ?? [];
                     var selectedSet = new HashSet<string>(selectedNumbers, StringComparer.Ordinal);
 
+                    // Empty selection (user deselected all tracks): fail the job
+                    // cleanly instead of proceeding with zero eligible tracks and
+                    // hitting the confusing "MakeMKV rip produced no ripped tracks"
+                    // error downstream. The API normally rejects empty submissions,
+                    // but this guards against selections persisted through other
+                    // paths (issue #173).
+                    if (selectedNumbers.Count == 0)
+                    {
+                        logger.LogWarning(
+                            "Manual Selection: user selected no tracks for job {JobId} — cancelling job", job.Id);
+                        job.Status = JobState.Failure;
+                        job.Errors = "No tracks selected — the rip was cancelled. Start a new rip and select at least one track.";
+                        await db.SaveChangesAsync(ct);
+                        await BroadcastJobUpdateAsync(job);
+                        return null;
+                    }
+
                     foreach (var track in tracks)
                     {
                         track.Process = track.TrackNumber is not null
