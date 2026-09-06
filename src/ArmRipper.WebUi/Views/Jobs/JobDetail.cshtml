@@ -940,6 +940,17 @@ else
                     }
                 }
 
+                // When the job enters manual_selection and the page wasn't
+                // originally rendered in that state, reload so the server
+                // renders the track checkboxes and submitManualSelection()
+                // function. Without this, the Continue Rip button injected
+                // by updateActionButtons calls an undefined function
+                // (issue #172).
+                if (update.status === 'manual_selection' && !manualSelectionSubmitted && typeof submitManualSelection !== 'function') {
+                    location.reload();
+                    return;
+                }
+
                 // Update action buttons when status changes
                 updateActionButtons(update.status);
 
