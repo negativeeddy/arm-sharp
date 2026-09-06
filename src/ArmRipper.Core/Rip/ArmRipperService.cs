@@ -245,11 +245,19 @@ public sealed class ArmRipperService(
         // Phase 2b – eject disc and reload job.
         await EjectAndReloadAsync(job, ct);
 
-        // If the rip phase failed (e.g. manual selection timed out), the job is
-        // already in a terminal state with the real error recorded. Stop here —
-        // don't proceed to transcode, which would throw a misleading
-        // "transcodeInPath is null" error that masks the original failure.
-        if (job.Status.IsTerminal())
+        // If the rip phase produced no transcode input (e.g. manual selection
+        // timed out), the job is already in a terminal state with the real error
+        // recorded. Stop here — don't proceed to transcode, which would throw a
+        // misleading "transcodeInPath is null" error that masks the original
+        // failure.
+        //
+        // NOTE: we gate on TranscodeInPath being null, NOT on job.Status being
+        // terminal. A partial rip (some tracks failed, others succeeded) also
+        // records JobState.Failure but still sets TranscodeInPath to the raw
+        // output directory so the succeeded tracks can be transcoded. Gating on
+        // the terminal state alone would abort those partial rips before
+        // transcode, leaving the successfully-ripped files stranded in raw/.
+        if (ctx.TranscodeInPath is null)
             return ctx.FinalDirectory;
 
         // Phase 3 – optional test-mode trim.

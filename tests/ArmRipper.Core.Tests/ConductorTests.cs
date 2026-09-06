@@ -160,6 +160,52 @@ public sealed class ConductorTests : IDisposable
     }
 
     [Fact]
+    public async Task RunAsync_WhenRipCompletesWithErrors_MarksJobAsFailure()
+    {
+        // Regression test for the job-1342 failure: a partial rip (some tracks
+        // failed, others succeeded) completes the pipeline and transcodes the
+        // succeeded tracks, but the job must end as Failure — not Success —
+        // because errors were recorded. Previously the Conductor unconditionally
+        // marked any non-terminal job as Success, hiding the partial failure.
+        var tmpDir = Path.Combine(Path.GetTempPath(), "arm-conductor-test", Guid.NewGuid().ToString());
+        Directory.CreateDirectory(tmpDir);
+        try
+        {
+            // A placeholder output file so the Conductor's "no output files"
+            // verification passes — this test targets the errors-based status
+            // logic, not the empty-output check.
+            File.WriteAllText(Path.Combine(tmpDir, "output.mkv"), "placeholder");
+
+            var ripper = new Mock<IArmRipperService>();
+            ripper.Setup(r => r.RipVisualMediaAsync(
+                    It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+                .Callback<Job, string, bool, bool, CancellationToken>((job, _, _, _, _) =>
+                {
+                    // Pipeline completed (non-terminal) but recorded a partial
+                    // rip error — exactly what happens after a partial rip that
+                    // continued to transcode the succeeded tracks.
+                    job.Status = JobState.Active;
+                    job.Errors = "MakeMKV rip errors (partial): Process 'makemkvcon' exited with code 12";
+                    job.Path = tmpDir;
+                })
+                .ReturnsAsync(tmpDir);
+
+            var conductor = CreateConductor(ripper: ripper.Object);
+
+            var exitCode = await conductor.RunAsync("/dev/sr0");
+
+            Assert.Equal(0, exitCode);
+            var job = _db.Jobs.Single();
+            Assert.Equal(JobState.Failure, job.Status);
+            Assert.Contains("partial", job.Errors);
+        }
+        finally
+        {
+            Directory.Delete(tmpDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task RunAsync_WhenMusicBrainzFails_MarksJobAsFailure()
     {
         var musicBrainzMock = new Mock<IMusicBrainzService>();
