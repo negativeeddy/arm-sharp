@@ -980,6 +980,62 @@ public class ControllerActionIntegrationTests : IClassFixture<CustomWebApplicati
     }
 
     [Fact]
+    public async Task JobDetail_ManualSelectionState_RendersReloadOnTransitionScript()
+    {
+        // Regression test for issue #168: when the job pauses in manual selection
+        // after identification, the page must reload on the transition INTO that
+        // state so the server-rendered track table (with episode titles from the
+        // DiscDb mapping) appears. The guard must only fire on the transition in,
+        // not while already in the state (issue #182 submit flow).
+        int jobId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = new Job
+            {
+                Title = "Manual Selection Reload Job",
+                TitleAuto = "Manual Selection Reload Job",
+                Year = "2026",
+                VideoType = VideoContentType.Series,
+                DiscType = DiscType.Dvd,
+                Status = JobState.ManualSelectionStarted,
+                StartTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99",
+                Config = new ConfigSnapshot { MinLength = 300, MaxLength = 9999, RipMethod = "mkv", GetAudioTitle = "" }
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+
+            // A track with an identified episode title — the view must render it.
+            db.Tracks.Add(new Track
+            {
+                JobId = jobId,
+                TrackNumber = "0",
+                FileName = "title00.mkv",
+                EpisodeTitle = "Pilot",
+                Length = 6000,
+                Process = true,
+                MainFeature = true
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync($"/jobs/jobdetail?jobId={jobId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var html = await response.Content.ReadAsStringAsync();
+        // The page seeds lastStatus with the server-rendered status so the
+        // transition guard can detect a change into manual_selection.
+        Assert.Contains("var lastStatus = 'manual_selection'", html);
+        // The reload guard fires only on the transition INTO manual selection.
+        Assert.Contains("update.status === 'manual_selection' && lastStatus !== 'manual_selection'", html);
+        // The identified episode title is rendered in the track table.
+        Assert.Contains("Pilot", html);
+    }
+
+    [Fact]
     public async Task ActiveRips_ReturnsPageWithActiveJobs()
     {
         using (var scope = _factory.Services.CreateScope())

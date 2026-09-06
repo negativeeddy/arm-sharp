@@ -622,6 +622,10 @@ else
         var jobId = @Model.Id;
         var wasTerminal = false;
         var lastStage = '@(Model.Stage?.ToString())';
+        // Tracks the last status seen by this page session. Used to detect the
+        // transition INTO manual selection so the page can reload and show the
+        // track table (issue #168).
+        var lastStatus = '@(Model.Status.ToDbString())';
 
         // Hide season/disc/starting-episode unless the video type is Series or Episode
         toggleTvFields();
@@ -914,6 +918,17 @@ else
             }
 
             if (update.status != null) {
+                // When the job enters manual selection mode, reload the page so
+                // the server-rendered track table appears with the identified
+                // episode titles (issue #168). Only fires on the transition INTO
+                // manual selection — while already in it (e.g. after submitting a
+                // selection, issue #182) the status doesn't change, so no reload.
+                if (update.status === 'manual_selection' && lastStatus !== 'manual_selection') {
+                    location.reload();
+                    return;
+                }
+                lastStatus = update.status;
+
                 var dd = findDd('Status');
                 if (dd) {
                     if (update.warnings) {
