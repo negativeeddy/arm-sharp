@@ -63,7 +63,7 @@ gh issue close <number> --repo negativeeddy/arm-sharp --reason completed
 - Verify the fix matches the issue's proposed fix
 - Run the build: `dotnet build ArmRipper.slnx -c Debug`
 - Run relevant tests: `dotnet test`
-- Check for: regressions, style inconsistencies, missing tests, incomplete fixes
+- Check for: correctness, regressions, style inconsistencies, missing tests, incomplete fixes
 
 ### Step 5: Finalize
 

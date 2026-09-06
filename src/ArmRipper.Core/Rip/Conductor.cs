@@ -593,15 +593,20 @@ public sealed class Conductor(
                 // Manual wait for title identification
                 if (cfg is { ManualWait: true } && string.IsNullOrEmpty(job.TitleManual) && !string.IsNullOrEmpty(job.Label))
                 {
-                    var waitTime = cfg.ManualWaitTime > 0 ? cfg.ManualWaitTime : 60;
-                    logger.LogInformation("Waiting {Time}s for manual title override", waitTime);
+                    var waitTime = cfg.ManualWaitTime; // 0 = no timeout (wait indefinitely)
+                    logger.LogInformation(waitTime > 0
+                        ? "Waiting {Time}s for manual title override"
+                        : "Waiting indefinitely for manual title override (timeout disabled)",
+                        waitTime);
                     job.Status = JobState.ManualWaitStarted;
-                    job.ProgressMessage = $"Manual wait: {waitTime}s remaining";
+                    job.ProgressMessage = waitTime > 0
+                        ? $"Manual wait: {waitTime}s remaining"
+                        : "Manual wait: waiting for title...";
                     await db.SaveChangesAsync(ct);
                     await BroadcastJobUpdateAsync(job);
 
                     var waited = 0;
-                    while (waited < waitTime)
+                    while (waitTime <= 0 || waited < waitTime)
                     {
                         await Task.Delay(5000, ct);
                         waited += 5;
@@ -630,17 +635,20 @@ public sealed class Conductor(
                             break;
                         }
 
-                        // Update countdown
-                        var remaining = waitTime - waited;
-                        if (remaining > 0)
+                        // Update countdown (skip when no timeout)
+                        if (waitTime > 0)
                         {
-                            job.ProgressMessage = $"Manual wait: {remaining}s remaining";
-                            await db.SaveChangesAsync(ct);
-                            await BroadcastJobUpdateAsync(job);
+                            var remaining = waitTime - waited;
+                            if (remaining > 0)
+                            {
+                                job.ProgressMessage = $"Manual wait: {remaining}s remaining";
+                                await db.SaveChangesAsync(ct);
+                                await BroadcastJobUpdateAsync(job);
+                            }
                         }
                     }
 
-                    if (string.IsNullOrEmpty(job.TitleManual))
+                    if (string.IsNullOrEmpty(job.TitleManual) && waitTime > 0)
                         logger.LogInformation("Manual wait expired, continuing with auto-identified title");
 
                     // The wait loop only checks for Cancelled explicitly — another process

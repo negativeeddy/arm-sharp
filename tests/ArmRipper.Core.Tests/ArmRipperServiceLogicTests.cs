@@ -591,4 +591,97 @@ public sealed class ArmRipperServiceLogicTests
         Assert.NotNull(result);
         Assert.Equal("1", result.TrackNumber);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // GetBestTitle
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static string InvokeGetBestTitle(Job job)
+    {
+        var method = GetStaticMethod("GetBestTitle");
+        return (string)method.Invoke(null, [job])!;
+    }
+
+    [Fact]
+    public void GetBestTitle_PrefersTitleManual_WhenBothSet()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.Title = "Auto Title";
+            j.TitleManual = "My Manual Title";
+        });
+        Assert.Equal("My Manual Title", InvokeGetBestTitle(job));
+    }
+
+    [Fact]
+    public void GetBestTitle_FallsBackToTitle_WhenNoManual()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.Title = "Auto Title";
+            j.TitleManual = null;
+        });
+        Assert.Equal("Auto Title", InvokeGetBestTitle(job));
+    }
+
+    [Fact]
+    public void GetBestTitle_FallsBackToLabel_WhenTitleAndManualNull()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.Title = null;
+            j.TitleManual = null;
+            j.Label = "MY_DISC_LABEL";
+        });
+        Assert.Equal("MY_DISC_LABEL", InvokeGetBestTitle(job));
+    }
+
+    [Fact]
+    public void GetBestTitle_FallsBackToUnknown_WhenAllNull()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.Title = null;
+            j.TitleManual = null;
+            j.Label = null;
+        });
+        Assert.Equal("Unknown", InvokeGetBestTitle(job));
+    }
+
+    [Fact]
+    public void GetBestTitle_TitleManualEmpty_FallsBackToTitle()
+    {
+        // Empty string is not null, so it's used as-is
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.Title = "Auto Title";
+            j.TitleManual = "";
+        });
+        Assert.Equal("", InvokeGetBestTitle(job));
+    }
+
+    [Fact]
+    public void GetBestTitle_TitleManualAndTitleDiffer_ReturnsManual()
+    {
+        // Simulates the scenario where Title was overwritten by auto-detection
+        // or a concurrent DbContext write, but TitleManual still has the user's
+        // clean input.
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.Title = "MY_NAME_IS_EARL_S3_D3";
+            j.TitleManual = "My Name Is Earl";
+        });
+        Assert.Equal("My Name Is Earl", InvokeGetBestTitle(job));
+    }
+
+    [Fact]
+    public void GetBestTitle_BothSame_ReturnsSameValue()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.Title = "My Name Is Earl";
+            j.TitleManual = "My Name Is Earl";
+        });
+        Assert.Equal("My Name Is Earl", InvokeGetBestTitle(job));
+    }
 }
