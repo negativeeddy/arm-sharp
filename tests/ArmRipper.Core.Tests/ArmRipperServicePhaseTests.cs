@@ -782,6 +782,54 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
     }
 
     [Fact]
+    public async Task RipVisualMediaAsync_ManualSelectionTimeout_StopsBeforeTranscode_AndPreservesRealError()
+    {
+        // Regression test for the job-1326 failure: when the manual-selection
+        // wait times out, PrepareTranscodeInputPathAsync fails the job and
+        // returns null. RipVisualMediaAsync must stop there instead of
+        // proceeding to transcode with a null input path — which previously
+        // threw a misleading "transcodeInPath is null" error that masked the
+        // real cause (the timeout).
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.Config!.ManualSelection = true;
+            j.Config!.ManualWaitTime = 1; // 1 second timeout for a fast test
+        });
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var tracks = new List<Track>
+        {
+            new() { Id = 1, JobId = job.Id, TrackNumber = "0", Length = 1000, FileName = "C1_t00.mkv" },
+        };
+        _makeMkv.Setup(m => m.GetTrackInfoWithCacheAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tracks);
+
+        var service = CreateService();
+
+        // Run the full rip pipeline — the manual-selection wait times out after
+        // 1s (no signal), and the pipeline must stop before transcode.
+        var result = await service.RipVisualMediaAsync(job, "test.log", hasDupes: false, protection: false, CancellationToken.None);
+
+        // The job must be failed with the REAL error (manual selection timeout),
+        // not the misleading "transcodeInPath is null" message.
+        var dbJob = await _db.Jobs.AsNoTracking().FirstAsync(j => j.Id == job.Id);
+        Assert.Equal(JobState.Failure, dbJob.Status);
+        Assert.Contains("timed out", dbJob.Errors ?? "");
+        Assert.DoesNotContain("transcodeInPath is null", dbJob.Errors ?? "");
+
+        // The pipeline must have stopped before transcode — neither ffmpeg nor
+        // HandBrake may have been invoked.
+        _ffmpeg.Verify(f => f.TranscodeMkvAsync(It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()), Times.Never);
+        _ffmpeg.Verify(f => f.TranscodeMainFeatureAsync(It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()), Times.Never);
+        _ffmpeg.Verify(f => f.TranscodeAllAsync(It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()), Times.Never);
+        _handBrake.Verify(h => h.TranscodeMkvAsync(It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()), Times.Never);
+        _handBrake.Verify(h => h.TranscodeMainFeatureAsync(It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()), Times.Never);
+        _handBrake.Verify(h => h.TranscodeAllAsync(It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ManualSelection_SignalRegisteredBeforeStatusVisible_NoRace()
     {
         // Regression test for issue #169: the pipeline must register its signal

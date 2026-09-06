@@ -381,6 +381,47 @@ public sealed class ConductorTests : IDisposable
         Assert.Equal(JobState.Success, job.Status);
     }
 
+    [Fact]
+    public async Task RunAsync_ManualWaitTimeZero_WaitsIndefinitelyUntilTitleSet()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), "arm-test", Guid.NewGuid().ToString());
+        var options = TestHelpers.CreateOptions(a =>
+        {
+            a.ManualWait = true;
+            a.ManualWaitTime = 0; // 0 = no timeout (wait indefinitely)
+            a.RawPath = Path.Combine(tmpDir, "raw");
+            a.TranscodePath = Path.Combine(tmpDir, "transcode");
+            a.CompletedPath = Path.Combine(tmpDir, "completed");
+            a.LogPath = Path.Combine(tmpDir, "logs");
+        });
+        var conductor = CreateConductor(
+            options: options,
+            identify: new MockIdentifyService(DiscType.Dvd, label: "TEST_LABEL"));
+
+        using var secondCtx = CreateSecondDbContext();
+
+        // Run the pipeline in the background — it blocks in the manual wait loop.
+        var runTask = conductor.RunAsync("/dev/sr0");
+
+        // Wait until the conductor reaches ManualWaitStarted.
+        var jobId = await WaitForJobStatusAsync(secondCtx, JobState.ManualWaitStarted);
+
+        // Simulate the user setting a title via the WebUI (separate DbContext).
+        var externalJob = await secondCtx.Jobs.FirstAsync(j => j.Id == jobId);
+        externalJob.TitleManual = "User Title";
+        externalJob.Title = "User Title";
+        await secondCtx.SaveChangesAsync();
+
+        // The pipeline should pick up the title and complete successfully.
+        var exitCode = await runTask;
+
+        Assert.Equal(0, exitCode);
+
+        var finalJob = await secondCtx.Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobState.Success, finalJob.Status);
+        Assert.Equal("User Title", finalJob.TitleManual);
+    }
+
     /// <summary>
     /// Creates a second <see cref="ArmDbContext"/> over the same in-memory SQLite database,
     /// simulating another process reading/writing the job concurrently.

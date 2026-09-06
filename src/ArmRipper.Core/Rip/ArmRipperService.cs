@@ -245,6 +245,13 @@ public sealed class ArmRipperService(
         // Phase 2b – eject disc and reload job.
         await EjectAndReloadAsync(job, ct);
 
+        // If the rip phase failed (e.g. manual selection timed out), the job is
+        // already in a terminal state with the real error recorded. Stop here —
+        // don't proceed to transcode, which would throw a misleading
+        // "transcodeInPath is null" error that masks the original failure.
+        if (job.Status.IsTerminal())
+            return ctx.FinalDirectory;
+
         // Phase 3 – optional test-mode trim.
         await TestModeTrimAsync(ctx.TranscodeInPath, ct);
 
@@ -767,14 +774,18 @@ public sealed class ArmRipperService(
 
             // A configurable timeout so a job left waiting (user walked away, UI
             // closed) cannot block the optical drive indefinitely. Reuses the
-            // ManualWaitTime setting (default 60s), mirroring the ManualWait
-            // feature's timeout behavior (see issue #170).
-            var waitTimeSeconds = config.ManualWaitTime > 0 ? config.ManualWaitTime : 60;
-            var waitTimeout = TimeSpan.FromSeconds(waitTimeSeconds);
+            // ManualWaitTime setting (default 60s). 0 = no timeout (wait
+            // indefinitely), mirroring the ManualWait feature behavior.
+            var waitTimeSeconds = config.ManualWaitTime; // 0 = no timeout
+            var waitTimeout = waitTimeSeconds > 0
+                ? TimeSpan.FromSeconds(waitTimeSeconds)
+                : Timeout.InfiniteTimeSpan;
 
             try
             {
-                var delayTask = Task.Delay(waitTimeout, linkedCts.Token);
+                var delayTask = waitTimeSeconds > 0
+                    ? Task.Delay(waitTimeout, linkedCts.Token)
+                    : Task.Delay(Timeout.Infinite, linkedCts.Token);
                 var completedTask = await Task.WhenAny(tcs.Task, delayTask);
 
                 if (completedTask == tcs.Task && !tcs.Task.IsCanceled)
@@ -996,8 +1007,21 @@ public sealed class ArmRipperService(
                         continue;
                     }
                     var trackMinLength = !string.IsNullOrEmpty(track.EpisodeTitle) ? 0 : minLengthCfg;
-                    ripResults.Add(await makeMkv.RipTrackAsync(job, track.TrackNumber, makeMkvOutPath, mkvArgs, trackMinLength, MkvProgress(job, $"Ripping track {trackNum} of {eligibleTracks.Count}", ct), ct));
-                    ripCount++;
+                    try
+                    {
+                        ripResults.Add(await makeMkv.RipTrackAsync(job, track.TrackNumber, makeMkvOutPath, mkvArgs, trackMinLength, MkvProgress(job, $"Ripping track {trackNum} of {eligibleTracks.Count}", ct), ct));
+                        ripCount++;
+                    }
+                    catch (Exception trackEx)
+                    {
+                        // One track failed — log and continue with the remaining tracks
+                        // instead of aborting the entire rip (issue: single track failure
+                        // silently skipped all subsequent selected tracks).
+                        logger.LogError(trackEx,
+                            "Failed to rip track {TrackNum} ({TrackNumOfTotal}) — continuing with remaining tracks",
+                            track.TrackNumber, $"track {trackNum} of {eligibleTracks.Count}");
+                        ripError = trackEx.Message;
+                    }
                 }
             }
 
@@ -1333,6 +1357,16 @@ public sealed class ArmRipperService(
     /// Runs the ArmMedia TV episode identification pipeline and merges
     /// results back into the job's tracks (EpisodeNumber, EpisodeTitle, etc.).
     /// </summary>
+    /// <summary>
+    /// Returns the best available series/movie title for a job, preferring
+    /// <see cref="Job.TitleManual" /> (the user's explicit override) over
+    /// <see cref="Job.Title" /> (which may be overwritten by concurrent
+    /// DbContext writes or auto-detection). Falls back to Label, then
+    /// "Unknown".
+    /// </summary>
+    private static string GetBestTitle(Job job)
+        => job.TitleManual ?? job.Title ?? job.Label ?? "Unknown";
+
     private async Task RunEpisodeIdentificationAsync(
         Job job, string makeMkvOutPath, CancellationToken ct)
     {
@@ -1364,10 +1398,16 @@ public sealed class ArmRipperService(
             var discId = job.DiscDbHash ?? job.Label ?? job.DevPath ?? "unknown";
             var season = job.SeasonNumber ?? 1;
 
+            var bestTitle = GetBestTitle(job);
+            if (!string.Equals(bestTitle, job.Title, StringComparison.Ordinal))
+                logger.LogInformation(
+                    "[ArmMedia] Using TitleManual ('{TitleManual}') instead of Title ('{Title}') for episode identification",
+                    bestTitle, job.Title);
+
             var ctx = new DiscContext
             {
                 DiscId                = discId,
-                SeriesTitle           = CleanSeriesTitle(job.Title ?? job.Label ?? "Unknown"),
+                SeriesTitle           = CleanSeriesTitle(bestTitle),
                 Season                = season,
                 Tracks                = trackContexts,
                 DiscDbHint            = makeMkvOutPath,  // FileBot CLI uses this for raw file path
@@ -1536,7 +1576,7 @@ public sealed class ArmRipperService(
         //     The Conductor uses job.Path for the final output verification.
         if (job.VideoType is VideoContentType.Series or VideoContentType.Tv)
         {
-            var cleanSeries = CleanSeriesTitle(job.Title ?? "Unknown Series");
+            var cleanSeries = CleanSeriesTitle(GetBestTitle(job));
             var completedBase = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value);
             job.Path = Path.Combine(completedBase, "tv", SanitizeFileName(cleanSeries));
             logger.LogInformation("Updated job path to series directory: {Path}", job.Path);
@@ -1648,7 +1688,7 @@ public sealed class ArmRipperService(
             var episode = track.EpisodeNumber!.Value;
 
             // ── Plex / Jellyfin convention: Series Name / Season XX / SxxExx - Title.ext ──
-            var cleanSeries = CleanSeriesTitle(job.Title ?? "Unknown Series");
+            var cleanSeries = CleanSeriesTitle(GetBestTitle(job));
             var completedBase = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value);
             var seriesDir = Path.Combine(completedBase, "tv", SanitizeFileName(cleanSeries));
             var seasonDir = Path.Combine(seriesDir, $"Season {season:D2}");
