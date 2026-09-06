@@ -147,6 +147,72 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
     }
 
     [Fact]
+    public async Task ComputeRipContextAsync_TvJob_AppendsSeasonDiscSubdir()
+    {
+        // Two discs of the same series must get isolated working directories so
+        // back-to-back rips never clobber each other's raw/transcode files.
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.Title = "My Show";
+            j.SeasonNumber = 1;
+            j.DiscNumber = 2;
+        });
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var service = CreateService();
+        var ctx = await service.ComputeRipContextAsync(job, hasDupes: false, protection: false, CancellationToken.None);
+
+        // Raw and transcode working dirs carry the season/disc subdirectory.
+        Assert.Contains("S01D02", ctx.MakeMkvOutPath);
+        Assert.Contains("S01D02", ctx.TranscodeOutPath);
+
+        // The final completed directory is NOT suffixed — files land in the
+        // shared Season XX folder after transcode.
+        Assert.DoesNotContain("S01D02", ctx.FinalDirectory);
+    }
+
+    [Fact]
+    public async Task ComputeRipContextAsync_TvJob_NoMetadata_FallsBackToJobId()
+    {
+        // When season/disc are unknown and the label has no disc hint, the job ID
+        // guarantees uniqueness so concurrent series jobs never share a directory.
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.Title = "My Show";
+            j.SeasonNumber = null;
+            j.DiscNumber = null;
+            j.Label = "MY_SHOW"; // no _D<n> suffix
+        });
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var service = CreateService();
+        var ctx = await service.ComputeRipContextAsync(job, hasDupes: false, protection: false, CancellationToken.None);
+
+        Assert.Contains($"_1", ctx.MakeMkvOutPath);
+        Assert.Contains($"_1", ctx.TranscodeOutPath);
+    }
+
+    [Fact]
+    public async Task ComputeRipContextAsync_MovieJob_NoSeriesSubdir()
+    {
+        // Movies keep the flat layout — no season/disc subdirectory.
+        var job = TestHelpers.CreateTestJob();
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var service = CreateService();
+        var ctx = await service.ComputeRipContextAsync(job, hasDupes: false, protection: false, CancellationToken.None);
+
+        Assert.DoesNotContain("S01D", ctx.MakeMkvOutPath);
+        Assert.DoesNotContain("S01D", ctx.TranscodeOutPath);
+        Assert.DoesNotContain("_1", ctx.MakeMkvOutPath);
+    }
+
+    [Fact]
     public async Task ComputeRipContextAsync_WithDupes_AppendsDupeSuffix()
     {
         // hasDupes=true + AllowDuplicates=false → CheckForDupeFolder throws.
