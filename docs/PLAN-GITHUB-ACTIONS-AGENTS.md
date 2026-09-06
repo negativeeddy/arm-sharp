@@ -43,7 +43,7 @@ The user asked for **Big Pickle**, but their key is an **OpenCode Go** key. Veri
 | Same key works for both | The Go key comes from the same account/console as Zen; the docs state *"If you reach the usage limit, you can continue using the free models"* — so the Go key can also hit Zen free models like Big Pickle |
 | Go usage limits (documented) | **$12 / 5 hours**, **$30 / week**, **$60 / month** (dollar-value based; e.g. GLM-5.3-Flash ≈ 1,580 req/5h, MiMo-V2.5 ≈ 30,100 req/5h) |
 | Usage tracking | Console only — **no public usage/balance API** exists |
-| Privacy | Most Go models: zero retention, **not** used for training. Exception: Muse Spark Contributor models (data used for training) — avoid for a public repo. Big Pickle's free period: data may be used to improve the model |
+| Privacy | Big Pickle's free period may use data to improve the model — **accepted for this repo** (public, non-sensitive). Go fallbacks: zero retention, not used for training. Exception: Muse Spark Contributor models (data used for training) — avoid |
 
 **Recommendation (per user preference):** use **Big Pickle first** — it's free and works well locally — with Go models as the paid fallback:
 
@@ -106,7 +106,7 @@ flowchart TD
 ```yaml
       - name: Run opencode (fixer)
         if: steps.probe.outputs.model != ''
-        uses: anomalyco/opencode/github@latest
+        uses: anomalyco/opencode/github@v1.18.29
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -135,7 +135,7 @@ flowchart TD
             --remove-label "agent-in-progress"
 ```
 
-**Belt-and-suspenders:** a `schedule`-triggered sweep workflow (e.g., hourly) picks up any leftover `agent-ready` issues that were skipped due to rate limits, so nothing gets stuck.
+**Belt-and-suspenders:** a `schedule`-triggered sweep workflow (every 12 hours) picks up any leftover `agent-ready` issues that were skipped due to rate limits, so nothing gets stuck.
 
 > **Note on retry timing:** GitHub Actions jobs have a 6-hour max runtime on standard runners. Go's 5-hour window resets frequently, so a re-queue + scheduled sweep is more reliable than sleeping in the job. If you want in-job retries, keep them short (e.g., 3 × 5 min).
 
@@ -157,7 +157,7 @@ flowchart TD
         R -->|request changes| C[agent-changes-requested<br/>→ re-triggers fixer]
         P1 -->|no model| Q1[Re-queue label]
         P2 -->|no model| Q2[Re-queue label]
-        S[schedule sweep<br/>hourly] --> W1
+        S[schedule sweep<br/>every 12h] --> W1
     end
 ```
 
@@ -251,7 +251,7 @@ jobs:
 
       - name: Run opencode (fixer)
         if: steps.check.outputs.eligible == 'true' && steps.probe.outputs.model != ''
-        uses: anomalyco/opencode/github@latest
+        uses: anomalyco/opencode/github@v1.18.29
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -369,7 +369,7 @@ jobs:
 
       - name: Run opencode (reviewer)
         if: steps.pr.outputs.pr_number != '' && steps.probe.outputs.model != ''
-        uses: anomalyco/opencode/github@latest
+        uses: anomalyco/opencode/github@v1.18.29
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -392,7 +392,7 @@ name: Agent Sweep
 
 on:
   schedule:
-    - cron: "0 * * * *"   # hourly
+    - cron: "0 */12 * * *"   # every 12 hours
 
 permissions:
   issues: write
@@ -443,7 +443,7 @@ jobs:
 
       - name: Run opencode (sweep)
         if: steps.probe.outputs.model != ''
-        uses: anomalyco/opencode/github@latest
+        uses: anomalyco/opencode/github@v1.18.29
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -468,7 +468,7 @@ The workflows preserve the existing label state machine — no new labels needed
 | `agent-needs-review` added to issue | reviewer | (re-)review |
 | Reviewer approves | — | issue → `agent-ready-for-merge`; human merges; `Fixes #N` auto-closes |
 | Reviewer requests changes | — | issue → `agent-changes-requested` → re-triggers fixer |
-| Big Pickle + Go both exhausted | fixer/reviewer | re-queue label; hourly sweep retries |
+| Big Pickle + Go both exhausted | fixer/reviewer | re-queue label; 12-hourly sweep retries |
 
 **Loop safety:**
 - The fixer's own label changes (`agent-in-progress`, `agent-needs-review`) never match the fixer's `if` filter, so no self-retrigger.
@@ -528,7 +528,7 @@ opencode run -m opencode/big-pickle \
 - [ ] **.NET 10 on the runner** — `actions/setup-dotnet@v4` with `dotnet-version: 10.0.x` before the opencode step so the agent can build/test.
 - [ ] **Model choice** — Big Pickle (`opencode/big-pickle`) is primary; `glm-5.3-flash` (fixer) and `mimo-v2.5` (reviewer) are the paid fallbacks. Confirm all three respond via the probe curl.
 - [ ] **Automation toggle** — create repo variable `AGENT_AUTOMATION_ENABLED` = `true` (Settings → Secrets and variables → Actions → Variables). Set to `false` to pause the automation without touching the workflow files.
-- [ ] **Branch note** — default branch is `master`; CI currently triggers on `main` (pre-existing inconsistency). The workflows use `master` implicitly via checkout. Consider aligning CI to `master` as a cleanup item.
+- [ ] **CI branch alignment** — `ci.yml` triggers on `main` but the default branch is `master`, so CI never runs on pushes/PRs to `master`. Fix: change `ci.yml` triggers to `master` (small cleanup PR, separate from this plan).
 
 ## 12. Rollout & Testing
 
@@ -542,14 +542,14 @@ opencode run -m opencode/big-pickle \
 8. **Test the gate** — temporarily use a bad key to confirm the probe fails, the job re-queues, and the sweep picks it up later.
 9. **Watch the queue** — the 12 open `agent-ready` issues (incl. 3 `needs-investigation` that will be skipped) will drain one at a time.
 
-## 13. Open Questions
+## 13. Decisions (resolved)
 
-1. **Go model choice** — `glm-5.3-flash` and `mimo-v2.5` are the recommended defaults; want different models (e.g., `deepseek-v4-flash` for the fixer)?
-2. **Big Pickle privacy caveat** — Big Pickle is primary per your preference, but its free period allows data to be used to improve the model. Since this repo is public, that's worth being aware of; the Go fallback models are zero-retention.
-3. **`needs-investigation` issues** — currently skipped by the fixer. Want a separate manual/scheduled workflow for the investigation procedure?
-4. **Sweep cadence** — hourly is the default; adjust based on how often Go limits are hit.
-5. **CI branch mismatch** — align `ci.yml` triggers to `master`?
-6. **opencode version pinning** — `@latest` tracks releases; consider pinning to a specific tag for reproducibility.
+1. **Go model choice** — ✅ confirmed: `glm-5.3-flash` (fixer/sweep) and `mimo-v2.5` (reviewer) as the paid fallbacks.
+2. **Big Pickle privacy** — ✅ accepted for this repo; the free-period data caveat is not a concern here.
+3. **`needs-investigation` issues** — ✅ handled as one-off manual intervention for now; the fixer keeps skipping them and no separate workflow is added.
+4. **Sweep cadence** — ✅ every 12 hours (`0 */12 * * *`); re-queue + sweep backstop still prevents stalls.
+5. **CI branch mismatch** — ✅ `ci.yml` triggers on `main` but the default branch is `master`, so pushes/PRs to `master` never run CI. Fix: change `ci.yml` triggers to `master` (separate cleanup PR).
+6. **opencode version pinning** — ✅ pin the action to `anomalyco/opencode/github@v1.18.29` (latest release as of 2026-09-06) instead of `@latest`.
 
 ## 14. Files to Create
 
@@ -557,7 +557,7 @@ opencode run -m opencode/big-pickle \
 |---|---|
 | `.github/workflows/fixer.yml` | Issue fixer (label-triggered, probe-gated, toggle-guarded) |
 | `.github/workflows/reviewer.yml` | PR reviewer (PR-created + re-review, probe-gated, toggle-guarded) |
-| `.github/workflows/sweep.yml` | Hourly backstop for rate-limited/skipped issues (toggle-guarded) |
+| `.github/workflows/sweep.yml` | 12-hourly backstop for rate-limited/skipped issues (toggle-guarded) |
 | Repo variable `AGENT_AUTOMATION_ENABLED` | Master toggle — `false` pauses all agent workflows (no file changes) |
 | `docs/PLAN-GITHUB-ACTIONS-AGENTS.md` | This plan |
 | `docs/PLAN-GITHUB-ACTIONS-AGENTS.md` | This plan |
