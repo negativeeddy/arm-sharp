@@ -1920,11 +1920,38 @@ public sealed class ArmRipperService(
 
         if (File.Exists(newFile))
         {
-            logger?.LogWarning("Destination already exists — skipping move. Source file will be cleaned up: {Src} -> {Dst}", oldFile, newFile);
-            return;
+            // The destination already exists (e.g. two discs of the same series
+            // produced the same SxxExx name, or a re-rip collides with an earlier
+            // file). Rather than silently dropping the new file, append a unique
+            // numeric conflict identifier before the extension so both files are
+            // preserved for manual inspection and correction later.
+            newFile = GetUniqueDestinationPath(newFile);
+            logger?.LogWarning(
+                "Destination already exists — appending unique conflict identifier: {Src} -> {Dst}",
+                oldFile, newFile);
         }
 
         File.Move(oldFile, newFile);
+    }
+
+    /// <summary>
+    /// Returns a destination path that does not currently exist by appending a
+    /// numeric suffix before the extension (e.g. "S01E06 - Title.mp4" →
+    /// "S01E06 - Title_2.mp4" → "S01E06 - Title_3.mp4"). Used to preserve both
+    /// files when a name collision occurs instead of overwriting or dropping one.
+    /// </summary>
+    internal static string GetUniqueDestinationPath(string path)
+    {
+        var dir = Path.GetDirectoryName(path);
+        var fileName = Path.GetFileNameWithoutExtension(path);
+        var ext = Path.GetExtension(path);
+
+        for (var i = 2; ; i++)
+        {
+            var candidate = Path.Combine(dir ?? "", $"{fileName}_{i}{ext}");
+            if (!File.Exists(candidate))
+                return candidate;
+        }
     }
 
     internal static string FixJobTitle(Job job)

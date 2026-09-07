@@ -752,4 +752,94 @@ public sealed class ArmRipperServiceLogicTests
         });
         Assert.Equal("My Name Is Earl", InvokeGetBestTitle(job));
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // GetUniqueDestinationPath / MoveFileMain (conflict handling)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void GetUniqueDestinationPath_NoExistingFile_ReturnsSuffix2()
+    {
+        // GetUniqueDestinationPath is only invoked after a conflict is detected,
+        // so it always returns a suffixed path (never the original).
+        var dir = Path.Combine(Path.GetTempPath(), "armtest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var path = Path.Combine(dir, "S01E06 - Title.mp4");
+            Assert.Equal(Path.Combine(dir, "S01E06 - Title_2.mp4"), ArmRipperService.GetUniqueDestinationPath(path));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void GetUniqueDestinationPath_OneConflict_AppendsSuffix2()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "armtest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var path = Path.Combine(dir, "S01E06 - Title.mp4");
+            File.WriteAllText(path, "first");
+
+            var result = ArmRipperService.GetUniqueDestinationPath(path);
+            Assert.Equal(Path.Combine(dir, "S01E06 - Title_2.mp4"), result);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void GetUniqueDestinationPath_MultipleConflicts_AppendsNextFreeSuffix()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "armtest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var path = Path.Combine(dir, "S01E06 - Title.mp4");
+            File.WriteAllText(path, "first");
+            File.WriteAllText(Path.Combine(dir, "S01E06 - Title_2.mp4"), "second");
+
+            var result = ArmRipperService.GetUniqueDestinationPath(path);
+            Assert.Equal(Path.Combine(dir, "S01E06 - Title_3.mp4"), result);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void MoveFileMain_WhenDestinationExists_PreservesBothFiles()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "armtest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var src = Path.Combine(dir, "source.mp4");
+            var dst = Path.Combine(dir, "S01E06 - Title.mp4");
+            File.WriteAllText(src, "new content");
+            File.WriteAllText(dst, "existing content");
+
+            var method = GetStaticMethod("MoveFileMain");
+            method.Invoke(null, [src, dst, null]);
+
+            // The original destination is untouched...
+            Assert.Equal("existing content", File.ReadAllText(dst));
+            // ...and the source was moved to a unique conflict path instead of being dropped.
+            var conflictPath = Path.Combine(dir, "S01E06 - Title_2.mp4");
+            Assert.True(File.Exists(conflictPath), "Expected a conflict-suffixed file to be created.");
+            Assert.Equal("new content", File.ReadAllText(conflictPath));
+            Assert.False(File.Exists(src), "Source should have been moved away.");
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }
