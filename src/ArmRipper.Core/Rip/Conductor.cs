@@ -262,8 +262,10 @@ public sealed class Conductor(
             var directory = await armRipperService.RipVisualMediaAsync(job, job.LogFile ?? "", false, false, ct);
             job.Path = directory;
 
+            // A forked transcode that recorded errors (e.g. partial transcode
+            // failure) must end as Failure, not Success.
             if (!job.Status.IsTerminal())
-                job.Status = JobState.Success;
+                job.Status = string.IsNullOrEmpty(job.Errors) ? JobState.Success : JobState.Failure;
             job.StopTime = DateTime.UtcNow;
             if (job.StartTime != default)
             {
@@ -740,8 +742,12 @@ public sealed class Conductor(
             }
         }
 
+        // A job that completed the pipeline but recorded errors (e.g. a partial
+        // rip where some tracks failed but the succeeded ones were transcoded)
+        // must end as Failure, not Success — the errors field is the canonical
+        // "something went wrong" indicator.
         if (!job.Status.IsTerminal())
-            job.Status = JobState.Success;
+            job.Status = string.IsNullOrEmpty(job.Errors) ? JobState.Success : JobState.Failure;
         job.StopTime = DateTime.UtcNow;
         if (job.StartTime != default)
         {

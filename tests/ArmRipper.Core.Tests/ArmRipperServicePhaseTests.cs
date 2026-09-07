@@ -896,6 +896,95 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
     }
 
     [Fact]
+    public async Task RipVisualMediaAsync_PartialRipFailure_ContinuesToTranscodeSucceededTracks()
+    {
+        // Regression test for the job-1342 failure: when a rip is only partially
+        // successful (some tracks fail with a MakeMKV error, others succeed), the
+        // job is marked Failure but the succeeded tracks must STILL be transcoded.
+        // Previously the IsTerminal() early-return in RipVisualMediaAsync aborted
+        // the pipeline before transcode, stranding the successfully-ripped files
+        // in raw/ (the log said "continuing to transcode succeeded tracks" but
+        // transcode never ran).
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.Config!.ManualSelection = true;
+            j.Config!.ManualWaitTime = 1; // 1 second timeout for a fast test
+        });
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var tracks = new List<Track>
+        {
+            new() { Id = 1, JobId = job.Id, TrackNumber = "0", Length = 1000, FileName = "C1_t00.mkv" },
+            new() { Id = 2, JobId = job.Id, TrackNumber = "1", Length = 2000, FileName = "D1_t01.mkv" },
+        };
+        _makeMkv.Setup(m => m.GetTrackInfoWithCacheAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tracks);
+
+        // Track "0" rips successfully (writes its output file); track "1" fails
+        // with a MakeMKV error — a partial rip.
+        _makeMkv.Setup(m => m.RipTrackAsync(
+                It.IsAny<Job>(), "0", It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<int>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
+            .Callback<Job, string, string, string, int, IProgress<int>?, CancellationToken>(
+                (_, trackNumber, outputPath, _, _, _, _) =>
+                {
+                    Directory.CreateDirectory(outputPath);
+                    File.WriteAllBytes(
+                        Path.Combine(outputPath, $"title_t{int.Parse(trackNumber):D2}.mkv"),
+                        [1, 2, 3]);
+                })
+            .ReturnsAsync(new MakeMkvRipResult());
+        _makeMkv.Setup(m => m.RipTrackAsync(
+                It.IsAny<Job>(), "1", It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<int>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Process 'makemkvcon' exited with code 12"));
+
+        var service = CreateService();
+
+        // Run the full rip pipeline. The manual-selection wait times out after 1s
+        // (no signal), but the user's selection was persisted through a separate
+        // DbContext BEFORE the timeout so the pipeline applies it and rips the
+        // two selected tracks — one succeeds, one fails.
+        var signalsField = typeof(ArmRipperService).GetField(
+            "manualSelectionSignals", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(signalsField);
+        var signals = (ConcurrentDictionary<int, TaskCompletionSource<bool>>)signalsField!.GetValue(null)!;
+
+        var pipelineTask = service.RipVisualMediaAsync(job, "test.log", hasDupes: false, protection: false, CancellationToken.None);
+
+        // Wait for the pipeline to park in the manual-selection wait, then persist
+        // the selection through a separate DbContext (as the real API does).
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (!signals.ContainsKey(job.Id) && sw.ElapsedMilliseconds < 10_000)
+            await Task.Delay(25);
+        Assert.True(signals.ContainsKey(job.Id), "Pipeline did not park in manual selection wait");
+
+        using (var apiDb = new ArmDbContext(
+            new DbContextOptionsBuilder<ArmDbContext>()
+                .UseSqlite(_db.Database.GetDbConnection())
+                .Options))
+        {
+            var apiJob = await apiDb.Jobs.FirstAsync(j => j.Id == job.Id);
+            apiJob.ManualSelectionTrackNumbers = "[\"0\",\"1\"]";
+            await apiDb.SaveChangesAsync();
+        }
+
+        Assert.True(ArmRipperService.SignalManualSelection(job.Id));
+        var result = await pipelineTask;
+
+        // The partial-rip error must be preserved on the job, and the pipeline
+        // must have continued to transcode the succeeded track — HandBrake must
+        // have been invoked (default UseFfmpeg=false, DVD + mkv rip method).
+        // The final Failure status is applied by the Conductor after
+        // RipVisualMediaAsync returns (covered by ConductorTests).
+        var dbJob = await _db.Jobs.AsNoTracking().FirstAsync(j => j.Id == job.Id);
+        Assert.Contains("partial", dbJob.Errors ?? "");
+        _handBrake.Verify(h => h.TranscodeMkvAsync(It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+    }
+
+    [Fact]
     public async Task ManualSelection_SignalRegisteredBeforeStatusVisible_NoRace()
     {
         // Regression test for issue #169: the pipeline must register its signal
