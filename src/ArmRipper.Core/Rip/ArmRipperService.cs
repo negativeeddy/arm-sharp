@@ -276,7 +276,15 @@ public sealed class ArmRipperService(
         var typeSubFolder = ConvertJobType(job.VideoType);
         var jobTitle = FixJobTitle(job);
 
-        var transcodeOutPath = Path.Combine(job.Config?.TranscodePath ?? ArmPaths.GetTranscodePath(settings.Value), typeSubFolder, jobTitle);
+        // TV series discs get a season/disc subdirectory (e.g. "S01D02") in the
+        // raw and transcode working directories so multiple discs of the same
+        // series ripped back-to-back never clobber each other's files. The final
+        // completed directory is NOT suffixed — files land in the shared
+        // "Season XX" folder after transcode, where episode numbers keep them
+        // unique. Movies keep the flat layout.
+        var seriesSubdir = GetSeriesDiscSubdir(job);
+
+        var transcodeOutPath = Path.Combine(job.Config?.TranscodePath ?? ArmPaths.GetTranscodePath(settings.Value), typeSubFolder, jobTitle, seriesSubdir ?? "");
         var finalDirectory = Path.Combine(job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(settings.Value), typeSubFolder, jobTitle);
 
         // Base output path before any duplicate-folder suffix is applied. The actual
@@ -298,7 +306,7 @@ public sealed class ArmRipperService(
 
         logger.LogInformation("Processing files to: {TranscodeOutPath}", transcodeOutPath);
 
-        var makeMkvOutPath = Path.Combine(job.Config?.RawPath ?? ArmPaths.GetRawPath(settings.Value), jobTitle);
+        var makeMkvOutPath = Path.Combine(job.Config?.RawPath ?? ArmPaths.GetRawPath(settings.Value), jobTitle, seriesSubdir ?? "");
         var useMakeMkv = RipWithMkv(job, protection);
 
         logger.LogDebug("Using MakeMKV: {UseMakeMkv}", useMakeMkv);
@@ -1821,6 +1829,30 @@ public sealed class ArmRipperService(
             return d;
 
         return 1;
+    }
+
+    /// <summary>
+    /// Returns a season/disc subdirectory name (e.g. "S01D02") for TV series
+    /// jobs, or <c>null</c> for movies/other types. The subdirectory isolates
+    /// each disc's raw rip and transcode working directories so multiple discs
+    /// of the same series processed back-to-back never clobber each other's
+    /// files. When no season/disc metadata is available (and the label carries
+    /// no disc hint), falls back to "_{jobId}" for guaranteed uniqueness.
+    /// </summary>
+    internal static string? GetSeriesDiscSubdir(Job job)
+    {
+        if (job.VideoType is not (VideoContentType.Series or VideoContentType.Tv))
+            return null;
+
+        var season = job.SeasonNumber ?? 1;
+        var disc = job.DiscNumber ?? ParseDiscNumber(job.Label);
+
+        // No season/disc metadata and no disc hint in the label — use the job ID
+        // so concurrent series jobs never share a working directory.
+        if (job.SeasonNumber is null && job.DiscNumber is null && disc <= 1)
+            return $"_{job.Id}";
+
+        return $"S{season:D2}D{disc:D2}";
     }
 
     /// <summary>

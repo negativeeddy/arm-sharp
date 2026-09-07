@@ -174,6 +174,74 @@ public sealed class ArmRipperServiceLogicTests
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // GetSeriesDiscSubdir
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void GetSeriesDiscSubdir_Movie_ReturnsNull()
+    {
+        var job = TestHelpers.CreateTestJob(); // VideoType = Movie
+        Assert.Null(ArmRipperService.GetSeriesDiscSubdir(job));
+    }
+
+    [Fact]
+    public void GetSeriesDiscSubdir_Unknown_ReturnsNull()
+    {
+        var job = TestHelpers.CreateTestJob(j => j.VideoType = VideoContentType.Unknown);
+        Assert.Null(ArmRipperService.GetSeriesDiscSubdir(job));
+    }
+
+    [Fact]
+    public void GetSeriesDiscSubdir_SeriesWithSeasonAndDisc_ReturnsCanonical()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.SeasonNumber = 1;
+            j.DiscNumber = 2;
+        });
+        Assert.Equal("S01D02", ArmRipperService.GetSeriesDiscSubdir(job));
+    }
+
+    [Fact]
+    public void GetSeriesDiscSubdir_SeriesWithOnlyDisc_DefaultsSeasonToOne()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.SeasonNumber = null;
+            j.DiscNumber = 3;
+        });
+        Assert.Equal("S01D03", ArmRipperService.GetSeriesDiscSubdir(job));
+    }
+
+    [Fact]
+    public void GetSeriesDiscSubdir_SeriesWithLabelDiscHint_UsesLabel()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.SeasonNumber = null;
+            j.DiscNumber = null;
+            j.Label = "MY_SHOW_S1_D2";
+        });
+        Assert.Equal("S01D02", ArmRipperService.GetSeriesDiscSubdir(job));
+    }
+
+    [Fact]
+    public void GetSeriesDiscSubdir_SeriesNoMetadata_FallsBackToJobId()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.SeasonNumber = null;
+            j.DiscNumber = null;
+            j.Label = "MY_SHOW"; // no disc hint in label
+        });
+        Assert.Equal("_1", ArmRipperService.GetSeriesDiscSubdir(job));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // CleanSeriesTitle
     // ─────────────────────────────────────────────────────────────────────────
 
