@@ -93,6 +93,21 @@ public sealed class IdentifyServiceTests
     }
 
     [Fact]
+    public void ApplySeasonDisc_CompactUnderscoreLabel_WestworldPattern()
+    {
+        // Regression for the compact "_S1_D2" label form (e.g. "WESTWORLD_S1_D2")
+        // where both season and disc use single-letter compact notation.
+        var job = CreateSeriesJob("Westworld", "WESTWORLD_S1_D2");
+
+        IdentifyService.ApplySeasonDiscFromTitleAndLabel(job, Normalizer, NullLogger.Instance);
+
+        Assert.Equal(1, job.SeasonNumberAuto);
+        Assert.Equal(1, job.SeasonNumber);
+        Assert.Equal(2, job.DiscNumberAuto);
+        Assert.Equal(2, job.DiscNumber);
+    }
+
+    [Fact]
     public void ApplySeasonDisc_EmptyTitle_NoOp()
     {
         var job = CreateSeriesJob("", "SHOW_S4_D3");
