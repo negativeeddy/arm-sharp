@@ -75,7 +75,8 @@
                                 }
                                 @if (Model.Status is JobState.ManualWaitStarted)
                                 {
-                                    <span class="text-muted small"> (auto-continues in ~60s)</span>
+                                    var mwt = Model.Config?.ManualWaitTime ?? 60;
+                                    <span class="text-muted small">@(mwt > 0 ? $" (auto-continues in ~{mwt}s)" : " (waits indefinitely)")</span>
                                 }
                             </dd>
                             <dt class="col-sm-2">Rip Progress</dt>

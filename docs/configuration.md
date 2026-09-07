@@ -40,6 +40,7 @@ Runtime settings resolve as:
 | `Prevent99` | `PREVENT_99` | `false` | Skip title 99 (common false positive) |
 | `AllowDuplicates` | `ALLOW_DUPLICATES` | `false` | Allow ripping already-ripped discs |
 | `ManualWait` | `MANUAL_WAIT` | `false` | Wait for manual intervention |
+| `ManualWaitTime` | `MANUAL_WAIT_TIME` | `60` | Manual wait timeout in seconds (`0` = wait indefinitely) |
 | `AutoEject` | `AUTO_EJECT` | `true` | Eject disc after completion |
 | `GetVideoTitle` | `GET_VIDEO_TITLE` | `true` | Look up video metadata |
 | `GetAudioTitle` | `GET_AUDIO_TITLE` | `true` | Look up audio CD metadata |

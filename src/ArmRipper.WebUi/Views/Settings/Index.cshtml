@@ -243,6 +243,7 @@
                 // MaxConcurrentRips removed — per-drive gating ensures one rip per drive naturally.
                 ["MainFeature"] = "Rip only the main feature (longest track)",
                 ["ManualSelection"] = "After scanning titles, pause and let you manually select which tracks to rip",
+                ["ManualWaitTime"] = "How long to pause for manual title identification / track selection before auto-continuing, in seconds. 0 = wait indefinitely.",
                 ["AutoEject"] = "Automatically eject disc after processing",
                 ["AllowDuplicates"] = "When disabled, if the same disc (by volume label) has already been ripped successfully, the rip is skipped to prevent re-ripping the same disc after eject/reload",
                 ["PreferWidescreen"] = "When enabled and two or more tracks have very similar file sizes (e.g. widescreen + fullscreen versions of the same movie), the 16:9 track is selected as the main feature instead of 4:3",
@@ -288,6 +289,13 @@
                 <tr><td><label>Recent Completed Jobs:</label><span class="text-info ml-1" data-toggle="tooltip" title="Number of most-recent completed jobs to show on the main page beneath the in-progress section." style="cursor:help">&#9432;</span></td><td><input type="number" name="RecentCompletedJobsCount" value="@(armSettings?.RecentCompletedJobsCount ?? 10)" class="form-control" min="0" max="100" step="1" /></td></tr>
                 <tr><td><label for="MainFeature">Main Feature:</label>@Html.Raw(tip("MainFeature", tips))</td><td><input type="hidden" name="MainFeature" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="MainFeature" name="MainFeature" value="true" checked="@armSettings?.MainFeature" /><label class="custom-control-label" for="MainFeature"></label></div></td></tr>
                 <tr><td><label for="ManualSelection">Manual Selection:</label>@Html.Raw(tip("ManualSelection", tips))</td><td><input type="hidden" name="ManualSelection" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="ManualSelection" name="ManualSelection" value="true" checked="@armSettings?.ManualSelection" /><label class="custom-control-label" for="ManualSelection"></label></div><br /><small class="text-muted">When enabled, the pipeline pauses after the title scan so you can pick exactly which tracks to rip. Overrides Main Feature.</small></td></tr>
+                <tr><td><label for="ManualWaitTime">Manual Wait Timeout (s):</label>@Html.Raw(tip("ManualWaitTime", tips))</td><td>
+                    <div class="input-group">
+                        <input type="number" name="ManualWaitTime" id="manualWaitTimeInput" value="@(armSettings?.ManualWaitTime ?? 60)" class="form-control" min="0" step="1" />
+                        <div class="input-group-append"><span class="input-group-text">sec</span></div>
+                    </div>
+                    <small class="form-text text-muted">= <strong id="manualWaitTimePreview">@FormatSeconds((int)(armSettings?.ManualWaitTime ?? 0))</strong> · 0 = wait indefinitely</small>
+                </td></tr>
                 <tr><td><label for="AutoEject">Auto Eject:</label>@Html.Raw(tip("AutoEject", tips))</td><td><input type="hidden" name="AutoEject" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="AutoEject" name="AutoEject" value="true" checked="@armSettings?.AutoEject" /><label class="custom-control-label" for="AutoEject"></label></div></td></tr>
                 <tr><td><label for="AllowDuplicates">Allow Duplicates:</label>@Html.Raw(tip("AllowDuplicates", tips))</td><td><input type="hidden" name="AllowDuplicates" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="AllowDuplicates" name="AllowDuplicates" value="true" checked="@armSettings?.AllowDuplicates" /><label class="custom-control-label" for="AllowDuplicates"></label></div></td></tr>
                 <tr><td><label for="PreferWidescreen">Prefer Widescreen:</label>@Html.Raw(tip("PreferWidescreen", tips))</td><td><input type="hidden" name="PreferWidescreen" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="PreferWidescreen" name="PreferWidescreen" value="true" checked="@armSettings?.PreferWidescreen" /><label class="custom-control-label" for="PreferWidescreen"></label></div></td></tr>
@@ -917,8 +925,10 @@
             // (the preview elements are re-created on save, so direct binding would break).
             document.getElementById('settingsPage').addEventListener('input', function (e) {
                 var target = e.target;
-                if (target.id === 'minLengthInput' || target.id === 'maxLengthInput') {
-                    var preview = document.getElementById(target.id === 'minLengthInput' ? 'minLengthPreview' : 'maxLengthPreview');
+                if (target.id === 'minLengthInput' || target.id === 'maxLengthInput' || target.id === 'manualWaitTimeInput') {
+                    var previewId = target.id === 'minLengthInput' ? 'minLengthPreview'
+                        : target.id === 'maxLengthInput' ? 'maxLengthPreview' : 'manualWaitTimePreview';
+                    var preview = document.getElementById(previewId);
                     if (preview) preview.textContent = fmtDuration(target.value);
                 }
             });
