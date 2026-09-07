@@ -624,8 +624,27 @@ public sealed class Conductor(
 
                         if (!string.IsNullOrEmpty(job.TitleManual))
                         {
-                            logger.LogInformation("Manual title override found: {Title}", job.TitleManual);
-                            break;
+                            // For TV series, a title alone isn't enough to start the rip —
+                            // the user still needs to set the season/disc so the raw and
+                            // transcode working directories get a per-disc subdirectory
+                            // (e.g. "S02D03"). If the title was picked from the search page
+                            // (which sets TitleManual but not season/disc), starting the rip
+                            // immediately would compute a flat raw path and clobber other
+                            // discs of the same series. Keep waiting until the user either
+                            // sets both season and disc, or explicitly clicks "Continue".
+                            var isSeries = job.VideoType is VideoContentType.Series or VideoContentType.Tv;
+                            var metadataComplete = !isSeries
+                                || (job.SeasonNumber.HasValue && job.DiscNumber.HasValue);
+
+                            if (metadataComplete)
+                            {
+                                logger.LogInformation("Manual title override found: {Title}", job.TitleManual);
+                                break;
+                            }
+
+                            logger.LogInformation(
+                                "Manual title override found: {Title} (series) — waiting for season/disc before starting rip",
+                                job.TitleManual);
                         }
 
                         if (job.ManualWaitResume)

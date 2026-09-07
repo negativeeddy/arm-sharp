@@ -468,6 +468,60 @@ public sealed class ConductorTests : IDisposable
         Assert.Equal("User Title", finalJob.TitleManual);
     }
 
+    [Fact]
+    public async Task RunAsync_SeriesTitleSetWithoutSeasonDisc_KeepsWaitingUntilMetadataComplete()
+    {
+        var tmpDir = Path.Combine(Path.GetTempPath(), "arm-test", Guid.NewGuid().ToString());
+        var options = TestHelpers.CreateOptions(a =>
+        {
+            a.ManualWait = true;
+            a.ManualWaitTime = 0; // 0 = no timeout (wait indefinitely)
+            a.RawPath = Path.Combine(tmpDir, "raw");
+            a.TranscodePath = Path.Combine(tmpDir, "transcode");
+            a.CompletedPath = Path.Combine(tmpDir, "completed");
+            a.LogPath = Path.Combine(tmpDir, "logs");
+        });
+        var conductor = CreateConductor(
+            options: options,
+            identify: new MockIdentifyService(DiscType.Dvd, label: "TEST_LABEL", videoType: VideoContentType.Series));
+
+        using var secondCtx = CreateSecondDbContext();
+
+        // Run the pipeline in the background — it blocks in the manual wait loop.
+        var runTask = conductor.RunAsync("/dev/sr0");
+
+        // Wait until the conductor reaches ManualWaitStarted.
+        var jobId = await WaitForJobStatusAsync(secondCtx, JobState.ManualWaitStarted);
+
+        // Simulate the user picking a title from the search page (sets TitleManual
+        // but NOT season/disc). For a series, the rip must NOT start yet.
+        var externalJob = await secondCtx.Jobs.FirstAsync(j => j.Id == jobId);
+        externalJob.TitleManual = "Psych";
+        externalJob.Title = "Psych";
+        await secondCtx.SaveChangesAsync();
+
+        // Give the wait loop a chance to poll — it must NOT proceed past the wait.
+        await Task.Delay(1500);
+        var stillWaiting = await secondCtx.Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobState.ManualWaitStarted, stillWaiting.Status);
+
+        // Now the user sets season/disc in the metadata form — the rip may proceed.
+        externalJob = await secondCtx.Jobs.FirstAsync(j => j.Id == jobId);
+        externalJob.SeasonNumber = 2;
+        externalJob.DiscNumber = 3;
+        await secondCtx.SaveChangesAsync();
+
+        var exitCode = await runTask;
+
+        Assert.Equal(0, exitCode);
+
+        var finalJob = await secondCtx.Jobs.AsNoTracking().SingleAsync(j => j.Id == jobId);
+        Assert.Equal(JobState.Success, finalJob.Status);
+        Assert.Equal("Psych", finalJob.TitleManual);
+        Assert.Equal(2, finalJob.SeasonNumber);
+        Assert.Equal(3, finalJob.DiscNumber);
+    }
+
     /// <summary>
     /// Creates a second <see cref="ArmDbContext"/> over the same in-memory SQLite database,
     /// simulating another process reading/writing the job concurrently.
@@ -494,7 +548,10 @@ public sealed class ConductorTests : IDisposable
         throw new TimeoutException($"Job never reached status {target} within {timeoutMs}ms");
     }
 
-    private sealed class MockIdentifyService(DiscType resultType = DiscType.Dvd, string? label = null) : IIdentifyService
+    private sealed class MockIdentifyService(
+        DiscType resultType = DiscType.Dvd,
+        string? label = null,
+        VideoContentType videoType = VideoContentType.Movie) : IIdentifyService
     {
         public Task IdentifyAsync(Job job, CancellationToken ct = default)
         {
@@ -505,7 +562,8 @@ public sealed class ConductorTests : IDisposable
                 job.Title = "Test Movie";
                 job.TitleAuto = "Test Movie";
                 job.Year = "2024";
-                job.VideoType = VideoContentType.Movie;
+                job.VideoType = videoType;
+                job.VideoTypeAuto = videoType;
                 job.HasNiceTitle = true;
             }
             return Task.CompletedTask;
