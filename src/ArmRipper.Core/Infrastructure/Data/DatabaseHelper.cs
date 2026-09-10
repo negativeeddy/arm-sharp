@@ -70,6 +70,7 @@ public static class DatabaseHelper
         // ── ConfigSnapshot columns added after the Initial migration ──
         TryAlterColumn(db, "config", "PreferWidescreen", "INTEGER");
         TryAlterColumn(db, "config", "ManualSelection", "INTEGER");
+        TryAlterColumn(db, "config", "ManualSelectionWaitTime", "INTEGER");
         TryAlterColumn(db, "system_drives", "ManualSelection", "INTEGER");
 
         // ── Seed migration history always ──

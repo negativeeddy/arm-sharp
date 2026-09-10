@@ -799,12 +799,12 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
     public async Task ManualSelection_TimesOut_FailsJobAndReleasesDrive()
     {
         // Regression test for issue #170: a manual-selection wait with no user
-        // response must time out (using ManualWaitTime) and fail the job rather
+        // response must time out (using ManualSelectionWaitTime) and fail the job rather
         // than block the optical drive indefinitely.
         var job = TestHelpers.CreateTestJob(j =>
         {
             j.Config!.ManualSelection = true;
-            j.Config!.ManualWaitTime = 1; // 1 second timeout for a fast test
+            j.Config!.ManualSelectionWaitTime = 1; // 1 second timeout for a fast test
         });
         _db.Jobs.Add(job);
         await _db.SaveChangesAsync();
@@ -859,7 +859,7 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
         var job = TestHelpers.CreateTestJob(j =>
         {
             j.Config!.ManualSelection = true;
-            j.Config!.ManualWaitTime = 1; // 1 second timeout for a fast test
+            j.Config!.ManualSelectionWaitTime = 1; // 1 second timeout for a fast test
         });
         _db.Jobs.Add(job);
         await _db.SaveChangesAsync();
@@ -908,7 +908,7 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
         var job = TestHelpers.CreateTestJob(j =>
         {
             j.Config!.ManualSelection = true;
-            j.Config!.ManualWaitTime = 1; // 1 second timeout for a fast test
+            j.Config!.ManualSelectionWaitTime = 1; // 1 second timeout for a fast test
         });
         _db.Jobs.Add(job);
         await _db.SaveChangesAsync();

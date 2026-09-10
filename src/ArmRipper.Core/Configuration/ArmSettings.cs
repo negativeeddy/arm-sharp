@@ -19,6 +19,10 @@ public class ArmSettings
     public bool UseFfmpeg { get; set; }
     public bool ManualWait { get; set; } = true;
     public int ManualWaitTime { get; set; } = 60;
+    /// <summary>How long (seconds) to wait for the user to select tracks during
+    /// Manual Selection before failing the job. 0 = wait indefinitely.
+    /// Independent of <see cref="ManualWaitTime"/> (title identification).</summary>
+    public int ManualSelectionWaitTime { get; set; } = 60;
     public bool AllowDuplicates { get; set; } = true;
     public bool PreferWidescreen { get; set; } = true;
     public bool Prevent99 { get; set; } = true;

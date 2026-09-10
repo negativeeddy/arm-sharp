@@ -789,10 +789,11 @@ public sealed class ArmRipperService(
             });
 
             // A configurable timeout so a job left waiting (user walked away, UI
-            // closed) cannot block the optical drive indefinitely. Reuses the
-            // ManualWaitTime setting (default 60s). 0 = no timeout (wait
-            // indefinitely), mirroring the ManualWait feature behavior.
-            var waitTimeSeconds = config.ManualWaitTime; // 0 = no timeout
+            // closed) cannot block the optical drive indefinitely. Uses the
+            // ManualSelectionWaitTime setting (default 60s), independent of the
+            // ManualWaitTime used for title identification. 0 = no timeout
+            // (wait indefinitely), mirroring the ManualWait feature behavior.
+            var waitTimeSeconds = config.ManualSelectionWaitTime; // 0 = no timeout
             var waitTimeout = waitTimeSeconds > 0
                 ? TimeSpan.FromSeconds(waitTimeSeconds)
                 : Timeout.InfiniteTimeSpan;

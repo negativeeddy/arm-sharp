@@ -198,6 +198,7 @@ public class ArmRipperTools
             settings.UseFfmpeg,
             settings.ManualWait,
             settings.ManualWaitTime,
+            settings.ManualSelectionWaitTime,
             settings.AllowDuplicates,
             settings.PreferWidescreen,
             settings.Prevent99,

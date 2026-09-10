@@ -243,7 +243,8 @@
                 // MaxConcurrentRips removed — per-drive gating ensures one rip per drive naturally.
                 ["MainFeature"] = "Rip only the main feature (longest track)",
                 ["ManualSelection"] = "After scanning titles, pause and let you manually select which tracks to rip",
-                ["ManualWaitTime"] = "How long to pause for manual title identification / track selection before auto-continuing, in seconds. 0 = wait indefinitely.",
+                ["ManualWaitTime"] = "How long to pause for manual title identification before auto-continuing, in seconds. 0 = wait indefinitely.",
+                ["ManualSelectionWaitTime"] = "How long to wait for manual track selection (Manual Selection mode) before failing the job, in seconds. 0 = wait indefinitely.",
                 ["AutoEject"] = "Automatically eject disc after processing",
                 ["AllowDuplicates"] = "When disabled, if the same disc (by volume label) has already been ripped successfully, the rip is skipped to prevent re-ripping the same disc after eject/reload",
                 ["PreferWidescreen"] = "When enabled and two or more tracks have very similar file sizes (e.g. widescreen + fullscreen versions of the same movie), the 16:9 track is selected as the main feature instead of 4:3",
@@ -295,6 +296,13 @@
                         <div class="input-group-append"><span class="input-group-text">sec</span></div>
                     </div>
                     <small class="form-text text-muted">= <strong id="manualWaitTimePreview">@FormatSeconds((int)(armSettings?.ManualWaitTime ?? 0))</strong> · 0 = wait indefinitely</small>
+                </td></tr>
+                <tr><td><label for="ManualSelectionWaitTime">Manual Selection Timeout (s):</label>@Html.Raw(tip("ManualSelectionWaitTime", tips))</td><td>
+                    <div class="input-group">
+                        <input type="number" name="ManualSelectionWaitTime" id="manualSelectionWaitTimeInput" value="@(armSettings?.ManualSelectionWaitTime ?? 60)" class="form-control" min="0" step="1" />
+                        <div class="input-group-append"><span class="input-group-text">sec</span></div>
+                    </div>
+                    <small class="form-text text-muted">= <strong id="manualSelectionWaitTimePreview">@FormatSeconds((int)(armSettings?.ManualSelectionWaitTime ?? 0))</strong> · 0 = wait indefinitely</small>
                 </td></tr>
                 <tr><td><label for="AutoEject">Auto Eject:</label>@Html.Raw(tip("AutoEject", tips))</td><td><input type="hidden" name="AutoEject" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="AutoEject" name="AutoEject" value="true" checked="@armSettings?.AutoEject" /><label class="custom-control-label" for="AutoEject"></label></div></td></tr>
                 <tr><td><label for="AllowDuplicates">Allow Duplicates:</label>@Html.Raw(tip("AllowDuplicates", tips))</td><td><input type="hidden" name="AllowDuplicates" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="AllowDuplicates" name="AllowDuplicates" value="true" checked="@armSettings?.AllowDuplicates" /><label class="custom-control-label" for="AllowDuplicates"></label></div></td></tr>
@@ -925,9 +933,10 @@
             // (the preview elements are re-created on save, so direct binding would break).
             document.getElementById('settingsPage').addEventListener('input', function (e) {
                 var target = e.target;
-                if (target.id === 'minLengthInput' || target.id === 'maxLengthInput' || target.id === 'manualWaitTimeInput') {
+                if (target.id === 'minLengthInput' || target.id === 'maxLengthInput' || target.id === 'manualWaitTimeInput' || target.id === 'manualSelectionWaitTimeInput') {
                     var previewId = target.id === 'minLengthInput' ? 'minLengthPreview'
-                        : target.id === 'maxLengthInput' ? 'maxLengthPreview' : 'manualWaitTimePreview';
+                        : target.id === 'maxLengthInput' ? 'maxLengthPreview'
+                        : target.id === 'manualWaitTimeInput' ? 'manualWaitTimePreview' : 'manualSelectionWaitTimePreview';
                     var preview = document.getElementById(previewId);
                     if (preview) preview.textContent = fmtDuration(target.value);
                 }

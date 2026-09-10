@@ -14,6 +14,9 @@ public class ConfigSnapshot
     public bool UseFfmpeg { get; set; }
     public bool ManualWait { get; set; }
     public int ManualWaitTime { get; set; } = 60;
+    /// <summary>Timeout (seconds) for the Manual Selection track-picker wait.
+    /// 0 = wait indefinitely. Independent of <see cref="ManualWaitTime"/>.</summary>
+    public int ManualSelectionWaitTime { get; set; } = 60;
     public bool AllowDuplicates { get; set; }
     public bool PreferWidescreen { get; set; }
     public bool Prevent99 { get; set; }
@@ -103,6 +106,7 @@ public class ConfigSnapshot
             UseFfmpeg         = settings.UseFfmpeg,
             ManualWait        = settings.ManualWait,
             ManualWaitTime    = settings.ManualWaitTime,
+            ManualSelectionWaitTime = settings.ManualSelectionWaitTime,
             AllowDuplicates   = settings.AllowDuplicates,
             Prevent99         = carryForward?.Prevent99 ?? settings.Prevent99,
             GetVideoTitle     = settings.GetVideoTitle,

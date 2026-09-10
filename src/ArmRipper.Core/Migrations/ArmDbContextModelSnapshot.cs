@@ -128,6 +128,9 @@ namespace ArmRipper.Core.Migrations
                     b.Property<bool>("ManualSelection")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("ManualSelectionWaitTime")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("ManualWait")
                         .HasColumnType("INTEGER");
 
