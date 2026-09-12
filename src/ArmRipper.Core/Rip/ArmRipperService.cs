@@ -1084,6 +1084,15 @@ public sealed class ArmRipperService(
                             ripCount++;
                         }
                     }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                        // User cancel / shutdown — abort the rip loop instead of logging
+                        // the cancellation as a track failure and continuing to rip.
+                        // (Redirects are only signalled via the per-job CTS in the
+                        // MainFeature branch, so an OCE here always means the pipeline
+                        // token was cancelled.)
+                        throw;
+                    }
                     catch (Exception trackEx)
                     {
                         // One track failed — log and continue with the remaining tracks
@@ -1101,6 +1110,13 @@ public sealed class ArmRipperService(
                 LogMakeMkvIssues(result, "rip");
 
             logger.LogInformation("Ripped {Count} titles", ripCount);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // User cancel / shutdown — propagate so the conductor can transition
+            // the job to Stopping via the cancellation path instead of relying on
+            // an unrelated exception in the file-matching phase below.
+            throw;
         }
         catch (Exception mkvError)
         {

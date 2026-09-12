@@ -85,13 +85,18 @@ public sealed class RipVerificationIntegrationTests : IDisposable
 
     private (ArmRipperService Service, Job Job, Mock<IMakeMkvService> MakeMkv, Mock<IFfmpegService> Ffmpeg, IRipRedirectService Redirect) CreateService(
         IRipRedirectService? redirectService = null,
-        IReadOnlyList<Track>? tracks = null)
+        IReadOnlyList<Track>? tracks = null,
+        Action<ConfigSnapshot>? configureConfig = null)
     {
         redirectService ??= new RipRedirectService();
 
         var job = TestHelpers.CreateTestJob(
             configure: j => j.DiscFingerprint = null,
-            configureConfig: c => c.MainFeature = true);
+            configureConfig: c =>
+            {
+                c.MainFeature = true;
+                configureConfig?.Invoke(c);
+            });
 
         _db.Jobs.Add(job);
         _db.SaveChanges();
@@ -143,11 +148,11 @@ public sealed class RipVerificationIntegrationTests : IDisposable
         return (service, job, makeMkv, ffmpeg, redirectService);
     }
 
-    private static async Task<string?> InvokeAsync(ArmRipperService service, Job job, string makeMkvOutPath)
+    private static async Task<string?> InvokeAsync(ArmRipperService service, Job job, string makeMkvOutPath, CancellationToken ct = default)
     {
         var jobTitle = ArmRipperService.FixJobTitle(job);
         var task = (Task<string?>)GetPrepareTranscodeInputPathAsync()
-            .Invoke(service, [job, jobTitle, makeMkvOutPath, CancellationToken.None])!;
+            .Invoke(service, [job, jobTitle, makeMkvOutPath, ct])!;
         return await task;
     }
 
@@ -423,6 +428,78 @@ public sealed class RipVerificationIntegrationTests : IDisposable
         Assert.Equal("2", job.MainFeatureOverrideTrackNumber);
         var savedTrack = _db.Tracks.First(t => t.JobId == job.Id && t.TrackNumber == "2");
         Assert.True(savedTrack.MainFeature);
+    }
+
+    [Fact]
+    public async Task UserCancelMidRip_AbortsTrackLoop_AndPropagatesCancellation()
+    {
+        // Regression: the individual-track rip loop used to swallow
+        // OperationCanceledException in its catch (Exception) block, logging a user
+        // cancel as a track failure and continuing to rip the remaining tracks.
+        // MainFeature off + DiscDb-promoted tracks (EpisodeTitle) force the
+        // individual-track branch (the all-titles fast path requires no EpisodeTitle).
+        var (service, job, makeMkv, ffmpeg, _) = CreateService(
+            configureConfig: c => c.MainFeature = false,
+            tracks: new List<Track>
+            {
+                new()
+                {
+                    JobId = 1,
+                    TrackNumber = "1",
+                    FileName = "title_t00.mkv",
+                    Length = 6547,
+                    FileSize = 4_000_000_000L,
+                    Chapters = 16,
+                    AspectRatio = "16:9",
+                    Fps = 23.976,
+                    Source = "MakeMKV",
+                    BaseName = "Test Movie",
+                    EpisodeTitle = "Episode 1",
+                    Process = true
+                },
+                new()
+                {
+                    JobId = 1,
+                    TrackNumber = "2",
+                    FileName = "title_t01.mkv",
+                    Length = 6000,
+                    FileSize = 3_000_000_000L,
+                    Chapters = 12,
+                    AspectRatio = "4:3",
+                    Fps = 23.976,
+                    Source = "MakeMKV",
+                    BaseName = "Test Movie",
+                    EpisodeTitle = "Episode 2",
+                    Process = true
+                }
+            });
+
+        var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
+
+        // The user cancels the job while the first rip is in progress: the mock
+        // cancels the pipeline token and throws OCE, exactly like RipTrackAsync
+        // does when the underlying process is cancelled.
+        using var cts = new CancellationTokenSource();
+        makeMkv.Setup(m => m.RipTrackAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
+            .Returns(async (Job j, string track, string outPath, string args, int minLen, IProgress<int>? prog, CancellationToken token) =>
+            {
+                cts.Cancel();
+                throw new OperationCanceledException();
+            });
+
+        // The cancellation must propagate out of the rip stage (so the conductor
+        // can transition the job to Stopping) rather than being logged as a track
+        // failure and swallowed.
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            InvokeAsync(service, job, makeMkvOutPath, cts.Token));
+
+        // The loop aborted after the first track — no further rip attempts.
+        makeMkv.Verify(m => m.RipTrackAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
