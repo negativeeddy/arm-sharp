@@ -66,6 +66,20 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
+    /// <summary>
+    /// Builds a <see cref="MakeMkvRipResult"/> that reports the given number of
+    /// titles saved (MSG 3028), simulating a successful MakeMKV rip. A bare
+    /// <c>new MakeMkvRipResult()</c> reports 0 titles saved, which the rip loop
+    /// now treats as a failure.
+    /// </summary>
+    private static MakeMkvRipResult SuccessfulRipResult(int titlesSaved = 1)
+    {
+        var result = new MakeMkvRipResult();
+        for (var i = 0; i < titlesSaved; i++)
+            result.Capture(new MakeMkvMessage((int)MessageId.TitleAdded, 0, 1, "Title added", "", []));
+        return result;
+    }
+
     private ArmRipperService CreateService(Action<ArmSettings>? configureSettings = null)
     {
         var opts = configureSettings is not null
@@ -658,7 +672,7 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
                         Path.Combine(outputPath, $"title_t{int.Parse(trackNumber):D2}.mkv"),
                         [1, 2, 3]);
                 })
-            .ReturnsAsync(new MakeMkvRipResult());
+            .ReturnsAsync(SuccessfulRipResult());
 
         var service = CreateService();
 
@@ -935,7 +949,7 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
                         Path.Combine(outputPath, $"title_t{int.Parse(trackNumber):D2}.mkv"),
                         [1, 2, 3]);
                 })
-            .ReturnsAsync(new MakeMkvRipResult());
+            .ReturnsAsync(SuccessfulRipResult());
         _makeMkv.Setup(m => m.RipTrackAsync(
                 It.IsAny<Job>(), "1", It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<int>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
@@ -985,6 +999,219 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
     }
 
     [Fact]
+    public async Task RipSavingZeroTitles_IsTreatedAsFailure_NotSuccess()
+    {
+        // Regression test for issue #194: MakeMKV exits with code 0 even when it
+        // fails to save a title (e.g. unreadable disc sectors → "0 titles saved,
+        // 1 failed"), so the rip loop must check the result explicitly. Previously
+        // a 0-save rip was counted as success ("Ripped N titles") with zero files
+        // produced. MaxLength=99998 forces the individual-track loop (the default
+        // 99999 would take the all-titles fast path).
+        var job = TestHelpers.CreateTestJob(
+            configureConfig: c =>
+            {
+                c.MainFeature = false;
+                c.MaxLength = 99998;
+            });
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var tracks = new List<Track>
+        {
+            new() { Id = 1, JobId = job.Id, TrackNumber = "0", Length = 1000, FileName = "C1_t00.mkv" },
+            new() { Id = 2, JobId = job.Id, TrackNumber = "1", Length = 2000, FileName = "D1_t01.mkv" },
+        };
+        _makeMkv.Setup(m => m.GetTrackInfoWithCacheAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tracks);
+
+        // Both tracks "rip" but MakeMKV saves 0 titles (no output files, no MSG 3028).
+        _makeMkv.Setup(m => m.RipTrackAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<int>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MakeMkvRipResult());
+
+        var service = CreateService();
+
+        var method = typeof(ArmRipperService).GetMethod(
+            "PrepareTranscodeInputPathAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var rawPath = Path.Combine(Path.GetTempPath(), $"arm_zero_title_{Guid.NewGuid():N}");
+        var pipelineTask = (Task<string?>)method!.Invoke(service,
+            new object[] { job, "Test Movie (2024)", rawPath, CancellationToken.None })!;
+
+        // No output files were produced, so the rip fails the job with a clear
+        // error instead of reporting "Ripped 2 titles".
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => pipelineTask);
+        Assert.Contains("saved 0 titles", ex.Message);
+
+        var dbJob = await _db.Jobs.AsNoTracking().FirstAsync(j => j.Id == job.Id);
+        Assert.Equal(JobState.Failure, dbJob.Status);
+        Assert.Contains("saved 0 titles", dbJob.Errors ?? "");
+    }
+
+    [Fact]
+    public async Task FastPathRipSavingZeroTitles_FailsJob()
+    {
+        // Issue #194, all-titles fast path: with the default MaxLength=99999 the
+        // rip uses RipAllTitlesAsync. A 0-save result (MakeMKV exits 0 despite the
+        // failure) must not be counted as "Ripped N titles".
+        var job = TestHelpers.CreateTestJob(
+            configureConfig: c => c.MainFeature = false);
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var tracks = new List<Track>
+        {
+            new() { Id = 1, JobId = job.Id, TrackNumber = "0", Length = 1000, FileName = "C1_t00.mkv" },
+            new() { Id = 2, JobId = job.Id, TrackNumber = "1", Length = 2000, FileName = "D1_t01.mkv" },
+        };
+        _makeMkv.Setup(m => m.GetTrackInfoWithCacheAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tracks);
+
+        // The all-titles rip saves 0 titles (silent MakeMKV failure).
+        _makeMkv.Setup(m => m.RipAllTitlesAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MakeMkvRipResult());
+
+        var service = CreateService();
+
+        var method = typeof(ArmRipperService).GetMethod(
+            "PrepareTranscodeInputPathAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var rawPath = Path.Combine(Path.GetTempPath(), $"arm_zero_title_fast_{Guid.NewGuid():N}");
+        var pipelineTask = (Task<string?>)method!.Invoke(service,
+            new object[] { job, "Test Movie (2024)", rawPath, CancellationToken.None })!;
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => pipelineTask);
+        Assert.Contains("saved 0 titles", ex.Message);
+
+        var dbJob = await _db.Jobs.AsNoTracking().FirstAsync(j => j.Id == job.Id);
+        Assert.Equal(JobState.Failure, dbJob.Status);
+        Assert.Contains("saved 0 titles", dbJob.Errors ?? "");
+    }
+
+    [Fact]
+    public async Task RipSavingZeroTitles_PartialFailure_RecordsErrorButContinues()
+    {
+        // Issue #194: when SOME tracks save 0 titles (MakeMKV exits 0 despite the
+        // failure), the failed tracks must be recorded as errors instead of
+        // silently vanishing — previously only the "no tracks ripped at all" check
+        // caught total failures, missing partial ones entirely.
+        var job = TestHelpers.CreateTestJob(
+            configureConfig: c =>
+            {
+                c.MainFeature = false;
+                c.MaxLength = 99998; // force the individual-track loop
+            });
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var tracks = new List<Track>
+        {
+            new() { Id = 1, JobId = job.Id, TrackNumber = "0", Length = 1000, FileName = "C1_t00.mkv" },
+            new() { Id = 2, JobId = job.Id, TrackNumber = "1", Length = 2000, FileName = "D1_t01.mkv" },
+        };
+        _makeMkv.Setup(m => m.GetTrackInfoWithCacheAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tracks);
+
+        // Track "0" saves 0 titles (silent MakeMKV failure); track "1" succeeds.
+        _makeMkv.Setup(m => m.RipTrackAsync(
+                It.IsAny<Job>(), "0", It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<int>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MakeMkvRipResult());
+        _makeMkv.Setup(m => m.RipTrackAsync(
+                It.IsAny<Job>(), "1", It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<int>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
+            .Callback<Job, string, string, string, int, IProgress<int>?, CancellationToken>(
+                (_, trackNumber, outputPath, _, _, _, _) =>
+                {
+                    Directory.CreateDirectory(outputPath);
+                    File.WriteAllBytes(
+                        Path.Combine(outputPath, $"title_t{int.Parse(trackNumber):D2}.mkv"),
+                        [1, 2, 3]);
+                })
+            .ReturnsAsync(SuccessfulRipResult());
+
+        var service = CreateService();
+
+        var method = typeof(ArmRipperService).GetMethod(
+            "PrepareTranscodeInputPathAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var rawPath = Path.Combine(Path.GetTempPath(), $"arm_zero_title_partial_{Guid.NewGuid():N}");
+        var result = await (Task<string?>)method!.Invoke(service,
+            new object[] { job, "Test Movie (2024)", rawPath, CancellationToken.None })!;
+
+        Assert.Equal(rawPath, result);
+
+        // The 0-save failure must be recorded on the job (partial failure), and
+        // the succeeded track must still be marked ripped.
+        var dbJob = await _db.Jobs.AsNoTracking().FirstAsync(j => j.Id == job.Id);
+        Assert.Equal(JobState.Failure, dbJob.Status);
+        Assert.Contains("saved 0 titles", dbJob.Errors ?? "");
+
+        var dbTracks = await _db.Tracks.Where(t => t.JobId == job.Id).ToListAsync();
+        var ripped = Assert.Single(dbTracks, t => t.Ripped);
+        Assert.Equal("1", ripped.TrackNumber);
+    }
+
+    [Fact]
+    public async Task MainFeatureRipSavingZeroTitles_FailsJob()
+    {
+        // Issue #194: the MainFeature branch must also check the rip result — a
+        // 0-save rip (MakeMKV exits 0 despite the failure) must not be counted as
+        // success.
+        var job = TestHelpers.CreateTestJob(
+            configureConfig: c => c.MainFeature = true);
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var tracks = new List<Track>
+        {
+            new()
+            {
+                Id = 1, JobId = job.Id, TrackNumber = "1", Length = 6547,
+                FileName = "title_t00.mkv", FileSize = 4_000_000_000L,
+                Chapters = 16, AspectRatio = "16:9", Fps = 23.976,
+                Source = "MakeMKV", BaseName = "Test Movie"
+            },
+        };
+        _makeMkv.Setup(m => m.GetTrackInfoWithCacheAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tracks);
+
+        // The main-feature rip saves 0 titles (silent MakeMKV failure).
+        _makeMkv.Setup(m => m.RipTrackAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<int>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MakeMkvRipResult());
+
+        // The MainFeature branch registers a per-job rip cancellation token via
+        // the redirect service — the mock must return a real linked CTS.
+        _ripRedirect.Setup(r => r.BeginRip(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns((int jobId, CancellationToken ct) => CancellationTokenSource.CreateLinkedTokenSource(ct));
+
+        var service = CreateService();
+
+        var method = typeof(ArmRipperService).GetMethod(
+            "PrepareTranscodeInputPathAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var rawPath = Path.Combine(Path.GetTempPath(), $"arm_zero_title_main_{Guid.NewGuid():N}");
+        var pipelineTask = (Task<string?>)method!.Invoke(service,
+            new object[] { job, "Test Movie (2024)", rawPath, CancellationToken.None })!;
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => pipelineTask);
+        Assert.Contains("saved 0 titles", ex.Message);
+
+        var dbJob = await _db.Jobs.AsNoTracking().FirstAsync(j => j.Id == job.Id);
+        Assert.Equal(JobState.Failure, dbJob.Status);
+        Assert.Contains("saved 0 titles", dbJob.Errors ?? "");
+    }
+
+    [Fact]
     public async Task ManualSelection_SignalRegisteredBeforeStatusVisible_NoRace()
     {
         // Regression test for issue #169: the pipeline must register its signal
@@ -1017,7 +1244,7 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
                         Path.Combine(outputPath, $"title_t{int.Parse(trackNumber):D2}.mkv"),
                         [1, 2, 3]);
                 })
-            .ReturnsAsync(new MakeMkvRipResult());
+            .ReturnsAsync(SuccessfulRipResult());
 
         var service = CreateService();
 

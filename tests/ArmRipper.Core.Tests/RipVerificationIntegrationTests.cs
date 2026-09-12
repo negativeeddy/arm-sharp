@@ -69,6 +69,20 @@ public sealed class RipVerificationIntegrationTests : IDisposable
         return result;
     }
 
+    /// <summary>
+    /// Builds a <see cref="MakeMkvRipResult"/> that reports the given number of
+    /// titles saved (MSG 3028), simulating a successful MakeMKV rip. A bare
+    /// <c>new MakeMkvRipResult()</c> reports 0 titles saved, which the rip loop
+    /// now treats as a failure.
+    /// </summary>
+    private static MakeMkvRipResult SuccessfulRipResult(int titlesSaved = 1)
+    {
+        var result = new MakeMkvRipResult();
+        for (var i = 0; i < titlesSaved; i++)
+            result.Capture(new MakeMkvMessage((int)MessageId.TitleAdded, 0, 1, "Title added", "", []));
+        return result;
+    }
+
     private (ArmRipperService Service, Job Job, Mock<IMakeMkvService> MakeMkv, Mock<IFfmpegService> Ffmpeg, IRipRedirectService Redirect) CreateService(
         IRipRedirectService? redirectService = null,
         IReadOnlyList<Track>? tracks = null)
@@ -176,7 +190,7 @@ public sealed class RipVerificationIntegrationTests : IDisposable
         makeMkv.Setup(m => m.RipTrackAsync(
                 It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new MakeMkvRipResult());
+            .ReturnsAsync(SuccessfulRipResult());
 
         var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
         Directory.CreateDirectory(makeMkvOutPath);
@@ -383,7 +397,7 @@ public sealed class RipVerificationIntegrationTests : IDisposable
 
                 using var output = new FileStream(Path.Combine(outPath, "title_t01.mkv"), FileMode.Create);
                 output.SetLength(3_000_000_000L);
-                return new MakeMkvRipResult();
+                return SuccessfulRipResult();
             });
 
         ffmpeg.Setup(f => f.ProbeDurationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -512,7 +526,7 @@ public sealed class RipVerificationIntegrationTests : IDisposable
         makeMkv.Setup(m => m.RipTrackAsync(
                 It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new MakeMkvRipResult());
+            .ReturnsAsync(SuccessfulRipResult());
 
         var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
         Directory.CreateDirectory(makeMkvOutPath);

@@ -718,6 +718,54 @@ public sealed class MakeMkvServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RipTrackAsync_CapturesRipCompletedSummary()
+    {
+        // MSG 5004 "X titles saved, Y failed" is the authoritative summary MakeMKV
+        // emits at the end of every rip. Its params are locale-independent numbers:
+        // [0]=saved, [1]=failed. Issue #194: MakeMKV exits 0 even when it fails to
+        // save titles, so this summary is what lets the caller detect the failure.
+        _runnerMock
+            .Setup(r => r.RunStreamingAsync(
+                "makemkvcon",
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(ToAsyncStream(
+                "MSG:5004,128,2,\"0 titles saved, 1 failed\",\"%1 titles saved, %2 failed\",\"0\",\"1\""));
+
+        var job = TestHelpers.CreateTestJob();
+        var result = await _service.RipTrackAsync(job, "0", "/out", "", 0);
+
+        Assert.Equal(0, result.TitlesSaved);
+        Assert.Equal(1, result.TitlesFailed);
+        Assert.True(result.SavedNoTitles);
+    }
+
+    [Fact]
+    public async Task RipTrackAsync_RipCompletedSummary_OverridesTitleAddedCount()
+    {
+        // When both MSG 3028 (TitleAdded) and MSG 5004 (RipCompleted) are present,
+        // the 5004 summary is authoritative — it reflects the final saved/failed
+        // counts even if a title was added and then failed.
+        _runnerMock
+            .Setup(r => r.RunStreamingAsync(
+                "makemkvcon",
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(ToAsyncStream(
+                "MSG:3028,0,3,\"Title #2 was added (1 cell(s), 0:00:09)\",\"Title #%1 was added (%2 cell(s), %3)\",\"2\",\"1\",\"0:00:09\"",
+                "MSG:5004,128,2,\"1 titles saved, 1 failed\",\"%1 titles saved, %2 failed\",\"1\",\"1\""));
+
+        var job = TestHelpers.CreateTestJob();
+        var result = await _service.RipTrackAsync(job, "0", "/out", "", 0);
+
+        Assert.Equal(1, result.TitlesSaved);
+        Assert.Equal(1, result.TitlesFailed);
+        Assert.False(result.SavedNoTitles);
+    }
+
+    [Fact]
     public async Task RipAllTitlesAsync_CapturesSkippedTitles()
     {
         _runnerMock
