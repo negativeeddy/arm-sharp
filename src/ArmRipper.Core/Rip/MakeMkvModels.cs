@@ -133,10 +133,20 @@ public sealed class MakeMkvRipResult
     /// <summary>Titles reported as skipped (MSG 3015 / 3025).</summary>
     public List<string> SkippedTitles { get; } = [];
 
-    /// <summary>Number of titles MakeMKV reported as added/saved (MSG 3028).</summary>
+    /// <summary>
+    /// Number of titles MakeMKV reported as added/saved. Incremented per
+    /// MSG 3028 (TitleAdded); overridden by the authoritative MSG 5004
+    /// (RipCompleted) summary "X titles saved, Y failed" when present.
+    /// </summary>
     public int TitlesSaved { get; private set; }
 
+    /// <summary>Number of titles MakeMKV reported as failed (MSG 5004 summary).</summary>
+    public int TitlesFailed { get; private set; }
+
     public bool HadSkippedTitles => SkippedTitles.Count > 0;
+
+    /// <summary>True when MakeMKV reported zero titles saved (MSG 5004 / 3028).</summary>
+    public bool SavedNoTitles => TitlesSaved == 0;
 
     public void Capture(MakeMkvMessage msg)
     {
@@ -155,6 +165,18 @@ public sealed class MakeMkvRipResult
             case MessageId.TitleAdded:
                 TitlesSaved++;
                 break;
+            case MessageId.RipCompleted:
+                // MSG 5004 "X titles saved, Y failed" — the authoritative summary
+                // MakeMKV emits at the end of every rip. Params are
+                // locale-independent numbers: [0]=saved, [1]=failed.
+                if (msg.Params.Length >= 2 &&
+                    int.TryParse(msg.Params[0], out var saved) &&
+                    int.TryParse(msg.Params[1], out var failed))
+                {
+                    TitlesSaved = saved;
+                    TitlesFailed = failed;
+                }
+                break;
         }
     }
 
@@ -164,5 +186,6 @@ public sealed class MakeMkvRipResult
         if (other.HadCorruptSource) HadCorruptSource = true;
         SkippedTitles.AddRange(other.SkippedTitles);
         TitlesSaved += other.TitlesSaved;
+        TitlesFailed += other.TitlesFailed;
     }
 }

@@ -561,6 +561,15 @@ public sealed class ArmRipperService(
             var mkvArgs = job.Config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
             var testRipResult = await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping track 0", ct), ct);
             LogMakeMkvIssues(testRipResult, "test-mode rip");
+            var testFailure = ZeroTitleRipFailure(testRipResult, "track 0 (test mode)");
+            if (testFailure is not null)
+            {
+                // MakeMKV exits 0 even when it fails to save a title, so the result
+                // must be checked explicitly — a test rip that produced nothing is a
+                // failed test, not a success.
+                logger.LogError("{Failure}", testFailure);
+                throw new InvalidOperationException(testFailure);
+            }
             logger.LogInformation("Ripped track 0 in test mode");
             return makeMkvOutPath;
         }
@@ -616,9 +625,11 @@ public sealed class ArmRipperService(
 
                 if (!Directory.EnumerateFileSystemEntries(makeMkvOutPath).Any())
                 {
-                    var msg = fallbackRipResult.HadSkippedTitles || fallbackRipResult.HadReadError
-                        ? $"MakeMKV rip produced no output files (disc read or title skip errors reported: {DescribeMakeMkvIssues(fallbackRipResult)})"
-                        : "MakeMKV rip produced no output files";
+                    var msg = fallbackRipResult.SavedNoTitles
+                        ? $"MakeMKV rip produced no output files (0 titles saved — disc read failure; {DescribeMakeMkvIssues(fallbackRipResult)})"
+                        : fallbackRipResult.HadSkippedTitles || fallbackRipResult.HadReadError
+                            ? $"MakeMKV rip produced no output files (disc read or title skip errors reported: {DescribeMakeMkvIssues(fallbackRipResult)})"
+                            : "MakeMKV rip produced no output files";
                     logger.LogError(msg);
                     throw new InvalidOperationException(msg);
                 }
@@ -974,11 +985,25 @@ public sealed class ArmRipperService(
                         var ripCts = ripRedirectService.BeginRip(job.Id, ct);
                         try
                         {
-                            ripResults.Add(await makeMkv.RipTrackAsync(
+                            var mainRipResult = await makeMkv.RipTrackAsync(
                                 job, trackNum, makeMkvOutPath, mkvArgs, 0,
                                 MkvProgress(job, $"Ripping main feature (track {trackNum})", ripCts.Token),
-                                ripCts.Token));
-                            ripCount = 1;
+                                ripCts.Token);
+                            ripResults.Add(mainRipResult);
+                            var mainFailure = ZeroTitleRipFailure(mainRipResult, $"main feature (track {trackNum})");
+                            if (mainFailure is not null)
+                            {
+                                // MakeMKV exits 0 even when it fails to save the title
+                                // (e.g. unreadable disc sectors), so the result must be
+                                // checked explicitly — otherwise the job reports success
+                                // with zero files produced.
+                                logger.LogError("{Failure}", mainFailure);
+                                ripError = mainFailure;
+                            }
+                            else
+                            {
+                                ripCount = 1;
+                            }
                             break;
                         }
                         catch (OperationCanceledException) when (!ct.IsCancellationRequested && ripRedirectService.WasRedirectRequested(job.Id))
@@ -1006,8 +1031,23 @@ public sealed class ArmRipperService(
                 // otherwise individual iteration is needed to respect Process flags.
                 // Skipped when the user made a manual selection — the individual-track
                 // branch below respects the chosen Process flags.
-                ripResults.Add(await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, "Ripping all titles", ct), ct));
-                ripCount = eligibleTracks.Count;
+                var allTitlesResult = await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, "Ripping all titles", ct), ct);
+                ripResults.Add(allTitlesResult);
+                var allTitlesFailure = ZeroTitleRipFailure(allTitlesResult, "all-titles rip");
+                if (allTitlesFailure is not null)
+                {
+                    // MakeMKV exits 0 even when it fails to save any titles (e.g.
+                    // unreadable disc sectors → "0 titles saved, N failed"), so the
+                    // result must be checked explicitly — otherwise the job reports
+                    // "Ripped N titles" with zero files produced.
+                    logger.LogError("{Failure}", allTitlesFailure);
+                    ripError = allTitlesFailure;
+                    ripCount = 0;
+                }
+                else
+                {
+                    ripCount = eligibleTracks.Count;
+                }
             }
             else
             {
@@ -1026,8 +1066,23 @@ public sealed class ArmRipperService(
                     var trackMinLength = !string.IsNullOrEmpty(track.EpisodeTitle) ? 0 : minLengthCfg;
                     try
                     {
-                        ripResults.Add(await makeMkv.RipTrackAsync(job, track.TrackNumber, makeMkvOutPath, mkvArgs, trackMinLength, MkvProgress(job, $"Ripping track {trackNum} of {eligibleTracks.Count}", ct), ct));
-                        ripCount++;
+                        var result = await makeMkv.RipTrackAsync(job, track.TrackNumber, makeMkvOutPath, mkvArgs, trackMinLength, MkvProgress(job, $"Ripping track {trackNum} of {eligibleTracks.Count}", ct), ct);
+                        ripResults.Add(result);
+                        var zeroTitleFailure = ZeroTitleRipFailure(result, $"track {track.TrackNumber}");
+                        if (zeroTitleFailure is not null)
+                        {
+                            // MakeMKV exits 0 even when it fails to save a title (e.g.
+                            // unreadable disc sectors → "0 titles saved, 1 failed"), so
+                            // the result must be checked explicitly — otherwise a failed
+                            // track is counted as ripped and the job reports success.
+                            logger.LogError("{Failure} ({TrackNumOfTotal}) — continuing with remaining tracks",
+                                zeroTitleFailure, $"track {trackNum} of {eligibleTracks.Count}");
+                            ripError = zeroTitleFailure;
+                        }
+                        else
+                        {
+                            ripCount++;
+                        }
                     }
                     catch (Exception trackEx)
                     {
@@ -2107,6 +2162,22 @@ public sealed class ArmRipperService(
     }
 
     /// <summary>
+    /// Returns a failure message when MakeMKV reported zero titles saved for a
+    /// rip, otherwise null. MakeMKV exits with code 0 even when it fails to save
+    /// titles (e.g. unreadable disc sectors → "0 titles saved, 1 failed"), so the
+    /// result must be checked explicitly — otherwise a failed rip is counted as
+    /// success and the job reports "Ripped N titles" with zero files produced.
+    /// </summary>
+    private static string? ZeroTitleRipFailure(MakeMkvRipResult result, string context)
+    {
+        if (result is null || result.TitlesSaved > 0)
+            return null;
+
+        var hint = result.HadReadError ? " — disc may need cleaning or replacement" : "";
+        return $"MakeMKV saved 0 titles for {context}{hint}";
+    }
+
+    /// <summary>
     /// Logs warnings for notable MakeMKV rip-phase messages (read errors, corrupt
     /// source sectors, skipped titles) that MakeMKV otherwise swallows.
     /// </summary>
@@ -2123,6 +2194,9 @@ public sealed class ArmRipperService(
         if (result.HadSkippedTitles)
             logger.LogWarning("MakeMKV skipped {Count} title(s) during {Context}: {Titles}",
                 result.SkippedTitles.Count, context, DescribeMakeMkvIssues(result));
+
+        if (result.SavedNoTitles)
+            logger.LogWarning("MakeMKV saved 0 titles during {Context}", context);
     }
 
     private static string DescribeMakeMkvIssues(MakeMkvRipResult result)
