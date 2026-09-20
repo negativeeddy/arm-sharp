@@ -81,6 +81,7 @@ public enum MessageId
     CorruptSource = 4004,
     RipTitleError = 5003,
     RipCompleted = 5004,
+    RipTitlesSaved = 5005,
     RipDiscOpenError = 5010,
     RipSummaryBefore = 5014,
     RipSummaryAfter = 5037,
@@ -136,7 +137,7 @@ public sealed class MakeMkvRipResult
     /// <summary>
     /// Number of titles MakeMKV reported as added/saved. Incremented per
     /// MSG 3028 (TitleAdded); overridden by the authoritative MSG 5004
-    /// (RipCompleted) summary "X titles saved, Y failed" when present.
+    /// (RipCompleted) or MSG 5005 (RipTitlesSaved) summary when present.
     /// </summary>
     public int TitlesSaved { get; private set; }
 
@@ -148,23 +149,26 @@ public sealed class MakeMkvRipResult
     /// <summary>True when MakeMKV reported zero titles saved (MSG 5004 / 3028).</summary>
     public bool SavedNoTitles => TitlesSaved == 0;
 
-    public void Capture(MakeMkvMessage msg)
+    /// <summary>
+    /// Returns <c>true</c> if the message code was recognized and handled.
+    /// </summary>
+    public bool Capture(MakeMkvMessage msg)
     {
         switch ((MessageId)msg.Code)
         {
             case MessageId.ReadError:
                 HadReadError = true;
-                break;
+                return true;
             case MessageId.CorruptSource:
                 HadCorruptSource = true;
-                break;
+                return true;
             case MessageId.TitleSkipped:
             case MessageId.TitleSkippedNavigation:
                 SkippedTitles.Add(msg.Message);
-                break;
+                return true;
             case MessageId.TitleAdded:
                 TitlesSaved++;
-                break;
+                return true;
             case MessageId.RipCompleted:
                 // MSG 5004 "X titles saved, Y failed" — the authoritative summary
                 // MakeMKV emits at the end of every rip. Params are
@@ -176,7 +180,18 @@ public sealed class MakeMkvRipResult
                     TitlesSaved = saved;
                     TitlesFailed = failed;
                 }
-                break;
+                return true;
+            case MessageId.RipTitlesSaved:
+                // MSG 5005 "X titles saved" — MakeMKV v1.18+ sometimes emits
+                // this instead of MSG 5004. Only has the saved count, no failed.
+                if (msg.Params.Length >= 1 &&
+                    int.TryParse(msg.Params[0], out var titlesSaved))
+                {
+                    TitlesSaved = titlesSaved;
+                }
+                return true;
+            default:
+                return false;
         }
     }
 

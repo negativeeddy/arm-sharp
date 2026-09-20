@@ -525,13 +525,17 @@ public sealed class ArmRipperService(
         var delRaw = job.Config?.DelRawFiles ?? settings.Value.DelRawFiles;
         if (delRaw)
         {
-            if (transcodeSucceeded)
+            if (transcodeSucceeded && string.IsNullOrEmpty(job.Errors))
             {
                 DeleteRawFiles(new[] { ctx.TranscodeInPath, ctx.TranscodeOutPath, ctx.MakeMkvOutPath }.OfType<string>().ToArray());
             }
             else
             {
-                logger.LogWarning("Transcode phase had errors — keeping raw files at {Paths} so the job can be retried",
+                var reason = !transcodeSucceeded
+                    ? "Transcode phase had errors"
+                    : "Rip or transcode phase had errors";
+                logger.LogWarning("{Reason} — keeping raw files at {Paths} so the job can be retried",
+                    reason,
                     string.Join(", ", new[] { ctx.TranscodeInPath, ctx.TranscodeOutPath, ctx.MakeMkvOutPath }.OfType<string>()));
             }
         }
