@@ -211,6 +211,38 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
     }
 
     [Fact]
+    public async Task ComputeRipContextAsync_TvJob_DiscSuffixedTitle_CleanFinalDirectory()
+    {
+        // Regression: a disc label like "KING_OF_THE_HILL_S3D1A" must not leak
+        // into the final completed folder name. The final directory is the clean
+        // series title; the disc suffix lives only in the working directories.
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.Title = "King of the Hill S3D1A";
+            j.TitleManual = null;
+            j.Year = "1997–";
+            j.SeasonNumber = 3;
+            j.DiscNumber = 1;
+            j.Label = "KING_OF_THE_HILL_S3D1A";
+        });
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var service = CreateService();
+        var ctx = await service.ComputeRipContextAsync(job, hasDupes: false, protection: false, CancellationToken.None);
+
+        // Final directory uses the clean series title (no disc suffix).
+        Assert.Contains("King of the Hill (1997–)", ctx.FinalDirectory);
+        Assert.DoesNotContain("S3D1A", ctx.FinalDirectory);
+        Assert.DoesNotContain("S03D01A", ctx.FinalDirectory);
+
+        // Working directories are disc-specific (title + season/disc subdir).
+        Assert.Contains("S03D01A", ctx.MakeMkvOutPath);
+        Assert.Contains("S03D01A", ctx.TranscodeOutPath);
+    }
+
+    [Fact]
     public async Task ComputeRipContextAsync_MovieJob_NoSeriesSubdir()
     {
         // Movies keep the flat layout — no season/disc subdirectory.
@@ -243,6 +275,56 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
         // CheckForDupeFolder appends a _N suffix.
         Assert.NotNull(ctx.FinalDirectory);
         Assert.NotNull(ctx.TranscodeOutPath);
+    }
+
+    [Fact]
+    public async Task ComputeRipContextAsync_TvJob_SecondDiscSharesFinalDirectory()
+    {
+        // Two discs of the same series (S3D1A / S3D1B) must share ONE final
+        // directory — no "_2" dupe suffix. The working directories stay
+        // isolated per disc; filename conflicts in the shared output are
+        // resolved by GetUniqueDestinationPath at move time.
+        var jobA = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.Title = "King of the Hill S3D1A";
+            j.TitleManual = null;
+            j.Year = "1997–";
+            j.SeasonNumber = 3;
+            j.DiscNumber = 1;
+            j.Label = "KING_OF_THE_HILL_S3D1A";
+        });
+        var jobB = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.Title = "King of the Hill S3D1B";
+            j.TitleManual = null;
+            j.Year = "1997–";
+            j.SeasonNumber = 3;
+            j.DiscNumber = 1;
+            j.Label = "KING_OF_THE_HILL_S3D1B";
+        });
+        // Job.Id is init-only — set the second job's key via reflection so both
+        // jobs can be persisted in the same DbContext.
+        typeof(Job).GetProperty(nameof(Job.Id))!.SetValue(jobB, 2);
+        _db.Jobs.AddRange(jobA, jobB);
+        await _db.SaveChangesAsync();
+
+        var service = CreateService();
+        var ctxA = await service.ComputeRipContextAsync(jobA, hasDupes: false, protection: false, CancellationToken.None);
+        var ctxB = await service.ComputeRipContextAsync(jobB, hasDupes: false, protection: false, CancellationToken.None);
+
+        // Same clean final directory for both discs (no disc suffix, no _N).
+        Assert.Equal(ctxA.FinalDirectory, ctxB.FinalDirectory);
+        Assert.Contains("King of the Hill (1997–)", ctxA.FinalDirectory);
+        Assert.DoesNotContain("_2", ctxA.FinalDirectory);
+        Assert.DoesNotContain("_2", ctxB.FinalDirectory);
+
+        // Working directories remain isolated per disc.
+        Assert.NotEqual(ctxA.MakeMkvOutPath, ctxB.MakeMkvOutPath);
+        Assert.NotEqual(ctxA.TranscodeOutPath, ctxB.TranscodeOutPath);
+        Assert.Contains("S03D01A", ctxA.MakeMkvOutPath);
+        Assert.Contains("S03D01B", ctxB.MakeMkvOutPath);
     }
 
     [Fact]

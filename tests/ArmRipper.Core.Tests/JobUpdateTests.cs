@@ -30,6 +30,7 @@ public sealed class JobUpdateTests
             j.DiscNumber = 1;
             j.DiscNumberAuto = 1;
             j.DiscNumberManual = 2;
+            j.DiscVariant = "B";
             j.StartingEpisodeNumber = 7;
             j.HasNiceTitle = true;
         });
@@ -49,6 +50,7 @@ public sealed class JobUpdateTests
         Assert.Equal(job.SeasonNumberAuto, update.SeasonNumberAuto);
         Assert.Equal(job.DiscNumber, update.DiscNumber);
         Assert.Equal(job.DiscNumberAuto, update.DiscNumberAuto);
+        Assert.Equal(job.DiscVariant, update.DiscVariant);
         Assert.Equal(job.StartingEpisodeNumber, update.StartingEpisodeNumber);
         Assert.True(update.HasNiceTitle);
     }
@@ -71,6 +73,7 @@ public sealed class JobUpdateTests
             j.SeasonNumberAuto = null;
             j.DiscNumber = null;
             j.DiscNumberAuto = null;
+            j.DiscVariant = null;
             j.StartingEpisodeNumber = null;
             j.HasNiceTitle = false;
         });
@@ -90,6 +93,7 @@ public sealed class JobUpdateTests
         Assert.Null(update.SeasonNumberAuto);
         Assert.Null(update.DiscNumber);
         Assert.Null(update.DiscNumberAuto);
+        Assert.Null(update.DiscVariant);
         Assert.Null(update.StartingEpisodeNumber);
         Assert.False(update.HasNiceTitle);
     }

@@ -593,6 +593,66 @@ public class ControllerActionIntegrationTests : IClassFixture<CustomWebApplicati
     }
 
     [Fact]
+    public async Task UpdateIdentification_SetsAndClearsDiscVariant()
+    {
+        int jobId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = new Job
+            {
+                Title = "King of the Hill",
+                TitleAuto = "King of the Hill",
+                Year = "1997",
+                VideoType = VideoContentType.Series,
+                Status = JobState.Active,
+                StartTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99",
+                Config = new ConfigSnapshot { MinLength = 300, MaxLength = 9999, RipMethod = "mkv", GetAudioTitle = "" }
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+        }
+
+        var client = await CreateAuthenticatedClientAsync();
+
+        // Set the side (lowercase input is uppercased).
+        var setResponse = await client.PostAsync("/jobs/update-identification",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                { "jobId", jobId.ToString() },
+                { "discVariant", "b" }
+            }));
+        Assert.Equal(HttpStatusCode.OK, setResponse.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = await db.Jobs.FindAsync(jobId);
+            Assert.NotNull(job);
+            Assert.Equal("B", job.DiscVariant);
+        }
+
+        // Clear the side with an empty value.
+        var clearResponse = await client.PostAsync("/jobs/update-identification",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                { "jobId", jobId.ToString() },
+                { "discVariant", "" }
+            }));
+        Assert.Equal(HttpStatusCode.OK, clearResponse.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = await db.Jobs.FindAsync(jobId);
+            Assert.NotNull(job);
+            Assert.Null(job.DiscVariant);
+        }
+    }
+
+    [Fact]
     public async Task UpdateIdentification_UpdatesJobPathForActiveJob()
     {
         int jobId;

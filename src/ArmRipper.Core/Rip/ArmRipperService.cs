@@ -307,7 +307,7 @@ public sealed class ArmRipperService(
         await BroadcastJobUpdateAsync(job);
 
         transcodeOutPath = CheckForDupeFolder(hasDupes, transcodeOutPath, job);
-        finalDirectory = CheckForDupeFolder(hasDupes, finalDirectory, job);
+        finalDirectory = ApplyFinalDirectoryDupeSuffix(hasDupes, finalDirectory, job);
 
         job.Path = finalDirectory;
         await db.SaveChangesAsync(ct);
@@ -481,7 +481,7 @@ public sealed class ArmRipperService(
             // Re-apply dupe folder suffix — the recomputation above dropped it, and
             // CheckForDupeFolder decides whether one is needed (creating the directory
             // when the new location is fresh).
-            ctx.FinalDirectory = CheckForDupeFolder(hasDupes, recomputedFinal, job);
+            ctx.FinalDirectory = ApplyFinalDirectoryDupeSuffix(hasDupes, recomputedFinal, job);
 
             // Move the poster out of the stale location before removing it.
             RelocatePoster(job, ctx.FinalDirectory);
@@ -1594,7 +1594,9 @@ public sealed class ArmRipperService(
         // (e.g., DiscDb had no matching record), assign sequential episode numbers
         // based on physical track order so output files get proper SxxExx names.
         // Parses disc number from the label (e.g., "_D2" → disc 2) so multi-disc
-        // sets don't restart at episode 1 on every disc.
+        // sets don't restart at episode 1 on every disc. A user-set starting
+        // episode (e.g. for side B of a double-sided disc, which shares disc
+        // number 1 with side A) takes precedence over the disc-number math.
         if (job.VideoType is VideoContentType.Series or VideoContentType.Tv)
         {
             int discNumber = ParseDiscNumber(job.Label);
@@ -1612,7 +1614,7 @@ public sealed class ArmRipperService(
                 .Where(t => (t.Length ?? int.MaxValue) >= 30)
                 .ToList();
 
-            int startEpisode = ((discNumber - 1) * actualEpisodes.Count) + 1;
+            int startEpisode = ComputePositionalStartEpisode(job, actualEpisodes.Count);
 
             logger.LogInformation(
                 "Positional fallback: disc {Disc}, {Count} eligible tracks, starting at episode {StartEp}",
@@ -1892,17 +1894,20 @@ public sealed class ArmRipperService(
 
     /// <summary>
     /// Parses the 1-based disc number from a disc label.
-    /// Handles formats like <c>_D1</c>, <c>D2</c>, <c>_DISC3</c>, <c>DISC4</c>.
-    /// Returns 1 when no disc suffix is found.
+    /// Handles formats like <c>_D1</c>, <c>D2</c>, <c>_DISC3</c>, <c>DISC4</c>,
+    /// compact <c>S1D2</c>, and disc numbers followed by a variant letter
+    /// (e.g. <c>S3D1A</c> → 1). Returns 1 when no disc suffix is found.
     /// </summary>
     public static int ParseDiscNumber(string? label)
     {
         if (string.IsNullOrWhiteSpace(label))
             return 1;
 
-        // Match _D<num> or DISC<num> at the end of the label (case-insensitive)
+        // Match D<num> at the end of the label (case-insensitive). The negative
+        // lookbehind allows the D to follow a digit directly (compact "S1D2",
+        // "S3D1A") while the optional trailing letter handles variant codes.
         var match = System.Text.RegularExpressions.Regex.Match(
-            label, @"[_\s]D(?:ISC)?(\d+)$",
+            label, @"(?<![A-Za-z])D(?:ISC)?(\d+)[A-Za-z]?$",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         if (match.Success && int.TryParse(match.Groups[1].Value, out var d) && d > 0)
@@ -1912,11 +1917,51 @@ public sealed class ArmRipperService(
     }
 
     /// <summary>
+    /// Parses a trailing single-letter variant code from a disc label
+    /// (e.g. "A" from "KING_OF_THE_HILL_S3D1A", "B" from "S3D1B"). Returns
+    /// <c>null</c> when the label has no variant. Used to keep working
+    /// directories unique for discs that share a disc number but differ by
+    /// variant (e.g. flipper discs or multi-part releases).
+    /// </summary>
+    internal static string? ParseDiscVariant(string? label)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+            return null;
+
+        var match = System.Text.RegularExpressions.Regex.Match(
+            label, @"(?<![A-Za-z])D(?:ISC)?\d+([A-Za-z])$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        return match.Success ? match.Groups[1].Value.ToUpperInvariant() : null;
+    }
+
+    /// <summary>
+    /// Computes the starting episode number for the positional fallback that
+    /// assigns sequential episode numbers to unmapped TV-series tracks. A
+    /// user-set <see cref="Job.StartingEpisodeNumber"/> (e.g. for side B of a
+    /// double-sided disc, which shares disc number 1 with side A) takes
+    /// precedence. Otherwise derives the offset from the disc number so
+    /// multi-disc sets don't restart at episode 1 on every disc.
+    /// </summary>
+    internal static int ComputePositionalStartEpisode(Job job, int eligibleTrackCount)
+    {
+        if (job.StartingEpisodeNumber is int start)
+            return start;
+
+        var discNumber = ParseDiscNumber(job.Label);
+        return ((discNumber - 1) * eligibleTrackCount) + 1;
+    }
+
+    /// <summary>
     /// Returns a season/disc subdirectory name (e.g. "S01D02") for TV series
     /// jobs, or <c>null</c> for movies/other types. The subdirectory isolates
     /// each disc's raw rip and transcode working directories so multiple discs
     /// of the same series processed back-to-back never clobber each other's
-    /// files. When no season/disc metadata is available (and the label carries
+    /// files. A single-letter variant code (e.g. "A" in "S3D1A") is included so
+    /// double-sided (flipper) discs that share a disc number but differ by side
+    /// still get isolated directories. The variant comes from the user-set
+    /// <see cref="Job.DiscVariant"/> when available, falling back to the disc
+    /// label. When no season/disc metadata is available (and the label carries
     /// no disc hint), falls back to "_{jobId}" for guaranteed uniqueness.
     /// </summary>
     internal static string? GetSeriesDiscSubdir(Job job)
@@ -1926,13 +1971,16 @@ public sealed class ArmRipperService(
 
         var season = job.SeasonNumber ?? 1;
         var disc = job.DiscNumber ?? ParseDiscNumber(job.Label);
+        // Normalize to uppercase — the WebUI uppercases on save, but the value
+        // can also come from the label parse or direct DB writes.
+        var variant = (job.DiscVariant ?? ParseDiscVariant(job.Label))?.ToUpperInvariant();
 
         // No season/disc metadata and no disc hint in the label — use the job ID
         // so concurrent series jobs never share a working directory.
-        if (job.SeasonNumber is null && job.DiscNumber is null && disc <= 1)
+        if (job.SeasonNumber is null && job.DiscNumber is null && disc <= 1 && variant is null)
             return $"_{job.Id}";
 
-        return $"S{season:D2}D{disc:D2}";
+        return $"S{season:D2}D{disc:D2}{variant}";
     }
 
     /// <summary>
@@ -1946,29 +1994,13 @@ public sealed class ArmRipperService(
         if (string.IsNullOrWhiteSpace(raw))
             return "Unknown Series";
 
-        // Strip year suffix: "My Name Is Earl (2005–2009)" → "My Name Is Earl"
+        // Strip season/disc suffix (handles a trailing year suffix internally),
+        // then strip the year suffix: "My Name Is Earl (2005–2009)" → "My Name Is Earl"
         var result = System.Text.RegularExpressions.Regex.Replace(
-            raw.Trim(), @"\s*\([^)]*\d{4}.*\)$", "");
-
-        // Strip season/disc suffix — handles both spaced and compact formats,
-        // with optional trailing country/region code:
-        //   "MY_NAME_IS_EARL_S1_D1"              → "MY_NAME_IS_EARL"
-        //   "MY_NAME_IS_EARL_SEASON1_DISC2"       → "MY_NAME_IS_EARL"
-        //   "How I Met Your Mother S3D1"          → "How I Met Your Mother"
-        //   "HOW_I_MET_YOUR_MOTHER_S3D1"          → "HOW_I_MET_YOUR_MOTHER"
-        //   "HOW_I_MET_YOUR_MOTHER_S2_D1_US"      → "HOW_I_MET_YOUR_MOTHER"
-        result = System.Text.RegularExpressions.Regex.Replace(
-            result, @"[_\s][Ss](?:EASON)?\d+[_\s]?[Dd](?:ISC)?\d+(?:[_\s][A-Za-z]{2,4})?$", "",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            StripSeriesDiscSuffix(raw.Trim()), @"\s*\([^)]*\d{4}.*\)$", "");
 
         // Replace underscores with spaces
         result = result.Replace('_', ' ').Trim();
-
-        // After underscore→space conversion, also strip trailing season/disc
-        // suffixes (e.g. from labels where underscores were already spaces).
-        result = System.Text.RegularExpressions.Regex.Replace(
-            result, @"\s+[Ss](?:EASON)?\d+\s?[Dd](?:ISC)?\d+(?:\s[A-Za-z]{2,4})?$", "",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         // If the result is all-uppercase with no lowercase letters (disc label),
         // convert to title case using CultureInfo.
@@ -1979,6 +2011,45 @@ public sealed class ArmRipperService(
         }
 
         return string.IsNullOrWhiteSpace(result) ? "Unknown Series" : result;
+    }
+
+    /// <summary>
+    /// Strips a trailing season/disc suffix from a series title, preserving any
+    /// trailing year suffix. Handles both spaced and compact formats, with an
+    /// optional single-letter variant/region code directly after the disc number:
+    ///   "MY_NAME_IS_EARL_S1_D1"              → "MY_NAME_IS_EARL"
+    ///   "MY_NAME_IS_EARL_SEASON1_DISC2"       → "MY_NAME_IS_EARL"
+    ///   "How I Met Your Mother S3D1"          → "How I Met Your Mother"
+    ///   "King of the Hill S3D1A"              → "King of the Hill"
+    ///   "KING_OF_THE_HILL_S3D1B"              → "KING_OF_THE_HILL"
+    ///   "HOW_I_MET_YOUR_MOTHER_S2_D1_US"      → "HOW_I_MET_YOUR_MOTHER"
+    ///   "How I Met Your Mother S3D1 (2005)"   → "How I Met Your Mother (2005)"
+    /// </summary>
+    internal static string StripSeriesDiscSuffix(string title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+            return title;
+
+        // Remember any trailing year suffix "(YYYY...)" so it survives the strip.
+        var yearMatch = System.Text.RegularExpressions.Regex.Match(
+            title, @"\s*\([^)]*\d{4}.*\)$");
+        var yearSuffix = yearMatch.Success ? yearMatch.Value : "";
+        var body = yearMatch.Success ? title[..yearMatch.Index] : title;
+
+        // Strip season/disc suffix — handles both spaced and compact formats,
+        // with an optional single-letter variant code (e.g. "S3D1A") and an
+        // optional trailing country/region code (e.g. "_S2_D1_US"):
+        var result = System.Text.RegularExpressions.Regex.Replace(
+            body, @"[_\s][Ss](?:EASON)?\d+[_\s]?[Dd](?:ISC)?\d+[A-Za-z]?(?:[_\s][A-Za-z]{1,4})?$", "",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        // After underscore→space conversion, also strip trailing season/disc
+        // suffixes (e.g. from labels where underscores were already spaces).
+        result = System.Text.RegularExpressions.Regex.Replace(
+            result, @"\s+[Ss](?:EASON)?\d+\s?[Dd](?:ISC)?\d+[A-Za-z]?(?:\s[A-Za-z]{1,4})?$", "",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        return (result + yearSuffix).Trim();
     }
 
     private static void MoveFileMain(string oldFile, string newFile, ILogger? logger = null)
@@ -2039,6 +2110,15 @@ public sealed class ArmRipperService(
         else
         {
             title = job.TitleManual ?? job.Title ?? "unknown";
+        }
+
+        // TV series: strip any season/disc suffix from the title (e.g. "S3D1A")
+        // so the final completed folder is the clean series name, not a
+        // disc-specific folder. Disc isolation happens in the working
+        // directories via GetSeriesDiscSubdir.
+        if (job.VideoType is VideoContentType.Series or VideoContentType.Tv)
+        {
+            title = StripSeriesDiscSuffix(title);
         }
 
         return SanitizeDirectoryName(title);
@@ -2249,6 +2329,25 @@ public sealed class ArmRipperService(
 
         logger.LogInformation("Duplicate rips are disabled.");
         throw new InvalidOperationException("Duplicate rips are disabled");
+    }
+
+    /// <summary>
+    /// Applies the duplicate-folder suffix to a final output directory, except
+    /// for TV series where the disc is not a duplicate (haveDupes=false). The
+    /// final directory of a series is shared across all its discs by design —
+    /// the working directories are isolated per disc via
+    /// <see cref="GetSeriesDiscSubdir"/>, and filename conflicts in the shared
+    /// output are resolved by <see cref="GetUniqueDestinationPath"/>. Applying
+    /// the suffix here would create "Series (Year)_2" folders for the second
+    /// disc of a series, which is the disc-specific output folder problem this
+    /// isolation was meant to solve.
+    /// </summary>
+    private string ApplyFinalDirectoryDupeSuffix(bool hasDupes, string path, Job job)
+    {
+        if (job.VideoType is VideoContentType.Series or VideoContentType.Tv && !hasDupes)
+            return path;
+
+        return CheckForDupeFolder(hasDupes, path, job);
     }
 
     private string FindLargestFile(List<string> files, string mkvOutPath)

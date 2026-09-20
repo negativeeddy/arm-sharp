@@ -299,6 +299,12 @@
                                 <td><input type="number" name="discNumber" class="form-control form-control-sm" min="1" placeholder="Use auto" value="@(Model.DiscNumberManual?.ToString() ?? "")" /></td>
                                 <td><strong id="id-disc-final">@(Model.DiscNumber?.ToString() ?? "—")</strong></td>
                             </tr>
+                            <tr id="row-side">
+                                <td>Side</td>
+                                <td class="text-muted small">From label</td>
+                                <td><input type="text" name="discVariant" class="form-control form-control-sm" maxlength="1" placeholder="A/B (optional)" value="@(Model.DiscVariant ?? "")" /></td>
+                                <td><strong id="id-side-final">@(Model.DiscVariant ?? "—")</strong></td>
+                            </tr>
                             <tr id="row-startep">
                                 <td>Starting Episode</td>
                                 <td class="text-muted small">Manual entry</td>
@@ -816,7 +822,7 @@ else
             var sel = document.getElementById('videoType-select');
             var val = sel ? sel.value : '';
             var isTv = val === 'series' || val === 'episode';
-            ['row-season', 'row-disc', 'row-startep'].forEach(function (id) {
+            ['row-season', 'row-disc', 'row-side', 'row-startep'].forEach(function (id) {
                 var el = document.getElementById(id);
                 if (el) el.style.display = isTv ? '' : 'none';
             });
@@ -867,6 +873,9 @@ else
             if (update.discNumberAuto != null || update.discNumber != null) {
                 setCellText(document.getElementById('id-disc-auto'), update.discNumberAuto);
                 setCellText(document.getElementById('id-disc-final'), update.discNumber);
+            }
+            if (update.discVariant != null) {
+                setCellText(document.getElementById('id-side-final'), update.discVariant);
             }
             if (update.startingEpisodeNumber != null) {
                 setCellText(document.getElementById('id-startep-final'), update.startingEpisodeNumber);
