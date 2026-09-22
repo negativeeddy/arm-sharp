@@ -132,6 +132,69 @@ public sealed class ArmRipperServiceLogicTests
         Assert.Equal("9_11 Documentary (2006)", result);
     }
 
+    [Fact]
+    public void FixJobTitle_SeriesWithDiscSuffix_StripsDiscSuffixKeepsYear()
+    {
+        // Regression: discs labeled "KING_OF_THE_HILL_S3D1A" / "S3D1B" must not
+        // leak the disc suffix into the final completed folder name.
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.Title = "King of the Hill S3D1A";
+            j.TitleManual = null;
+            j.Year = "1997–";
+        });
+        var method = GetStaticMethod("FixJobTitle");
+        var result = method.Invoke(null, [job]);
+        Assert.Equal("King of the Hill (1997–)", result);
+    }
+
+    [Fact]
+    public void FixJobTitle_SeriesWithDiscSuffixNoYear_StripsDiscSuffix()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.Title = "King of the Hill S3D1B";
+            j.TitleManual = null;
+            j.Year = null;
+        });
+        var method = GetStaticMethod("FixJobTitle");
+        var result = method.Invoke(null, [job]);
+        Assert.Equal("King of the Hill", result);
+    }
+
+    [Fact]
+    public void FixJobTitle_SeriesCleanTitle_Unchanged()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.Title = "King of the Hill";
+            j.TitleManual = null;
+            j.Year = "1997–";
+        });
+        var method = GetStaticMethod("FixJobTitle");
+        var result = method.Invoke(null, [job]);
+        Assert.Equal("King of the Hill (1997–)", result);
+    }
+
+    [Fact]
+    public void FixJobTitle_MovieWithDiscSuffix_NotStripped()
+    {
+        // Movies keep the title as-is — disc-suffix stripping is TV-series only.
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Movie;
+            j.Title = "My Movie S1D1";
+            j.TitleManual = null;
+            j.Year = "2001";
+        });
+        var method = GetStaticMethod("FixJobTitle");
+        var result = method.Invoke(null, [job]);
+        Assert.Equal("My Movie S1D1 (2001)", result);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -241,6 +304,167 @@ public sealed class ArmRipperServiceLogicTests
         Assert.Equal("_1", ArmRipperService.GetSeriesDiscSubdir(job));
     }
 
+    [Fact]
+    public void GetSeriesDiscSubdir_SeriesWithVariantLabel_IncludesVariantLetter()
+    {
+        // "S3D1A" and "S3D1B" share a disc number but are different discs —
+        // the variant letter keeps their working directories isolated.
+        var jobA = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.SeasonNumber = 3;
+            j.DiscNumber = 1;
+            j.Label = "KING_OF_THE_HILL_S3D1A";
+        });
+        var jobB = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.SeasonNumber = 3;
+            j.DiscNumber = 1;
+            j.Label = "KING_OF_THE_HILL_S3D1B";
+        });
+        Assert.Equal("S03D01A", ArmRipperService.GetSeriesDiscSubdir(jobA));
+        Assert.Equal("S03D01B", ArmRipperService.GetSeriesDiscSubdir(jobB));
+        Assert.NotEqual(
+            ArmRipperService.GetSeriesDiscSubdir(jobA),
+            ArmRipperService.GetSeriesDiscSubdir(jobB));
+    }
+
+    [Fact]
+    public void GetSeriesDiscSubdir_SeriesVariantLabelNoMetadata_DoesNotFallBackToJobId()
+    {
+        // A variant letter in the label is enough to guarantee uniqueness —
+        // no need for the _{jobId} fallback.
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.SeasonNumber = null;
+            j.DiscNumber = null;
+            j.Label = "KING_OF_THE_HILL_S3D1A";
+        });
+        Assert.Equal("S01D01A", ArmRipperService.GetSeriesDiscSubdir(job));
+    }
+
+    [Fact]
+    public void GetSeriesDiscSubdir_ManualDiscVariant_PreferredOverLabel()
+    {
+        // The user-set side wins over the label parse — this is how a flipper
+        // disc whose label lacks the A/B side is handled from the WebUI.
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.SeasonNumber = 3;
+            j.DiscNumber = 1;
+            j.DiscVariant = "B";
+            j.Label = "KING_OF_THE_HILL_S3D1"; // no side in label
+        });
+        Assert.Equal("S03D01B", ArmRipperService.GetSeriesDiscSubdir(job));
+    }
+
+    [Fact]
+    public void GetSeriesDiscSubdir_ManualDiscVariant_IsUppercased()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.SeasonNumber = 3;
+            j.DiscNumber = 1;
+            j.DiscVariant = "b";
+            j.Label = "KING_OF_THE_HILL_S3D1";
+        });
+        Assert.Equal("S03D01B", ArmRipperService.GetSeriesDiscSubdir(job));
+    }
+
+    [Fact]
+    public void GetSeriesDiscSubdir_ManualDiscVariant_NoMetadata_DoesNotFallBackToJobId()
+    {
+        // A manual side alone guarantees uniqueness — no _{jobId} fallback.
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.SeasonNumber = null;
+            j.DiscNumber = null;
+            j.DiscVariant = "A";
+            j.Label = "MY_SHOW";
+        });
+        Assert.Equal("S01D01A", ArmRipperService.GetSeriesDiscSubdir(job));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ParseDiscNumber / ParseDiscVariant
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("MY_SHOW_S1_D2", 2)]
+    [InlineData("MY_SHOW_S1D2", 2)]
+    [InlineData("MY_SHOW_SEASON1_DISC2", 2)]
+    [InlineData("KING_OF_THE_HILL_S3D1A", 1)]
+    [InlineData("KING_OF_THE_HILL_S3D1B", 1)]
+    [InlineData("MY_SHOW", 1)]
+    [InlineData(null, 1)]
+    [InlineData("", 1)]
+    public void ParseDiscNumber_VariousLabels_ReturnsExpected(string? label, int expected)
+    {
+        Assert.Equal(expected, ArmRipperService.ParseDiscNumber(label));
+    }
+
+    [Theory]
+    [InlineData("KING_OF_THE_HILL_S3D1A", "A")]
+    [InlineData("KING_OF_THE_HILL_S3D1B", "B")]
+    [InlineData("MY_SHOW_S1_D2", null)]
+    [InlineData("MY_SHOW_S1D2", null)]
+    [InlineData("HOW_I_MET_YOUR_MOTHER_S2_D1_US", null)] // region code, not a variant
+    [InlineData("MY_SHOW", null)]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    public void ParseDiscVariant_VariousLabels_ReturnsExpected(string? label, string? expected)
+    {
+        Assert.Equal(expected, ArmRipperService.ParseDiscVariant(label));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ComputePositionalStartEpisode
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ComputePositionalStartEpisode_StartingEpisodeSet_UsesIt()
+    {
+        // Side B of a flipper disc shares disc number 1 with side A — the
+        // user-set starting episode must win over the disc-number math.
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.Label = "KING_OF_THE_HILL_S3D1B";
+            j.StartingEpisodeNumber = 7;
+        });
+        Assert.Equal(7, ArmRipperService.ComputePositionalStartEpisode(job, eligibleTrackCount: 6));
+    }
+
+    [Fact]
+    public void ComputePositionalStartEpisode_NoStartingEpisode_UsesDiscNumber()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.Label = "MY_SHOW_S1_D2";
+            j.StartingEpisodeNumber = null;
+        });
+        // Disc 2 with 6 episodes per disc → starts at episode 7.
+        Assert.Equal(7, ArmRipperService.ComputePositionalStartEpisode(job, eligibleTrackCount: 6));
+    }
+
+    [Fact]
+    public void ComputePositionalStartEpisode_DiscOne_StartsAtEpisodeOne()
+    {
+        var job = TestHelpers.CreateTestJob(j =>
+        {
+            j.VideoType = VideoContentType.Series;
+            j.Label = "MY_SHOW_S1_D1";
+            j.StartingEpisodeNumber = null;
+        });
+        Assert.Equal(1, ArmRipperService.ComputePositionalStartEpisode(job, eligibleTrackCount: 6));
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // CleanSeriesTitle
     // ─────────────────────────────────────────────────────────────────────────
@@ -265,6 +489,12 @@ public sealed class ArmRipperServiceLogicTests
     [InlineData("Simpsons_S10_D2",                      "Simpsons")]
     [InlineData("HOW_I_MET_YOUR_MOTHER_S2_D1_US",       "How I Met Your Mother")]
     [InlineData("HOW_I_MET_YOUR_MOTHER_S3_D1",          "How I Met Your Mother")]
+    [InlineData("King of the Hill S3D1A",               "King of the Hill")]
+    [InlineData("King of the Hill S3D1B",               "King of the Hill")]
+    [InlineData("KING_OF_THE_HILL_S3D1A",               "King Of The Hill")]
+    [InlineData("KING_OF_THE_HILL_S3D1B",               "King Of The Hill")]
+    [InlineData("King of the Hill S3D1A (1997–)",       "King of the Hill")]
+    [InlineData("King of the Hill S3D1B (1997–)",       "King of the Hill")]
     public void CleanSeriesTitle_VariousFormats_ReturnsCleanTitle(string input, string expected)
     {
         var result = InvokeCleanSeriesTitle(input);

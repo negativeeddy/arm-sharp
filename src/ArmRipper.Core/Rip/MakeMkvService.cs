@@ -545,7 +545,10 @@ public partial class MakeMkvService : IMakeMkvService
         {
             var parsed = ParseLine(line);
             if (parsed?.Data is MakeMkvMessage msg)
-                result.Capture(msg);
+            {
+                if (!result.Capture(msg))
+                    _logger.LogDebug("Ignoring unrecognized MakeMKV message code {Code}: {Line}", msg.Code, line);
+            }
         }
         catch (Exception ex)
         {

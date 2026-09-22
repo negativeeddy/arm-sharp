@@ -76,7 +76,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
     [HttpPost("update-identification")]
     public async Task<IActionResult> UpdateIdentification(
         int jobId, string? title, string? year, VideoContentType? videoType, string? imdbId, string? posterUrl,
-        int? seasonNumber, int? discNumber, int? startingEpisodeNumber,
+        int? seasonNumber, int? discNumber, string? discVariant, int? startingEpisodeNumber,
         CancellationToken ct = default)
     {
         var job = await db.Jobs.FirstOrDefaultAsync(j => j.Id == jobId, ct);
@@ -95,6 +95,18 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
 
         if (discNumber.HasValue) { job.DiscNumberManual = discNumber; job.DiscNumber = discNumber; }
         else if (Request.Form.ContainsKey("discNumber")) { job.DiscNumberManual = null; job.DiscNumber = job.DiscNumberAuto; }
+
+        // Side/variant letter (e.g. "A"/"B" for double-sided discs): empty string
+        // clears the manual side, non-null sets it. Uppercased for consistency
+        // with the label-derived variant.
+        if (!string.IsNullOrWhiteSpace(discVariant))
+        {
+            job.DiscVariant = discVariant.Trim().ToUpperInvariant();
+        }
+        else if (Request.Form.ContainsKey("discVariant"))
+        {
+            job.DiscVariant = null;
+        }
 
         if (startingEpisodeNumber.HasValue) { job.StartingEpisodeNumber = startingEpisodeNumber; }
         else if (Request.Form.ContainsKey("startingEpisodeNumber")) { job.StartingEpisodeNumber = null; }

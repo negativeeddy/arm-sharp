@@ -76,6 +76,9 @@ public class JobUpdate
     /// <summary>Final disc number (TV series).</summary>
     public int? DiscNumber { get; set; }
 
+    /// <summary>Side/variant letter for double-sided (flipper) discs (e.g. "A"/"B").</summary>
+    public string? DiscVariant { get; set; }
+
     /// <summary>User-specified starting episode number.</summary>
     public int? StartingEpisodeNumber { get; set; }
 
@@ -130,6 +133,7 @@ public class JobUpdate
         SeasonNumber = job.SeasonNumber,
         DiscNumberAuto = job.DiscNumberAuto,
         DiscNumber = job.DiscNumber,
+        DiscVariant = job.DiscVariant,
         StartingEpisodeNumber = job.StartingEpisodeNumber,
         HasNiceTitle = job.HasNiceTitle,
         PosterUrl = job.PosterUrl,

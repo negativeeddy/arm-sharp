@@ -95,6 +95,14 @@ public class Job
     /// <summary>User-overridden disc number.</summary>
     public int? DiscNumberManual { get; set; }
 
+    /// <summary>
+    /// Side/variant letter for double-sided (flipper) discs, e.g. "A" or "B"
+    /// from a label like "KING_OF_THE_HILL_S3D1A". Auto-detected from the disc
+    /// label, but can be set manually in the WebUI when the label doesn't carry
+    /// it. Used to keep working directories unique per side.
+    /// </summary>
+    public string? DiscVariant { get; set; }
+
     /// <summary>User-specified starting episode number for identification (1-based). When set, providers use this as the offset into the season episode list.</summary>
     public int? StartingEpisodeNumber { get; set; }
 

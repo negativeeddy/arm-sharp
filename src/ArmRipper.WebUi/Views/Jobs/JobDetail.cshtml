@@ -306,6 +306,12 @@
                                 <td><input type="number" name="discNumber" class="form-control form-control-sm" min="1" placeholder="Use auto" value="@(Model.DiscNumberManual?.ToString() ?? "")" /></td>
                                 <td><strong id="id-disc-final">@(Model.DiscNumber?.ToString() ?? "—")</strong></td>
                             </tr>
+                            <tr id="row-side">
+                                <td>Side</td>
+                                <td class="text-muted small">From label</td>
+                                <td><input type="text" name="discVariant" class="form-control form-control-sm" maxlength="1" placeholder="A/B (optional)" value="@(Model.DiscVariant ?? "")" /></td>
+                                <td><strong id="id-side-final">@(Model.DiscVariant ?? "—")</strong></td>
+                            </tr>
                             <tr id="row-startep">
                                 <td>Starting Episode</td>
                                 <td class="text-muted small">Manual entry</td>
@@ -444,7 +450,7 @@
 else
 {
     <div class="table-responsive">
-        <table class="table table-striped table-hover table-sm">
+        <table id="tracks-sortable" class="table table-striped table-hover table-sm">
             <thead><tr>
                 @if (Model.Status is JobState.ManualSelectionStarted)
                 {
@@ -476,10 +482,10 @@ else
                                 @(track.FileName ?? track.BaseName ?? "—")
                             }
                         </td>
-                        <td>@(track.Length is int secs ? FormatHms(secs) : "—")</td>
-                        <td>@track.Chapters</td>
-                        <td>@(track.FileSize is long fs ? (fs >= 1073741824 ? $"{fs / 1073741824.0:F1} GB" : fs >= 1048576 ? $"{fs / 1048576.0:F1} MB" : $"{fs / 1024.0:F1} KB") : "—")</td>
-                        <td>@(track.Fps is double fps ? $"{fps:F2}" : "—")</td>
+                        <td data-text="@track.Length">@(track.Length is int secs ? FormatHms(secs) : "—")</td>
+                        <td data-text="@track.Chapters">@track.Chapters</td>
+                        <td data-text="@track.FileSize">@(track.FileSize is long fs ? (fs >= 1073741824 ? $"{fs / 1073741824.0:F1} GB" : fs >= 1048576 ? $"{fs / 1048576.0:F1} MB" : $"{fs / 1024.0:F1} KB") : "—")</td>
+                        <td data-text="@track.Fps">@(track.Fps is double fps ? $"{fps:F2}" : "—")</td>
                         <td>@(track.AspectRatio ?? "—")</td>
                         <td>@(track.Source ?? "—")</td>
                         <td>
@@ -523,10 +529,28 @@ else
     </div>
 }
 
-@if (!Model.Status.IsTerminal())
-{
-    @section Scripts {
+@section Scripts {
     @Html.AntiForgeryToken()
+    <script>
+    // Track table column sorting (issue #198): every column is click-to-sort
+    // except Redirect; default sort is the "#" column ascending.
+    $(function () {
+        var $tracks = $('#tracks-sortable');
+        if (!$tracks.length) return;
+        var cbOffset = @(Model.Status is JobState.ManualSelectionStarted ? 1 : 0);
+        var headers = {};
+        [cbOffset, cbOffset + 1, cbOffset + 3, cbOffset + 4, cbOffset + 5, cbOffset + 6]
+            .forEach(function (c) { headers[c] = { sorter: 'digit' }; });
+        headers[cbOffset + 13] = { sorter: false };
+        if (cbOffset) headers[0] = { sorter: false };
+        $tracks.tablesorter({
+            sortList: [[cbOffset, 0]],
+            headers: headers
+        });
+    });
+    </script>
+    @if (!Model.Status.IsTerminal())
+    {
     <script>
     // Tracks whether the user has already submitted a manual track selection in
     // this page session. Prevents a stale SignalR broadcast from re-adding the
@@ -823,7 +847,7 @@ else
             var sel = document.getElementById('videoType-select');
             var val = sel ? sel.value : '';
             var isTv = val === 'series' || val === 'episode';
-            ['row-season', 'row-disc', 'row-startep'].forEach(function (id) {
+            ['row-season', 'row-disc', 'row-side', 'row-startep'].forEach(function (id) {
                 var el = document.getElementById(id);
                 if (el) el.style.display = isTv ? '' : 'none';
             });
@@ -874,6 +898,9 @@ else
             if (update.discNumberAuto != null || update.discNumber != null) {
                 setCellText(document.getElementById('id-disc-auto'), update.discNumberAuto);
                 setCellText(document.getElementById('id-disc-final'), update.discNumber);
+            }
+            if (update.discVariant != null) {
+                setCellText(document.getElementById('id-side-final'), update.discVariant);
             }
             if (update.startingEpisodeNumber != null) {
                 setCellText(document.getElementById('id-startep-final'), update.startingEpisodeNumber);

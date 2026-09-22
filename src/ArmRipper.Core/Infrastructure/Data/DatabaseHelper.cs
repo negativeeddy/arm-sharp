@@ -66,6 +66,8 @@ public static class DatabaseHelper
         TryAlterColumn(db, "jobs", "DiscNumberAuto", "INTEGER");
         TryAlterColumn(db, "jobs", "DiscNumberManual", "INTEGER");
         TryAlterColumn(db, "jobs", "StartingEpisodeNumber", "INTEGER");
+        // Side/variant letter for double-sided (flipper) discs (e.g. "A"/"B").
+        TryAlterColumn(db, "jobs", "DiscVariant");
 
         // ── ConfigSnapshot columns added after the Initial migration ──
         TryAlterColumn(db, "config", "PreferWidescreen", "INTEGER");
