@@ -1140,6 +1140,96 @@ public class ControllerActionIntegrationTests : IClassFixture<CustomWebApplicati
     }
 
     [Fact]
+    public async Task JobDetail_RendersSortableTracksTable()
+    {
+        // Issue #198: the tracks table must be init-able by tablesorter with the
+        // default sort on the "#" column and the Redirect column disabled.
+        int jobId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = new Job
+            {
+                Title = "Sortable Tracks",
+                TitleAuto = "Sortable Tracks",
+                Year = "2026",
+                VideoType = VideoContentType.Movie,
+                DiscType = DiscType.Dvd,
+                Status = JobState.Active,
+                StartTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99",
+                Config = new ConfigSnapshot { MinLength = 300, MaxLength = 9999, RipMethod = "mkv", GetAudioTitle = "" }
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+
+            db.Tracks.AddRange(
+                new Track { JobId = jobId, TrackNumber = "0", FileName = "title00.mkv", Length = 6000, FileSize = 4_133_898_240L, Chapters = 32, Fps = 23.976, Process = true, MainFeature = true },
+                new Track { JobId = jobId, TrackNumber = "1", FileName = "title01.mkv", Length = 103, FileSize = 120_000_000, Chapters = 1, Fps = 29.97, Process = false });
+            await db.SaveChangesAsync();
+        }
+
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync($"/jobs/jobdetail?jobId={jobId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var html = await response.Content.ReadAsStringAsync();
+        // The table is targetable by tablesorter and data-text feeds numeric sort keys.
+        Assert.Contains("id=\"tracks-sortable\"", html);
+        Assert.Contains("data-text=\"6000\"", html);
+        Assert.Contains("data-text=\"4133898240\"", html);
+        Assert.Contains("data-text=\"23.976\"", html);
+        // tablesorter init runs for active (non-terminal) jobs with default "#" sort.
+        Assert.Contains("$('#tracks-sortable')", html);
+        Assert.Contains("sortList: [[cbOffset, 0]]", html);
+        // No checkbox column for this state, so "#" is column 0.
+        Assert.Contains("var cbOffset = 0;", html);
+        // The Redirect (last) column is excluded from sorting.
+        Assert.Contains("headers[cbOffset + 13] = { sorter: false }", html);
+    }
+
+    [Fact]
+    public async Task JobDetail_TerminalState_RendersSortInit()
+    {
+        // Issue #198: the sort init must render even for terminal jobs so a
+        // completed/failed job's track table is still sortable.
+        int jobId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = new Job
+            {
+                Title = "Done",
+                TitleAuto = "Done",
+                Year = "2026",
+                VideoType = VideoContentType.Movie,
+                DiscType = DiscType.Dvd,
+                Status = JobState.Success,
+                StartTime = DateTime.UtcNow.AddHours(-1),
+                StopTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99",
+                Config = new ConfigSnapshot { MinLength = 300, MaxLength = 9999, RipMethod = "mkv", GetAudioTitle = "" }
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+
+            db.Tracks.Add(new Track { JobId = jobId, TrackNumber = "0", FileName = "title00.mkv", Length = 6000, Process = true, MainFeature = true });
+            await db.SaveChangesAsync();
+        }
+
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync($"/jobs/jobdetail?jobId={jobId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("id=\"tracks-sortable\"", html);
+        Assert.Contains("sortList: [[cbOffset, 0]]", html);
+        Assert.Contains("var cbOffset = 0;", html);
+    }
+
+    [Fact]
     public async Task ActiveRips_ReturnsPageWithActiveJobs()
     {
         using (var scope = _factory.Services.CreateScope())
