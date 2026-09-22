@@ -134,4 +134,128 @@ public sealed class IdentifyServiceTests
         Assert.Equal(2, job.DiscNumberAuto);
         Assert.Equal(8, job.DiscNumber);   // manual wins
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ParseLsdvdAspectRatios
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseLsdvdAspectRatios_TypicalDvd_ExtractsBothTracks()
+    {
+        // Simulates lsdvd -Oyv output for a DVD with two aspect ratios
+        var output = """
+            lsdvd = {
+              'device' : '/dev/sr1',
+              'title' : 'TEST_DISC',
+              'track' : [
+                {
+                  'ix' : 1,
+                  'length' : 5873.700,
+                  'vts_id' : 'DVDVIDEO-VTS',
+                  'aspect' : 1.777778,
+                  'format' : 'NTSC',
+                },
+                {
+                  'ix' : 2,
+                  'length' : 125.700,
+                  'vts_id' : 'DVDVIDEO-VTS',
+                  'aspect' : 1.333333,
+                  'format' : 'NTSC',
+                },
+              ],
+              'longest_track' : 1,
+            }
+            """;
+
+        var result = IdentifyService.ParseLsdvdAspectRatios(output);
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal("16:9", result[0]);
+        Assert.Equal("4:3", result[1]);
+    }
+
+    [Fact]
+    public void ParseLsdvdAspectRatios_DropDeadGorgeous_ExtractsCorrectDars()
+    {
+        // The actual scenario: both tracks report ~1.333333 (4:3 SAR) from MakeMKV,
+        // but lsdvd shows the true DAR for each track.
+        var output = """
+            lsdvd = {
+              'device' : '/dev/sr1',
+              'title' : 'DROP_DEAD_GORGEOUS',
+              'track' : [
+                {
+                  'ix' : 1,
+                  'length' : 5873.700,
+                  'aspect' : 1.777778,
+                },
+                {
+                  'ix' : 2,
+                  'length' : 125.700,
+                  'aspect' : 1.333333,
+                },
+                {
+                  'ix' : 3,
+                  'length' : 109.433,
+                  'aspect' : 1.333333,
+                },
+                {
+                  'ix' : 4,
+                  'length' : 159.400,
+                  'aspect' : 1.333333,
+                },
+                {
+                  'ix' : 5,
+                  'length' : 156.734,
+                  'aspect' : 1.333333,
+                },
+                {
+                  'ix' : 6,
+                  'length' : 5873.700,
+                  'aspect' : 1.333333,
+                },
+              ],
+              'longest_track' : 1,
+            }
+            """;
+
+        var result = IdentifyService.ParseLsdvdAspectRatios(output);
+
+        Assert.Equal(6, result.Count);
+        Assert.Equal("16:9", result[0]);  // track 1 (ix=1) → index 0
+        Assert.Equal("4:3", result[1]);  // track 2 (ix=2) → index 1
+        Assert.Equal("4:3", result[5]);  // track 6 (ix=6) → index 5
+    }
+
+    [Fact]
+    public void ParseLsdvdAspectRatios_NoTrackSection_ReturnsEmpty()
+    {
+        var output = "lsdvd = { 'device' : '/dev/sr1' }";
+        var result = IdentifyService.ParseLsdvdAspectRatios(output);
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void ParseLsdvdAspectRatios_EmptyInput_ReturnsEmpty()
+    {
+        Assert.Empty(IdentifyService.ParseLsdvdAspectRatios(""));
+        Assert.Empty(IdentifyService.ParseLsdvdAspectRatios("   "));
+    }
+
+    [Fact]
+    public void ParseLsdvdAspectRatios_NoAspectField_DefaultsNotAdded()
+    {
+        // Without -v, lsdvd output has no 'aspect' field
+        var output = """
+            lsdvd = {
+              'track' : [
+                { 'ix' : 1, 'length' : 5873.700 },
+                { 'ix' : 2, 'length' : 125.700 },
+              ],
+            }
+            """;
+
+        var result = IdentifyService.ParseLsdvdAspectRatios(output);
+        Assert.Empty(result);
+    }
 }

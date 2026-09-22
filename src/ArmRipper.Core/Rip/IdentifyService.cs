@@ -800,15 +800,28 @@ public sealed partial class IdentifyService(
                 return;
             }
 
-            var result = await runner.RunAsync("lsdvd", $"-Oy {job.DevPath}", timeoutMs: 30_000, ct: ct);
+            // Use -v to get video stream info (including display aspect ratio per track).
+            var result = await runner.RunAsync("lsdvd", $"-Oyv {job.DevPath}", timeoutMs: 30_000, ct: ct);
             if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.StdOut))
             {
                 logger.LogDebug("lsdvd returned no output for {DevPath}", job.DevPath);
                 return;
             }
 
-            // Count track entries — each track has a 'length' field in the Python dict
             var output = result.StdOut;
+
+            // Parse per-track display aspect ratios from the lsdvd Python dict.
+            // With -v, each track entry includes an 'aspect' field (e.g. 'aspect' : 1.777778).
+            var darMap = ParseLsdvdAspectRatios(output);
+            if (darMap.Count > 0)
+            {
+                job.LsdvdDisplayAspectRatios = darMap;
+                logger.LogInformation("lsdvd parsed {Count} track display aspect ratios: {Aspects}",
+                    darMap.Count,
+                    string.Join(", ", darMap.Select(kv => $"track{kv.Key}={kv.Value}")));
+            }
+
+            // Count track entries — each track has a 'length' field in the Python dict
             var trackCount = 0;
             var index = 0;
             while ((index = output.IndexOf("'length'", index, StringComparison.Ordinal)) >= 0)
@@ -839,6 +852,87 @@ public sealed partial class IdentifyService(
         {
             logger.LogError(ex, "Failed to detect track 99 via lsdvd on {DevPath}", job.DevPath);
         }
+    }
+
+    /// <summary>
+    /// Parses per-track display aspect ratios from lsdvd -Oyv Python dict output.
+    /// Returns a mapping of0-based track index to DAR string (e.g. "16:9" or "4:3").
+    /// </summary>
+    internal static Dictionary<int, string> ParseLsdvdAspectRatios(string output)
+    {
+        var result = new Dictionary<int, string>();
+        if (string.IsNullOrWhiteSpace(output))
+            return result;
+
+        // Find the track list section
+        var trackListStart = output.IndexOf("'track'");
+        if (trackListStart < 0)
+            return result;
+
+        var colonPos = output.IndexOf(':', trackListStart);
+        if (colonPos < 0)
+            return result;
+
+        var listStart = output.IndexOf('[', colonPos);
+        if (listStart < 0)
+            return result;
+
+        // Split track entries by 'ix' markers
+        var remaining = output[listStart..];
+        var trackIndex = 0;
+        var pos = 0;
+        while (pos < remaining.Length)
+        {
+            var ixPos = remaining.IndexOf("'ix'", pos, StringComparison.Ordinal);
+            if (ixPos < 0)
+                break;
+
+            // Find the closing brace of this track entry
+            var nextIx = remaining.IndexOf("'ix'", ixPos + 4, StringComparison.Ordinal);
+            var entryEnd = nextIx >= 0 ? nextIx : remaining.Length;
+            var entry = remaining[ixPos..entryEnd];
+
+            // Extract aspect value
+            var aspectPos = entry.IndexOf("'aspect'", StringComparison.Ordinal);
+            if (aspectPos >= 0)
+            {
+                var colonAfterAspect = entry.IndexOf(':', aspectPos + 8);
+                if (colonAfterAspect >= 0)
+                {
+                    var valueStart = colonAfterAspect + 1;
+                    // Skip whitespace
+                    while (valueStart < entry.Length && entry[valueStart] is ' ' or '\t')
+                        valueStart++;
+                    // Read the numeric value (e.g. 1.777778 or 1.333333)
+                    var valueEnd = valueStart;
+                    while (valueEnd < entry.Length && (char.IsDigit(entry[valueEnd]) || entry[valueEnd] == '.'))
+                        valueEnd++;
+                    if (valueEnd > valueStart &&
+                        double.TryParse(entry[valueStart..valueEnd],
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            out var dar))
+                    {
+                        result[trackIndex] = FormatDar(dar);
+                    }
+                }
+            }
+
+            pos = entryEnd;
+            trackIndex++;
+        }
+
+        return result;
+    }
+
+    /// <summary>Converts a decimal DAR to a human-readable ratio string (e.g. 1.77778 → "16:9").</summary>
+    private static string FormatDar(double dar)
+    {
+        // Common DAR mappings with tolerance
+        if (Math.Abs(dar - 16.0 / 9) < 0.02) return "16:9";
+        if (Math.Abs(dar - 4.0 / 3) < 0.02) return "4:3";
+        if (Math.Abs(dar - 2.35) < 0.05) return "2.35:1";
+        if (Math.Abs(dar - 1.85) < 0.03) return "1.85:1";
+        return dar.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private async Task SaveDiscPosterAsync(Job job, CancellationToken ct)

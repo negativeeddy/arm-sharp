@@ -835,6 +835,73 @@ public sealed class ArmRipperServiceLogicTests
     }
 
     [Fact]
+    public void SelectMainFeatureTrack_WidescreenWithNullFileSize_BeatsFullscreenWithKnownSize()
+    {
+        // Legally Blonde (job 1532): track 1 is 4:3 with known file size,
+        // track 2 is 16:9 with unknown file size. Widescreen should win.
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("1", 5735, 4_133_898_240L, 32, "4:3"),
+            CreateTestTrack("2", 5754, null, 32, "16:9")
+        };
+
+        var result = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: true);
+
+        Assert.NotNull(result);
+        Assert.Equal("2", result.TrackNumber);
+    }
+
+    [Fact]
+    public void SelectMainFeatureTrack_WidescreenWithNullFileSize_BeatsFullscreenWithKnownSize_LockStock()
+    {
+        // Lock Stock (job 1539): track 1 is 4:3 with known file size,
+        // track 2 is 16:9 with unknown file size. Widescreen should win.
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("1", 6407, 3_965_251_584L, 18, "4:3"),
+            CreateTestTrack("2", 6425, null, 18, "16:9")
+        };
+
+        var result = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: true);
+
+        Assert.NotNull(result);
+        Assert.Equal("2", result.TrackNumber);
+    }
+
+    [Fact]
+    public void SelectMainFeatureTrack_BothUnknownFileSize_FallsBackToDuration()
+    {
+        // When neither track has a known file size, longest duration wins.
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("1", 5735, null, 32, "4:3"),
+            CreateTestTrack("2", 5754, null, 32, "16:9")
+        };
+
+        var result = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: true);
+
+        Assert.NotNull(result);
+        Assert.Equal("2", result.TrackNumber);
+    }
+
+    [Fact]
+    public void SelectMainFeatureTrack_WidescreenDisabled_NullFileSizeDoesNotCrash()
+    {
+        // When preferWidescreen is false, the old behavior applies.
+        // Null file sizes fall back to duration, so the longer track wins.
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("1", 5735, 4_133_898_240L, 32, "4:3"),
+            CreateTestTrack("2", 5754, null, 32, "16:9")
+        };
+
+        var result = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: false);
+
+        Assert.NotNull(result);
+        Assert.Equal("1", result.TrackNumber);
+    }
+
+    [Fact]
     public void SelectMainFeatureTrack_NoEligibleTracks_FallsBackToLongest()
     {
         var tracks = new List<Track>
@@ -888,6 +955,107 @@ public sealed class ArmRipperServiceLogicTests
 
         Assert.NotNull(result);
         Assert.Equal("1", result.TrackNumber);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SelectMainFeatureTrack — lsdvd DAR override
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void SelectMainFeatureTrack_LsdvdDar_OverridesMakeMkvSar()
+    {
+        // Drop Dead Gorgeous scenario: MakeMKV reports both feature tracks as "4:3"
+        // (storage aspect ratio), but lsdvd says track 0 is actually 16:9 (display
+        // aspect ratio). The lsdvd DAR should win, picking the widescreen track.
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("0", 5879, 3_841_025_138L, 22, "4:3"),  // actually 16:9 per lsdvd
+            CreateTestTrack("5", 5866, 3_923_224_576L, 22, "4:3"),  // truly 4:3 per lsdvd
+        };
+
+        var lsdvdDars = new Dictionary<int, string>
+        {
+            [0] = "16:9",
+            [5] = "4:3",
+        };
+
+        var result = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: true, lsdvdDars);
+
+        Assert.NotNull(result);
+        Assert.Equal("0", result.TrackNumber);
+    }
+
+    [Fact]
+    public void SelectMainFeatureTrack_LsdvdDar_NotUsedWhenMakeMkvAlreadyMixed()
+    {
+        // When MakeMKV already reports a mix of 16:9 and 4:3, lsdvd DAR is not
+        // needed — the existing logic handles it.
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("0", 5879, 3_841_025_138L, 22, "16:9"),
+            CreateTestTrack("5", 5866, 3_923_224_576L, 22, "4:3"),
+        };
+
+        var result = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: true);
+
+        Assert.NotNull(result);
+        Assert.Equal("0", result.TrackNumber);
+    }
+
+    [Fact]
+    public void SelectMainFeatureTrack_LsdvdDar_NullFallsBackToMakeMkv()
+    {
+        // When no lsdvd DAR is provided, MakeMKV's aspect ratio is used as before.
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("0", 5879, 3_841_025_138L, 22, "4:3"),
+            CreateTestTrack("5", 5866, 3_923_224_576L, 22, "4:3"),
+        };
+
+        var result = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: true, lsdvdDars: null);
+
+        Assert.NotNull(result);
+        // Without lsdvd DAR, both report 4:3, so file size wins → track 5
+        Assert.Equal("5", result.TrackNumber);
+    }
+
+    [Fact]
+    public void SelectMainFeatureTrack_LsdvdDar_EmptyMapFallsBackToMakeMkv()
+    {
+        // An empty lsdvd DAR map should behave the same as null.
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("0", 5879, 3_841_025_138L, 22, "4:3"),
+            CreateTestTrack("5", 5866, 3_923_224_576L, 22, "4:3"),
+        };
+
+        var result = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: true, lsdvdDars: new Dictionary<int, string>());
+
+        Assert.NotNull(result);
+        Assert.Equal("5", result.TrackNumber);
+    }
+
+    [Fact]
+    public void SelectMainFeatureTrack_LsdvdDar_PreferWidescreenDisabled_IgnoresDar()
+    {
+        // When preferWidescreen is false, lsdvd DAR is ignored.
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("0", 5879, 3_841_025_138L, 22, "4:3"),
+            CreateTestTrack("5", 5866, 3_923_224_576L, 22, "4:3"),
+        };
+
+        var lsdvdDars = new Dictionary<int, string>
+        {
+            [0] = "16:9",
+            [5] = "4:3",
+        };
+
+        var result = ArmRipperService.SelectMainFeatureTrack(tracks, preferWidescreen: false, lsdvdDars);
+
+        Assert.NotNull(result);
+        // Without widescreen preference, file size wins → track 5
+        Assert.Equal("5", result.TrackNumber);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
