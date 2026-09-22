@@ -18,6 +18,13 @@
         if (t.Seconds > 0 || parts.Count == 0) parts.Add($"{t.Seconds}s");
         return string.Join(" ", parts);
     }
+
+    static string FormatHms(int seconds)
+    {
+        if (seconds <= 0) return "00:00:00";
+        var t = TimeSpan.FromSeconds(seconds);
+        return $"{(int)t.TotalHours:D2}:{t.Minutes:D2}:{t.Seconds:D2}";
+    }
 }
 
 <h1>Job @Model.Id: @Model.Title</h1>
@@ -469,7 +476,7 @@ else
                                 @(track.FileName ?? track.BaseName ?? "—")
                             }
                         </td>
-                        <td>@(track.Length is int secs ? (secs >= 3600 ? $"{secs / 3600}h {(secs % 3600) / 60}m" : $"{secs / 60}m {secs % 60}s") : "—")</td>
+                        <td>@(track.Length is int secs ? FormatHms(secs) : "—")</td>
                         <td>@track.Chapters</td>
                         <td>@(track.FileSize is long fs ? (fs >= 1073741824 ? $"{fs / 1073741824.0:F1} GB" : fs >= 1048576 ? $"{fs / 1048576.0:F1} MB" : $"{fs / 1024.0:F1} KB") : "—")</td>
                         <td>@(track.Fps is double fps ? $"{fps:F2}" : "—")</td>
