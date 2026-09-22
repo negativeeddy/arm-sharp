@@ -1140,6 +1140,49 @@ public class ControllerActionIntegrationTests : IClassFixture<CustomWebApplicati
     }
 
     [Fact]
+    public async Task JobDetail_TrackLength_AlwaysShowsHhMmSs()
+    {
+        // Issue #199: the track Length column must always render as HH:MM:SS
+        // (e.g. 5940s → "01:39:00"), never the compact "1h 39m" shorthand.
+        int jobId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = new Job
+            {
+                Title = "Length Format",
+                TitleAuto = "Length Format",
+                Year = "2026",
+                VideoType = VideoContentType.Movie,
+                DiscType = DiscType.Dvd,
+                Status = JobState.Active,
+                StartTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99",
+                Config = new ConfigSnapshot { MinLength = 300, MaxLength = 9999, RipMethod = "mkv", GetAudioTitle = "" }
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+
+            // 5940s = 1 h 39 m 0 s → "01:39:00"; 103s = 1 m 43 s → "00:01:43".
+            db.Tracks.AddRange(
+                new Track { JobId = jobId, TrackNumber = "0", FileName = "title00.mkv", Length = 5940, Process = true, MainFeature = true },
+                new Track { JobId = jobId, TrackNumber = "1", FileName = "title01.mkv", Length = 103 });
+            await db.SaveChangesAsync();
+        }
+
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync($"/jobs/jobdetail?jobId={jobId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains(">01:39:00<", html);
+        Assert.Contains(">00:01:43<", html);
+        // The compact shorthand must no longer appear for track lengths.
+        Assert.DoesNotContain("39m", html);
+    }
+
+    [Fact]
     public async Task JobDetail_RendersSortableTracksTable()
     {
         // Issue #198: the tracks table must be init-able by tablesorter with the
