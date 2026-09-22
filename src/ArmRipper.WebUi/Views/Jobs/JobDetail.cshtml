@@ -437,7 +437,7 @@
 else
 {
     <div class="table-responsive">
-        <table class="table table-striped table-hover table-sm">
+        <table id="tracks-sortable" class="table table-striped table-hover table-sm">
             <thead><tr>
                 @if (Model.Status is JobState.ManualSelectionStarted)
                 {
@@ -469,10 +469,10 @@ else
                                 @(track.FileName ?? track.BaseName ?? "—")
                             }
                         </td>
-                        <td>@(track.Length is int secs ? (secs >= 3600 ? $"{secs / 3600}h {(secs % 3600) / 60}m" : $"{secs / 60}m {secs % 60}s") : "—")</td>
-                        <td>@track.Chapters</td>
-                        <td>@(track.FileSize is long fs ? (fs >= 1073741824 ? $"{fs / 1073741824.0:F1} GB" : fs >= 1048576 ? $"{fs / 1048576.0:F1} MB" : $"{fs / 1024.0:F1} KB") : "—")</td>
-                        <td>@(track.Fps is double fps ? $"{fps:F2}" : "—")</td>
+                        <td data-text="@track.Length">@(track.Length is int secs ? (secs >= 3600 ? $"{secs / 3600}h {(secs % 3600) / 60}m" : $"{secs / 60}m {secs % 60}s") : "—")</td>
+                        <td data-text="@track.Chapters">@track.Chapters</td>
+                        <td data-text="@track.FileSize">@(track.FileSize is long fs ? (fs >= 1073741824 ? $"{fs / 1073741824.0:F1} GB" : fs >= 1048576 ? $"{fs / 1048576.0:F1} MB" : $"{fs / 1024.0:F1} KB") : "—")</td>
+                        <td data-text="@track.Fps">@(track.Fps is double fps ? $"{fps:F2}" : "—")</td>
                         <td>@(track.AspectRatio ?? "—")</td>
                         <td>@(track.Source ?? "—")</td>
                         <td>
@@ -516,10 +516,28 @@ else
     </div>
 }
 
-@if (!Model.Status.IsTerminal())
-{
-    @section Scripts {
+@section Scripts {
     @Html.AntiForgeryToken()
+    <script>
+    // Track table column sorting (issue #198): every column is click-to-sort
+    // except Redirect; default sort is the "#" column ascending.
+    $(function () {
+        var $tracks = $('#tracks-sortable');
+        if (!$tracks.length) return;
+        var cbOffset = @(Model.Status is JobState.ManualSelectionStarted ? 1 : 0);
+        var headers = {};
+        [cbOffset, cbOffset + 1, cbOffset + 3, cbOffset + 4, cbOffset + 5, cbOffset + 6]
+            .forEach(function (c) { headers[c] = { sorter: 'digit' }; });
+        headers[cbOffset + 13] = { sorter: false };
+        if (cbOffset) headers[0] = { sorter: false };
+        $tracks.tablesorter({
+            sortList: [[cbOffset, 0]],
+            headers: headers
+        });
+    });
+    </script>
+    @if (!Model.Status.IsTerminal())
+    {
     <script>
     // Tracks whether the user has already submitted a manual track selection in
     // this page session. Prevents a stale SignalR broadcast from re-adding the
