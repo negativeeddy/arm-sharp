@@ -65,6 +65,25 @@ public class VideoStreamInfo
     public string ColorTransfer { get; set; } = "";
     public bool IsHdr => ColorTransfer is "smpte2084" or "arib-std-b67";
     public int? BFrames { get; set; }
+    /// <summary>True when the display aspect ratio is approximately 4:3 (fullscreen), which is unusual for modern movies.</summary>
+    public bool IsFullScreen => Height > 0 && (double)Width / Height is > 1.30 and < 1.40;
+    /// <summary>Display aspect ratio as a human-readable string like "16:9" or "4:3".</summary>
+    public string? AspectRatioFormatted
+    {
+        get
+        {
+            if (Height <= 0) return null;
+            var ratio = (double)Width / Height;
+            return ratio switch
+            {
+                >= 2.33 and <= 2.40 => "21:9",
+                >= 1.76 and <= 1.79 => "16:9",
+                >= 1.49 and <= 1.51 => "3:2",
+                >= 1.32 and <= 1.34 => "4:3",
+                _ => $"{ratio:F2}:1"
+            };
+        }
+    }
 }
 
 public class AudioStreamInfo
