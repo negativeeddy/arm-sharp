@@ -585,9 +585,13 @@ public sealed class ArmRipperService(
         var maxLength = config?.MaxLength ?? settings.Value.MaxLength;
 
         // Use infoMinLength=0 when DiscDb is enabled so MakeMKV reports ALL tracks,
-        // including short extras that may match DiscDb entries. The normal
-        // minLengthCfg is only used for the rip phase, not the scan.
+        // including short extras that may match DiscDb entries. The rip phase MUST
+        // use the SAME value as the info scan that produced the TrackNumbers —
+        // MakeMKV re-numbers titles during each `mkv` invocation, and a different
+        // --minlength between scan and rip shifts every subsequent TID (short
+        // titles dropped from the rip scan offset the whole numbering).
         var infoMinLength = settings.Value.DiscDbEnabled ? 0 : (int?)null;
+        var ripMinLength = infoMinLength ?? minLengthCfg;
         var tracks = await makeMkv.GetTrackInfoWithCacheAsync(job, jobTitle, infoMinLength, ct);
 
         // Encrypted BDs often return 0 tracks from info; rip all titles directly
@@ -613,6 +617,9 @@ public sealed class ArmRipperService(
             if (retryTracks.Count > 0)
             {
                 tracks = retryTracks;
+                // The retry scanned with the normal configured minLength, so the
+                // rip phase must match THAT scan or MakeMKV will re-number TIDs.
+                ripMinLength = minLengthCfg;
                 logger.LogInformation(
                     "0-track fallback: retry with normal minLength found {Count} tracks, " +
                     "proceeding with standard track selection", retryTracks.Count);
@@ -948,10 +955,10 @@ public sealed class ArmRipperService(
                 {
                     var trackNum = firstTrack.TrackNumber ?? throw new InvalidOperationException(
                         $"Track {firstTrack.Id} has no TrackNumber — cannot rip");
-                    ripResults.Add(await makeMkv.RipTrackAsync(job, trackNum, makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping track 0", ct), ct));
+                    ripResults.Add(await makeMkv.RipTrackAsync(job, trackNum, makeMkvOutPath, mkvArgs, ripMinLength, MkvProgress(job, "Ripping track 0", ct), ct));
                 }
                 else
-                    ripResults.Add(await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping track 0", ct), ct));
+                    ripResults.Add(await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, ripMinLength, MkvProgress(job, "Ripping track 0", ct), ct));
             }
             else if (!manualSelectionApplied && (config?.MainFeature ?? settings.Value.MainFeature))
             {
@@ -978,8 +985,11 @@ public sealed class ArmRipperService(
                             await db.SaveChangesAsync(ct);
                         }
 
-                        // We already identified the exact track (the longest one), so pass
-                        // minLength=0 to prevent MakeMKV from filtering it out with --minlength.
+                        // The rip re-scans MakeMKV's title list, so it must use the same
+                        // minlength as the info scan that produced this TrackNumber, or
+                        // MakeMKV re-numbers TIDs and picks the wrong title. A full
+                        // re-scan at minLength=0 also guarantees a short DiscDb-promoted
+                        // feature is not filtered out mid-rip.
                         var trackNum = main.TrackNumber ?? throw new InvalidOperationException(
                             $"Main-feature track {main.Id} has no TrackNumber — cannot rip");
 
@@ -990,7 +1000,7 @@ public sealed class ArmRipperService(
                         try
                         {
                             var mainRipResult = await makeMkv.RipTrackAsync(
-                                job, trackNum, makeMkvOutPath, mkvArgs, 0,
+                                job, trackNum, makeMkvOutPath, mkvArgs, ripMinLength,
                                 MkvProgress(job, $"Ripping main feature (track {trackNum})", ripCts.Token),
                                 ripCts.Token);
                             ripResults.Add(mainRipResult);
@@ -1059,15 +1069,17 @@ public sealed class ArmRipperService(
                 foreach (var track in eligibleTracks)
                 {
                     trackNum++;
-                    // DiscDb-promoted tracks (with EpisodeTitle) may be shorter than the
-                    // configured minLength — we already decided to rip them, so tell MakeMKV
-                    // not to filter them out by passing minLength=0.
+                    // TrackNumbers come from the info scan, so the rip must re-scan
+                    // with the same minlength or MakeMKV re-numbers every subsequent
+                    // TID, shifting track→title mapping by the count of dropped
+                    // short titles. DiscDb-promoted tracks (with EpisodeTitle) were
+                    // seen in that scan too, so ripMinLength covers them as well.
                     if (track.TrackNumber is null)
                     {
                         logger.LogWarning("Track {TrackId} has no TrackNumber — skipping", track.Id);
                         continue;
                     }
-                    var trackMinLength = !string.IsNullOrEmpty(track.EpisodeTitle) ? 0 : minLengthCfg;
+                    var trackMinLength = ripMinLength;
                     try
                     {
                         var result = await makeMkv.RipTrackAsync(job, track.TrackNumber, makeMkvOutPath, mkvArgs, trackMinLength, MkvProgress(job, $"Ripping track {trackNum} of {eligibleTracks.Count}", ct), ct);

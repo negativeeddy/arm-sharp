@@ -1241,6 +1241,119 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
     }
 
     [Fact]
+    public async Task RipWithDiscDbEnabled_UsesInfoScanMinLength_NotConfiguredFloor()
+    {
+        // Issue: with DiscDb enabled the info scan runs at --minlength=0 (to see
+        // ALL tracks for DiscDb matching), but individual-track rips used the
+        // configured MinLength (1200). MakeMKV re-numbers titles during each mkv
+        // invocation, so the rip-phase scan dropped the short intro titles and
+        // shifted every subsequent TID — high-numbered tracks became out-of-range
+        // ("exited with code 12") and lower tracks silently ripped shifted content.
+        // The rip must re-scan with the SAME minlength the info scan used.
+        var job = TestHelpers.CreateTestJob(
+            configureConfig: c =>
+            {
+                c.MainFeature = false;
+                c.MaxLength = 99998;   // force the individual-track loop
+                c.MinLength = 1200;
+            });
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        // Simulate a disc whose scan → rip title numbering diverges by the count
+        // of dropped short titles: intros at TIDs 0-2, episodes at TIDs 3-9.
+        var tracks = new List<Track>
+        {
+            new() { Id = 1, JobId = job.Id, TrackNumber = "3", Length = 1759, FileName = "title_t03.mkv", Process = true },
+            new() { Id = 2, JobId = job.Id, TrackNumber = "7", Length = 1758, FileName = "title_t07.mkv", Process = true },
+        };
+        _makeMkv.Setup(m => m.GetTrackInfoWithCacheAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tracks);
+
+        var rippedMinLengths = new List<int>();
+        _makeMkv.Setup(m => m.RipTrackAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<int>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
+            .Callback<Job, string, string, string, int, IProgress<int>?, CancellationToken>(
+                (_, trackNumber, outputPath, _, minLength, _, _) =>
+                {
+                    rippedMinLengths.Add(minLength);
+                    Directory.CreateDirectory(outputPath);
+                    File.WriteAllBytes(
+                        Path.Combine(outputPath, $"title_t{int.Parse(trackNumber):D2}.mkv"),
+                        [1, 2, 3]);
+                })
+            .ReturnsAsync(SuccessfulRipResult());
+
+        var service = CreateService();
+
+        var method = typeof(ArmRipperService).GetMethod(
+            "PrepareTranscodeInputPathAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var rawPath = Path.Combine(Path.GetTempPath(), $"arm_discdb_minlen_{Guid.NewGuid():N}");
+        await (Task<string?>)method!.Invoke(service,
+            new object[] { job, "Test Movie (2024)", rawPath, CancellationToken.None })!;
+
+        // DiscDb is enabled by default in the test settings → info scan used
+        // minlength=0, so every per-track rip must too. Using 1200 here is what
+        // shifted TIDs and caused makekvcon exit code 12.
+        Assert.Equal(2, rippedMinLengths.Count);
+        Assert.All(rippedMinLengths, ml => Assert.Equal(0, ml));
+    }
+
+    [Fact]
+    public async Task RipWithDiscDbDisabled_UsesConfiguredMinLength()
+    {
+        // With DiscDb disabled the info scan uses the configured MinLength, so the
+        // rip must match it to keep MakeMKV's TID numbering aligned.
+        var job = TestHelpers.CreateTestJob(
+            configureConfig: c =>
+            {
+                c.MainFeature = false;
+                c.MaxLength = 99998;   // force the individual-track loop
+                c.MinLength = 1200;
+            });
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var tracks = new List<Track>
+        {
+            new() { Id = 1, JobId = job.Id, TrackNumber = "3", Length = 1759, FileName = "title_t03.mkv", Process = true },
+        };
+        _makeMkv.Setup(m => m.GetTrackInfoWithCacheAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(tracks);
+
+        var rippedMinLengths = new List<int>();
+        _makeMkv.Setup(m => m.RipTrackAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<int>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
+            .Callback<Job, string, string, string, int, IProgress<int>?, CancellationToken>(
+                (_, trackNumber, outputPath, _, minLength, _, _) =>
+                {
+                    rippedMinLengths.Add(minLength);
+                    Directory.CreateDirectory(outputPath);
+                    File.WriteAllBytes(
+                        Path.Combine(outputPath, $"title_t{int.Parse(trackNumber):D2}.mkv"),
+                        [1, 2, 3]);
+                })
+            .ReturnsAsync(SuccessfulRipResult());
+
+        var service = CreateService(s => s.DiscDbEnabled = false);
+
+        var method = typeof(ArmRipperService).GetMethod(
+            "PrepareTranscodeInputPathAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var rawPath = Path.Combine(Path.GetTempPath(), $"arm_nodiscdb_minlen_{Guid.NewGuid():N}");
+        await (Task<string?>)method!.Invoke(service,
+            new object[] { job, "Test Movie (2024)", rawPath, CancellationToken.None })!;
+
+        Assert.Single(rippedMinLengths);
+        Assert.Equal(1200, rippedMinLengths[0]);
+    }
+
+    [Fact]
     public async Task MainFeatureRipSavingZeroTitles_FailsJob()
     {
         // Issue #194: the MainFeature branch must also check the rip result — a
