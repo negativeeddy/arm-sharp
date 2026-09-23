@@ -108,6 +108,7 @@ public class ConfigSnapshot
             ManualWaitTime    = settings.ManualWaitTime,
             ManualSelectionWaitTime = settings.ManualSelectionWaitTime,
             AllowDuplicates   = settings.AllowDuplicates,
+            PreferWidescreen  = settings.PreferWidescreen,
             Prevent99         = carryForward?.Prevent99 ?? settings.Prevent99,
             GetVideoTitle     = settings.GetVideoTitle,
             GetAudioTitle     = settings.GetAudioTitle,

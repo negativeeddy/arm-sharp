@@ -244,6 +244,25 @@ public sealed class ConductorTests : IDisposable
         Assert.Equal(Path.Combine(tmpDir, "completed"), config.CompletedPath);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RunAsync_JobConfigSnapshot_CarriesPreferWidescreenSetting(bool preferWidescreen)
+    {
+        // Regression: PreferWidescreen was missing from ConfigSnapshot.FromSettings, so
+        // the per-job snapshot always got false and the rip-time selection
+        // (config?.PreferWidescreen ?? settings) never honoured the UI setting.
+        var options = CreateTestOptions();
+        options.Value.PreferWidescreen = preferWidescreen;
+        var conductor = CreateConductor(options: options);
+
+        await conductor.RunAsync("/dev/sr0");
+
+        var job = _db.Jobs.Single();
+        Assert.NotNull(job.Config);
+        Assert.Equal(preferWidescreen, job.Config.PreferWidescreen);
+    }
+
     [Fact]
     public async Task RunAsync_WhenDriveOverridesMainFeatureToAll_OverridesGlobalSetting()
     {
