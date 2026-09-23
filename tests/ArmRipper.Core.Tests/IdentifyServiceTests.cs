@@ -142,7 +142,8 @@ public sealed class IdentifyServiceTests
     [Fact]
     public void ParseLsdvdAspectRatios_TypicalDvd_ExtractsBothTracks()
     {
-        // Simulates lsdvd -Oyv output for a DVD with two aspect ratios
+        // Simulates lsdvd -Oy -v output for a DVD with two aspect ratios.
+        // lsdvd emits the aspect as a QUOTED slash string, not a decimal.
         var output = """
             lsdvd = {
               'device' : '/dev/sr1',
@@ -152,14 +153,14 @@ public sealed class IdentifyServiceTests
                   'ix' : 1,
                   'length' : 5873.700,
                   'vts_id' : 'DVDVIDEO-VTS',
-                  'aspect' : 1.777778,
+                  'aspect' : '16/9',
                   'format' : 'NTSC',
                 },
                 {
                   'ix' : 2,
                   'length' : 125.700,
                   'vts_id' : 'DVDVIDEO-VTS',
-                  'aspect' : 1.333333,
+                  'aspect' : '4/3',
                   'format' : 'NTSC',
                 },
               ],
@@ -177,7 +178,7 @@ public sealed class IdentifyServiceTests
     [Fact]
     public void ParseLsdvdAspectRatios_DropDeadGorgeous_ExtractsCorrectDars()
     {
-        // The actual scenario: both tracks report ~1.333333 (4:3 SAR) from MakeMKV,
+        // The actual scenario: both tracks report ~4:3 SAR from MakeMKV,
         // but lsdvd shows the true DAR for each track.
         var output = """
             lsdvd = {
@@ -187,32 +188,32 @@ public sealed class IdentifyServiceTests
                 {
                   'ix' : 1,
                   'length' : 5873.700,
-                  'aspect' : 1.777778,
+                  'aspect' : '16/9',
                 },
                 {
                   'ix' : 2,
                   'length' : 125.700,
-                  'aspect' : 1.333333,
+                  'aspect' : '4/3',
                 },
                 {
                   'ix' : 3,
                   'length' : 109.433,
-                  'aspect' : 1.333333,
+                  'aspect' : '4/3',
                 },
                 {
                   'ix' : 4,
                   'length' : 159.400,
-                  'aspect' : 1.333333,
+                  'aspect' : '4/3',
                 },
                 {
                   'ix' : 5,
                   'length' : 156.734,
-                  'aspect' : 1.333333,
+                  'aspect' : '4/3',
                 },
                 {
                   'ix' : 6,
                   'length' : 5873.700,
-                  'aspect' : 1.333333,
+                  'aspect' : '4/3',
                 },
               ],
               'longest_track' : 1,
@@ -257,5 +258,48 @@ public sealed class IdentifyServiceTests
 
         var result = IdentifyService.ParseLsdvdAspectRatios(output);
         Assert.Empty(result);
+    }
+
+    [Fact]
+    public void CountLsdvdTracks_AspectOutput_CountsEveryTrack()
+    {
+        // Regression for a real bug: the lsdvd command was "-Oyv", which hands
+        // "yv" to output_option(), gets '\0' back and falls through to
+        // human-readable output — so no 'length' markers meant Track 99 discs
+        // (99 of them) were never detected. With the corrected "-Oy -v" the
+        // Python dict must be emitted and each track counted.
+        var output = """
+            lsdvd = {
+              'device' : '/dev/sr1',
+              'title' : 'TEST_DISC',
+              'track' : [
+                { 'ix' : 1, 'length' : 5873.700, 'aspect' : '16/9' },
+                { 'ix' : 2, 'length' : 125.700, 'aspect' : '4/3' },
+                { 'ix' : 3, 'length' : 5873.700, 'aspect' : '16/9' },
+              ],
+            }
+            """;
+
+        Assert.Equal(3, IdentifyService.CountLsdvdTracks(output));
+    }
+
+    [Fact]
+    public void CountLsdvdTracks_TrackNinetyNine_ReturnsNinetyNine()
+    {
+        // A Track 99 disc should be flagged when lsdvd reports exactly 99 tracks.
+        var builder = new System.Text.StringBuilder();
+        builder.Append("lsdvd = { 'track' : [");
+        for (var i = 1; i <= 99; i++)
+            builder.Append($"{{ 'ix' : {i}, 'length' : {1000 + i}.000 }},");
+        builder.Append("] }");
+
+        Assert.Equal(99, IdentifyService.CountLsdvdTracks(builder.ToString()));
+    }
+
+    [Fact]
+    public void CountLsdvdTracks_EmptyInput_ReturnsZero()
+    {
+        Assert.Equal(0, IdentifyService.CountLsdvdTracks(""));
+        Assert.Equal(0, IdentifyService.CountLsdvdTracks("   "));
     }
 }
