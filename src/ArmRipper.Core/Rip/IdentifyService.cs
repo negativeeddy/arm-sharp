@@ -215,13 +215,15 @@ public sealed partial class IdentifyService(
                     job.HasNiceTitle = true;
                 }
 
-                // TheDiscDb returns "Series" (not "tv") for TV shows
+                // TheDiscDb returns "Series" (not "tv") for TV shows.
+                // "Tv" is normalized to "Series" so the UI and persisted value
+                // agree (issue #177).
                 if (!string.IsNullOrEmpty(mapping.Type) &&
                     (mapping.Type.Equals("tv", StringComparison.OrdinalIgnoreCase) ||
                      mapping.Type.Equals("Series", StringComparison.OrdinalIgnoreCase)))
                 {
-                    job.VideoType = VideoContentType.Tv;
-                    job.VideoTypeAuto = VideoContentType.Tv;
+                    job.VideoType = VideoContentType.Series;
+                    job.VideoTypeAuto = VideoContentType.Series;
                 }
 
                 if (string.IsNullOrEmpty(job.YearAuto) && !string.IsNullOrEmpty(mapping.Year))
@@ -327,7 +329,9 @@ public sealed partial class IdentifyService(
             var videoType = record.Release.ContentType switch
             {
                 "movie" => VideoContentType.Movie,
-                "tvshow" => VideoContentType.Tv,
+                // "Tv" is normalized to "Series" so the UI and persisted value
+                // agree (issue #177).
+                "tvshow" => VideoContentType.Series,
                 _ => (VideoContentType?)null
             };
             job.VideoTypeAuto = videoType;
