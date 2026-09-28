@@ -11,6 +11,20 @@ arm.onJobUpdate = function (fn) {
 
 // --- Toast notifications ---
 // type: 'info' (default), 'danger', 'warning', 'success'
+arm._escapeHtml = function (s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+};
+
+// Convert bare URLs in a text string into clickable <a> links. Must be called
+// on already-escaped text so links open safely without HTML injection.
+arm._linkify = function (escapedText) {
+    var urlRe = /(https?:\/\/[^\s<>"']+)/g;
+    return escapedText.replace(urlRe, function (url) {
+        return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + '</a>';
+    });
+};
+
 arm._showToast = function (msg, type) {
     type = type || 'info';
     var container = document.getElementById('toastContainer');
@@ -22,7 +36,8 @@ arm._showToast = function (msg, type) {
     }
     var toast = document.createElement('div');
     toast.className = 'alert alert-' + type + ' alert-dismissible fade show toast-notification';
-    toast.innerHTML = '<span class="toast-msg">' + msg + '</span>' +
+    var safeMsg = arm._linkify(arm._escapeHtml(msg));
+    toast.innerHTML = '<span class="toast-msg">' + safeMsg + '</span>' +
         '<button type="button" class="close" data-dismiss="alert">&times;</button>';
     container.appendChild(toast);
     setTimeout(function () {
