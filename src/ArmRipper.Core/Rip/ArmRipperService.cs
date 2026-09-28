@@ -956,6 +956,14 @@ public sealed class ArmRipperService(
                     await BroadcastJobUpdateAsync(job);
                     return null;
                 }
+
+                // Clear the consumed selection so a later resume/reprocess does not
+                // re-apply stale track choices unexpectedly (issue #176).
+                if (manualSelectionApplied)
+                {
+                    job.ManualSelectionTrackNumbers = null;
+                    await db.SaveChangesAsync(ct);
+                }
             }
 
             // Leave the status as ManualSelectionStarted here — the guard below
