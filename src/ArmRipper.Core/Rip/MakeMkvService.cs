@@ -170,6 +170,7 @@ public partial class MakeMkvService : IMakeMkvService
         var tracks = new List<Track>();
         var discTracks = new List<DiscTrack>();
         var minLength = infoMinLength ?? job.Config?.MinLength ?? _settings.Value.MinLength;
+        var infoScanTimeoutMinutes = job.Config?.MakeMkvInfoScanTimeoutMinutes ?? _settings.Value.MakeMkvInfoScanTimeoutMinutes;
 
         var fileName = "makemkvcon";
         var arguments = $"--robot --messages=-stdout info dev:{job.DevPath} --minlength={minLength}";
@@ -187,7 +188,7 @@ public partial class MakeMkvService : IMakeMkvService
 
         var lineCount = 0;
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromMinutes(_settings.Value.MakeMkvInfoScanTimeoutMinutes));
+        timeoutCts.CancelAfter(TimeSpan.FromMinutes(infoScanTimeoutMinutes));
 
         try
         {
