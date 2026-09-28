@@ -889,7 +889,12 @@ public sealed class ArmRipperService(
             }
             finally
             {
+                // Cancel the delay task explicitly. Task.Delay(Timeout.Infinite)
+                // never completes unless the token is cancelled — merely disposing
+                // linkedCts does NOT cancel it, leaving a pending timer orphaned for
+                // the process lifetime (one per manual selection). (issue #175)
                 await cancellationRegistration.DisposeAsync();
+                linkedCts.Cancel();
                 manualSelectionSignals.TryRemove(job.Id, out _);
             }
 
