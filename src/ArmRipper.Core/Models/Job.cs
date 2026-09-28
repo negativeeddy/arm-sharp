@@ -123,6 +123,11 @@ public class Job
     [NotMapped]
     public string? PosterSavedPath { get; set; }
 
+    /// <summary>Transient — per-track display aspect ratios parsed from lsdvd output
+    /// (e.g. {0: "16:9", 1: "4:3"}). Keyed by0-based track index. NOT persisted to DB.</summary>
+    [NotMapped]
+    public Dictionary<int, string>? LsdvdDisplayAspectRatios { get; set; }
+
     /// <summary>When the current stage started (set when Stage transitions).</summary>
     public DateTime? StageStartTime { get; set; }
 

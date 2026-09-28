@@ -73,7 +73,15 @@ public sealed class ArmRipperService(
     /// duration. If no track is eligible, falls back to the longest track overall
     /// so a disc of only short clips still rips its longest title.
     /// </summary>
-    internal static Track? SelectMainFeatureTrack(IReadOnlyList<Track> tracks, bool preferWidescreen)
+    /// <param name="tracks">Candidate tracks.</param>
+    /// <param name="preferWidescreen">When true, prefer 16:9 tracks in near-ties.</param>
+    /// <param name="lsdvdDars">Optional per-track display aspect ratios from lsdvd
+    /// (keyed by0-based track index). Used as a higher-fidelity signal than
+    /// MakeMKV's storage aspect ratio when both tracks report the same SAR.</param>
+    internal static Track? SelectMainFeatureTrack(
+        IReadOnlyList<Track> tracks,
+        bool preferWidescreen,
+        IReadOnlyDictionary<int, string>? lsdvdDars = null)
     {
         var eligible = tracks.Where(t => t.Process).ToList();
         var pool = eligible.Count > 0 ? eligible : tracks.ToList();
@@ -88,13 +96,41 @@ public sealed class ArmRipperService(
             maxDuration * MainFeatureTieToleranceRatio,
             MainFeatureTieToleranceFloorSeconds);
 
-        IOrderedEnumerable<Track> ranked = pool
-            .Where(t => (t.Length ?? 0) >= maxDuration - tolerance)
-            .OrderByDescending(MainFeatureSizeOf)
-            .ThenByDescending(t => t.Chapters ?? 0);
+        var nearTies = pool.Where(t => (t.Length ?? 0) >= maxDuration - tolerance).ToList();
 
-        if (preferWidescreen)
-            ranked = ranked.ThenByDescending(t => t.AspectRatio?.Contains("16:9") == true);
+        // Compute the effective aspect ratio for each track. MakeMKV reports the
+        // storage aspect ratio (SAR) which is often "4:3" for anamorphic DVDs.
+        // When lsdvd provides a display aspect ratio (DAR) that differs, it is
+        // the authoritative signal — e.g. an anamorphic widescreen track stored
+        // as 4:3 pixels should be treated as 16:9.
+        string? EffectiveAspect(Track t)
+        {
+            if (lsdvdDars is not null
+                && t.TrackNumberInt.HasValue
+                && lsdvdDars.TryGetValue(t.TrackNumberInt.Value, out var dar)
+                && !string.IsNullOrEmpty(dar))
+            {
+                return dar;
+            }
+            return t.AspectRatio;
+        }
+
+        IOrderedEnumerable<Track> ranked;
+        if (preferWidescreen
+            && nearTies.Any(t => EffectiveAspect(t)?.Contains("16:9") == true)
+            && nearTies.Any(t => EffectiveAspect(t)?.Contains("16:9") != true))
+        {
+            ranked = nearTies
+                .OrderByDescending(t => EffectiveAspect(t)?.Contains("16:9") == true)
+                .ThenByDescending(MainFeatureSizeOf)
+                .ThenByDescending(t => t.Chapters ?? 0);
+        }
+        else
+        {
+            ranked = nearTies
+                .OrderByDescending(MainFeatureSizeOf)
+                .ThenByDescending(t => t.Chapters ?? 0);
+        }
 
         return ranked
             .ThenByDescending(t => t.Length ?? 0)
@@ -675,7 +711,7 @@ public sealed class ArmRipperService(
         }
 
         var preferWidescreen = config?.PreferWidescreen ?? settings.Value.PreferWidescreen;
-        var mainFeatureTrack = SelectMainFeatureTrack(tracks, preferWidescreen);
+        var mainFeatureTrack = SelectMainFeatureTrack(tracks, preferWidescreen, job.LsdvdDisplayAspectRatios);
 
         if (mainFeatureTrack is not null)
         {

@@ -800,22 +800,35 @@ public sealed partial class IdentifyService(
                 return;
             }
 
-            var result = await runner.RunAsync("lsdvd", $"-Oy {job.DevPath}", timeoutMs: 30_000, ct: ct);
+            // Use -Oy -v so lsdvd emits the Python dict WITH the per-track video
+            // parameter block (aspect ratio is only populated when -v is set).
+            // Note: -O takes a required argument in lsdvd's getopt string
+            // ("acnpPqsdvt:O:xhV?"), so "-Oyv" would hand "yv" to output_option(),
+            // which returns '\0' and falls through to human-readable output with -v
+            // unset. The flags must be passed separately.
+            var result = await runner.RunAsync("lsdvd", $"-Oy -v {job.DevPath}", timeoutMs: 30_000, ct: ct);
             if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.StdOut))
             {
                 logger.LogDebug("lsdvd returned no output for {DevPath}", job.DevPath);
                 return;
             }
 
-            // Count track entries — each track has a 'length' field in the Python dict
             var output = result.StdOut;
-            var trackCount = 0;
-            var index = 0;
-            while ((index = output.IndexOf("'length'", index, StringComparison.Ordinal)) >= 0)
+
+            // Parse per-track display aspect ratios from the lsdvd Python dict.
+            // With -Oy -v, each track entry includes an 'aspect' field, emitted as
+            // a quoted string, e.g. 'aspect' : '16/9'.
+            var darMap = ParseLsdvdAspectRatios(output);
+            if (darMap.Count > 0)
             {
-                trackCount++;
-                index += 8; // advance past 'length'
+                job.LsdvdDisplayAspectRatios = darMap;
+                logger.LogInformation("lsdvd parsed {Count} track display aspect ratios: {Aspects}",
+                    darMap.Count,
+                    string.Join(", ", darMap.Select(kv => $"track{kv.Key}={kv.Value}")));
             }
+
+            // Count track entries — each track has a 'length' field in the Python dict
+            var trackCount = CountLsdvdTracks(output);
 
             logger.LogInformation("lsdvd detected {TrackCount} tracks on {DevPath}", trackCount, job.DevPath);
 
@@ -839,6 +852,149 @@ public sealed partial class IdentifyService(
         {
             logger.LogError(ex, "Failed to detect track 99 via lsdvd on {DevPath}", job.DevPath);
         }
+    }
+
+    /// <summary>
+    /// Parses per-track display aspect ratios from lsdvd -Oy -v Python dict output.
+    /// Returns a mapping of 0-based track index to DAR string (e.g. "16:9" or "4:3").
+    /// lsdvd emits the aspect as a quoted string with a slash, e.g. 'aspect' : '16/9',
+    /// which is normalized to the colon form used by the rest of the pipeline.
+    /// </summary>
+    internal static Dictionary<int, string> ParseLsdvdAspectRatios(string output)
+    {
+        var result = new Dictionary<int, string>();
+        if (string.IsNullOrWhiteSpace(output))
+            return result;
+
+        // Find the track list section
+        var trackListStart = output.IndexOf("'track'");
+        if (trackListStart < 0)
+            return result;
+
+        var colonPos = output.IndexOf(':', trackListStart);
+        if (colonPos < 0)
+            return result;
+
+        var listStart = output.IndexOf('[', colonPos);
+        if (listStart < 0)
+            return result;
+
+        // Split track entries by 'ix' markers
+        var remaining = output[listStart..];
+        var trackIndex = 0;
+        var pos = 0;
+        while (pos < remaining.Length)
+        {
+            var ixPos = remaining.IndexOf("'ix'", pos, StringComparison.Ordinal);
+            if (ixPos < 0)
+                break;
+
+            // Find the closing brace of this track entry
+            var nextIx = remaining.IndexOf("'ix'", ixPos + 4, StringComparison.Ordinal);
+            var entryEnd = nextIx >= 0 ? nextIx : remaining.Length;
+            var entry = remaining[ixPos..entryEnd];
+
+            // Extract aspect value
+            var aspectPos = entry.IndexOf("'aspect'", StringComparison.Ordinal);
+            if (aspectPos >= 0)
+            {
+                var aspect = ExtractAspect(entry, aspectPos);
+                if (aspect is not null)
+                    result[trackIndex] = aspect;
+            }
+
+            pos = entryEnd;
+            trackIndex++;
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Reads one DAR value from a track entry, starting at the 'aspect' key.
+    /// lsdvd emits a quoted slash form ('aspect' : '16/9') which is normalized to
+    /// "16:9"; an unquoted decimal is also tolerated for safety.
+    /// </summary>
+    private static string? ExtractAspect(string entry, int aspectPos)
+    {
+        var colonAfterAspect = entry.IndexOf(':', aspectPos + 8);
+        if (colonAfterAspect < 0)
+            return null;
+
+        var valueStart = colonAfterAspect + 1;
+
+        // Skip whitespace between ':' and the value
+        while (valueStart < entry.Length && entry[valueStart] is ' ' or '\t')
+            valueStart++;
+
+        if (valueStart >= entry.Length)
+            return null;
+
+        if (entry[valueStart] == '\'')
+        {
+            // Quoted string form, e.g. 'aspect' : '16/9'
+            var valueEnd = entry.IndexOf('\'', valueStart + 1);
+            if (valueEnd < 0)
+                return null;
+            var raw = entry[(valueStart + 1)..valueEnd].Trim();
+            return NormalizeDar(raw);
+        }
+
+        // Unquoted numeric fallback, e.g. 'aspect' : 1.777778
+        var numberEnd = valueStart;
+        while (numberEnd < entry.Length && (char.IsDigit(entry[numberEnd]) || entry[numberEnd] == '.'))
+            numberEnd++;
+        if (numberEnd == valueStart)
+            return null;
+        return double.TryParse(entry[valueStart..numberEnd],
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var dar)
+            ? FormatDar(dar)
+            : null;
+    }
+
+    /// <summary>
+    /// Normalizes the compare-agnostic lsdvd aspect form ("16/9", "4/3") to the
+    /// colon form ("16:9", "4:3") used by EffectiveAspect in the ripper.
+    /// </summary>
+    private static string NormalizeDar(string raw)
+    {
+        if (raw.Length == 0)
+            return raw;
+        if (raw.Contains('/'))
+            return raw.Replace('/', ':');
+        return raw;
+    }
+
+    /// <summary>
+    /// Counts the number of track entries in lsdvd Python dict output. Each track
+    /// carries exactly one 'length' field; Track 99 discs appear as 99 of them.
+    /// </summary>
+    internal static int CountLsdvdTracks(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+            return 0;
+
+        var trackCount = 0;
+        var index = 0;
+        while ((index = output.IndexOf("'length'", index, StringComparison.Ordinal)) >= 0)
+        {
+            trackCount++;
+            index += 8; // advance past 'length'
+        }
+
+        return trackCount;
+    }
+
+    /// <summary>Converts a decimal DAR to a human-readable ratio string (e.g. 1.77778 → "16:9").</summary>
+    private static string FormatDar(double dar)
+    {
+        // Common DAR mappings with tolerance
+        if (Math.Abs(dar - 16.0 / 9) < 0.02) return "16:9";
+        if (Math.Abs(dar - 4.0 / 3) < 0.02) return "4:3";
+        if (Math.Abs(dar - 2.35) < 0.05) return "2.35:1";
+        if (Math.Abs(dar - 1.85) < 0.03) return "1.85:1";
+        return dar.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private async Task SaveDiscPosterAsync(Job job, CancellationToken ct)
