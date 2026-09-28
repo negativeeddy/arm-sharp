@@ -523,19 +523,65 @@ public class CompletedController(ArmDbContext db, ISettingsService settingsServi
 
     private static VideoStreamInfo ParseVideoStream(JsonElement stream)
     {
+        var width = stream.TryGetProperty("width", out var wEl) ? wEl.GetInt32() : 0;
+        var height = stream.TryGetProperty("height", out var hEl) ? hEl.GetInt32() : 0;
+
+        var sar = stream.TryGetProperty("sample_aspect_ratio", out var sarEl) ? sarEl.GetString() : null;
+        var dar = stream.TryGetProperty("display_aspect_ratio", out var darEl) ? darEl.GetString() : null;
+
+        double? par = TryParseRatio(sar, out var parVal) ? parVal : null;
+        double? darVal = TryParseRatio(dar, out var darRatio) ? darRatio : null;
+
+        // Prefer ffprobe's numeric DAR; otherwise derive one from the SAR (or fall back to the coded ratio).
+        double displayAspect = height > 0 ? (double)width / height : 0;
+        if (darVal is > 0) displayAspect = darVal.Value;
+        else if (par is > 0 && height > 0) displayAspect = (double)width * par.Value / height;
+
+        // Display dimensions: SAR scales width when known; otherwise infer width from the display aspect.
+        int displayWidth;
+        if (par is > 0)
+        {
+            displayWidth = Math.Max(0, (int)Math.Round(width * par.Value));
+        }
+        else
+        {
+            displayWidth = height > 0 && displayAspect > 0
+                ? Math.Max(0, (int)Math.Round(height * displayAspect))
+                : width;
+        }
+
         return new VideoStreamInfo
         {
             CodecName = stream.GetProperty("codec_name").GetString() ?? "",
             CodecLongName = stream.GetProperty("codec_long_name").GetString() ?? "",
             Profile = stream.TryGetProperty("profile", out var p) ? p.GetString() ?? "" : "",
-            Width = stream.TryGetProperty("width", out var w) ? w.GetInt32() : 0,
-            Height = stream.TryGetProperty("height", out var h) ? h.GetInt32() : 0,
+            Width = width,
+            Height = height,
             PixelFormat = stream.TryGetProperty("pix_fmt", out var pf) ? pf.GetString() ?? "" : "",
             FrameRate = stream.TryGetProperty("avg_frame_rate", out var fr) ? fr.GetString() ?? "" : "",
             ColorSpace = stream.TryGetProperty("color_space", out var cs) ? cs.GetString() ?? "" : "",
             ColorTransfer = stream.TryGetProperty("color_transfer", out var ct) ? ct.GetString() ?? "" : "",
-            BFrames = stream.TryGetProperty("has_b_frames", out var bf) ? bf.GetInt32() : null
+            BFrames = stream.TryGetProperty("has_b_frames", out var bf) ? bf.GetInt32() : null,
+            SampleAspectRatio = sar is not null and not "N/A" ? sar : null,
+            DisplayAspectRatio = dar is not null and not "N/A" ? dar : null,
+            PixelAspectRatio = par,
+            DisplayWidth = displayWidth,
+            DisplayHeight = height,
+            DisplayAspect = displayAspect > 0 ? displayAspect : null
         };
+    }
+
+    private static bool TryParseRatio(string? value, out double ratio)
+    {
+        ratio = 0;
+        if (string.IsNullOrWhiteSpace(value) || string.Equals(value, "N/A", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var parts = value.Split(':');
+        if (parts.Length != 2) return false;
+        if (!int.TryParse(parts[0], out var num) || !int.TryParse(parts[1], out var den) || den <= 0)
+            return false;
+        ratio = (double)num / den;
+        return true;
     }
 
     private static AudioStreamInfo ParseAudioStream(JsonElement stream)

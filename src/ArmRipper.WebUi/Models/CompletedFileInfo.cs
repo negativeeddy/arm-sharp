@@ -65,22 +65,46 @@ public class VideoStreamInfo
     public string ColorTransfer { get; set; } = "";
     public bool IsHdr => ColorTransfer is "smpte2084" or "arib-std-b67";
     public int? BFrames { get; set; }
+    /// <summary>Sample/pixel aspect ratio as reported by ffprobe, e.g. "64:45". Null for square pixels or when unknown.</summary>
+    public string? SampleAspectRatio { get; set; }
+    /// <summary>Display aspect ratio as reported by ffprobe, e.g. "1024:552" or "185:100". Null when unknown.</summary>
+    public string? DisplayAspectRatio { get; set; }
+    /// <summary>Numerical pixel aspect ratio (1.0 = square pixels).</summary>
+    public double? PixelAspectRatio { get; set; }
+    /// <summary>Width the video must be scaled to when rendered, accounting for non-square (anamorphic) pixels.</summary>
+    public int DisplayWidth { get; set; }
+    /// <summary>Height the video is rendered at (anamorphy only affects horizontal scaling).</summary>
+    public int DisplayHeight { get; set; }
+    /// <summary>Display aspect ratio (rendered width / height), preferred over the coded ratio when pixels are non-square.</summary>
+    public double? DisplayAspect { get; set; }
+    /// <summary>True when the video is stored with non-square (anamorphic) pixels, e.g. DVD 16:9 or 4:3 letterboxed content.</summary>
+    public bool IsAnamorphic
+    {
+        get
+        {
+            if (PixelAspectRatio is not { } par) return false;
+            if (par <= 0) return false;
+            if (DisplayWidth <= 0 || DisplayWidth == Width) return false;
+            return Math.Abs(par - 1.0) > 0.02;
+        }
+    }
+    /// <summary>Aspect ratio used for classification: display ratio when known, otherwise the coded ratio.</summary>
+    public double Aspect => DisplayAspect is > 0 ? DisplayAspect.Value : Height > 0 ? (double)Width / Height : 0;
     /// <summary>True when the display aspect ratio is approximately 4:3 (fullscreen), which is unusual for modern movies.</summary>
-    public bool IsFullScreen => Height > 0 && (double)Width / Height is > 1.30 and < 1.40;
+    public bool IsFullScreen => Aspect is > 1.30 and < 1.40;
     /// <summary>Display aspect ratio as a human-readable string like "16:9" or "4:3".</summary>
     public string? AspectRatioFormatted
     {
         get
         {
-            if (Height <= 0) return null;
-            var ratio = (double)Width / Height;
-            return ratio switch
+            if (Aspect <= 0) return null;
+            return Aspect switch
             {
                 >= 2.33 and <= 2.40 => "21:9",
                 >= 1.76 and <= 1.79 => "16:9",
                 >= 1.49 and <= 1.51 => "3:2",
                 >= 1.32 and <= 1.34 => "4:3",
-                _ => $"{ratio:F2}:1"
+                _ => $"{Aspect:F2}:1"
             };
         }
     }

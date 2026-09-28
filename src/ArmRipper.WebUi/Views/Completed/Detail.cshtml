@@ -22,6 +22,10 @@
             {
                 <span class="badge badge-warning ml-1" title="4:3 aspect ratio — likely fullscreen, not widescreen">📺 Fullscreen</span>
             }
+            @if (Model.Video?.IsAnamorphic == true)
+            {
+                <span class="badge badge-info ml-1" title="Non-square pixels (PAR @Model.Video.SampleAspectRatio) — players must render at @Model.Video.DisplayWidth×@Model.Video.DisplayHeight to display correctly">Anamorphic</span>
+            }
         </h5>
         <a href="/completed?refresh=true" class="btn btn-outline-secondary btn-sm">← Back</a>
     </div>
@@ -64,7 +68,8 @@
             <table class="table table-sm">
                 <tr><th style="width:180px;">Codec</th><td>@Model.Video.CodecName</td></tr>
                 <tr><th>Profile</th><td>@Model.Video.Profile</td></tr>
-                <tr><th>Resolution</th><td>@Model.Video.Width × @Model.Video.Height @if (!string.IsNullOrEmpty(Model.Video.AspectRatioFormatted)) { <span class="text-muted ml-1">(@Model.Video.AspectRatioFormatted)</span> }</td></tr>
+                <tr><th>Resolution</th><td>@Model.Video.Width × @Model.Video.Height @if (Model.Video.IsAnamorphic) { <span class="text-muted">→ @Model.Video.DisplayWidth × @Model.Video.DisplayHeight rendered</span> } @if (!string.IsNullOrEmpty(Model.Video.AspectRatioFormatted)) { <span class="text-muted ml-1">(@Model.Video.AspectRatioFormatted)</span> }</td></tr>
+                <tr><th>Pixel Aspect Ratio</th><td>@if (Model.Video.IsAnamorphic) { <span>@Model.Video.SampleAspectRatio (non-square)</span> } else { <span>1:1 (square)</span> } @if (!string.IsNullOrEmpty(Model.Video.DisplayAspectRatio)) { <span class="text-muted ml-1">DAR @Model.Video.DisplayAspectRatio</span> }</td></tr>
                 <tr><th>Pixel Format</th><td>@Model.Video.PixelFormat</td></tr>
                 <tr><th>Frame Rate</th><td>@Model.Video.FrameRate fps</td></tr>
                 <tr><th>Color Space</th><td>@Model.Video.ColorSpace</td></tr>
