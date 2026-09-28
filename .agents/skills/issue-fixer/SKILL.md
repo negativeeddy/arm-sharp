@@ -16,6 +16,8 @@ The `agent-ready` label is the universal signal that an issue is available for a
 - `agent-in-progress` → issue is actively being worked on (set when picking up, removed when done)
 - `agent-needs-review` → fix is complete, PR is open, awaiting review (set when PR is created)
 - `agent-ready-for-merge` → PR approved by reviewer, ready for a human to merge (merge closes the issue)
+- `agent-needs-human-review` → an agent inspected the issue and determined it cannot resolve it without a human decision (a design/judgment call beyond an agent's remit). Added alongside a comment explaining what the human must decide, so the agent's pass is transparent. The fixer does NOT re-pick-up issues carrying this label.
+- `needs-investigation` → the issue has incomplete information and needs additional investigation beyond the initial code review. This is a **stage, not a human flag** — it does NOT imply human intervention is required. The fixer skips these by default (they're not ready to implement blind); an agent may pick one up to investigate (see Handling `needs-investigation` below) and fix it, close it, or escalate via `agent-needs-human-review` only if it truly can't proceed.
 - Neither label → issue is completed or not part of the automated workflow
 
 ## When to Use
@@ -51,7 +53,7 @@ gh issue list --repo negativeeddy/arm-sharp \
   --limit 200 --json number,title,labels
 ```
 
-Sort by priority: critical → medium → low. Skip `needs-investigation` issues unless explicitly requested (they need review first, not a blind fix).
+Sort by priority: critical → medium → low. Skip `needs-investigation` issues unless explicitly requested (they have incomplete information and aren't fully ready to implement blind). Also skip any issue labeled `agent-needs-human-review` — a human decision is required before the agent can proceed.
 
 ### Step 2: Pick Up the Issue
 
@@ -111,7 +113,11 @@ gh pr view <pr-number> --repo negativeeddy/arm-sharp --json reviews,comments \
   ```bash
   gh issue comment <number> --repo negativeeddy/arm-sharp \
     --body "Investigation reveals this needs more analysis: <explanation>. Re-adding agent-ready label for future pickup."
-  gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-in-progress" --add-label "agent-ready"
+  gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-in-progress" --add-label "agent-ready" --add-label "needs-investigation"
+  ```
+  Only add `agent-needs-human-review` if you determined the issue genuinely cannot be resolved without a human decision (design call, ambiguity, scope judgment). Do NOT add it just because the issue needs deeper investigation — `needs-investigation` alone is for an agent or future fixer to pick up:
+  ```bash
+  gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-in-progress" --add-label "agent-ready" --add-label "needs-investigation" --add-label "agent-needs-human-review"
   ```
 
 #### 4d. Verify the Fix
@@ -239,6 +245,8 @@ Each issue above has a comment linking to its PR, each PR links back via `Fixes 
 |-------|-------|--------|
 | #P | <title> | Needs deeper investigation |
 
+Skipped issues are returned with `needs-investigation` (and `agent-ready`), findings documented in a comment. `agent-needs-human-review` is added only for the subset where a human decision is genuinely required.
+
 ### Orphaned (auto-close failed)
 | Issue | Merged PR | Action Taken |
 |-------|-----------|--------------|
@@ -247,7 +255,7 @@ Each issue above has a comment linking to its PR, each PR links back via `Fixes 
 
 ## Handling `needs-investigation` Issues
 
-These issues require a deep review before a fix can be prescribed. When working on them:
+These issues have incomplete information and require a deep review before a fix can be prescribed. Note: `needs-investigation` does NOT mean a human is required — it's a normal stage an agent or fixer can pick up. When working on them:
 
 1. **Read the investigation tasks** listed in the issue
 2. **Explore the code** using read-only subagents
@@ -286,6 +294,12 @@ These issues require a deep review before a fix can be prescribed. When working 
 5. If code is robust:
    - Comment with evidence of why it's safe
    - Close the issue: `gh issue close <number> --repo negativeeddy/arm-sharp`
+6. If the investigation determines the issue cannot be resolved without a human decision (ambiguous scope, design call, judgment about behavior):
+   - Comment documenting exactly what decision is needed
+   - Add `agent-needs-human-review` (the issue stays OPEN until a human decides)
+   ```bash
+   gh issue edit <number> --repo negativeeddy/arm-sharp --add-label "agent-needs-human-review"
+   ```
 
 ## Closing Orphaned Issues (Merged PRs That Didn't Auto-Close)
 
@@ -320,11 +334,11 @@ gh issue comment <number> --repo negativeeddy/arm-sharp \
 - **`Fixes #N` must be on its own line** — GitHub ignores `Fixes #N` when embedded in prose like `Fixes #N and #M`
 - **One fix per commit** — easy to revert individual fixes
 - **Always run tests** before committing
-- **Skip if uncertain** — add `needs-investigation` label, swap `agent-in-progress` back to `agent-ready`, and move on
+- **Skip if uncertain** — comment with findings, add `needs-investigation` label, swap `agent-in-progress` back to `agent-ready`, and move on. `needs-investigation` is not a human flag — it's the "incomplete information" stage. Only add `agent-needs-human-review` when you determined the issue cannot be resolved without a human decision. Do NOT re-pick-up `agent-needs-human-review` issues in future runs until a human resolves them.
 - **Respect the priority order** — critical first, then medium, then low
 - **Always branch from an up-to-date `master`** — pull before creating each issue branch so every PR is small and conflict-free
 - **Verify auto-close after merge** — check that each issue actually closed; if not, close it manually with a comment
-- **Label lifecycle** — `agent-ready`/`agent-changes-requested` → `agent-in-progress` (on pickup) → `agent-needs-review` (PR created) → `agent-ready-for-merge` (approved) or `agent-changes-requested` (changes requested)
+- **Label lifecycle** — `agent-ready`/`agent-changes-requested` → `agent-in-progress` (on pickup) → `agent-needs-review` (PR created) → `agent-ready-for-merge` (approved) or `agent-changes-requested` (changes requested). Skipped issues → `agent-ready` + `needs-investigation`. Add `agent-needs-human-review` only when a human decision is genuinely required (not as a 1:1 pairing with `needs-investigation`)
 
 ## Quick Reference Commands
 

@@ -13,6 +13,8 @@ Reviews pull requests created by the issue-fixer workflow. Picks up open `agent-
 - `agent-in-progress-review` → review is actively happening (set on pickup, removed when done)
 - `agent-ready-for-merge` → PR approved, ready for a human to merge
 - `agent-changes-requested` → review requested changes; issue is back in the fixer queue for rework
+- `needs-investigation` → the issue has incomplete information and needs deeper analysis; it's a normal stage, NOT a request for a human. The fixer skips these by default.
+- `agent-needs-human-review` → an agent (fixer or reviewer) determined the issue cannot be resolved without a human decision (ambiguous scope, design call). Not 1:1 with `needs-investigation` — only applied when a human decision is genuinely required. Not handled by the reviewer — surfaced to the human.
 
 **The reviewer never merges.** Merging is a human action — the merge closes the issue, which is the final state of the workflow.
 
@@ -85,11 +87,17 @@ gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-in-pr
 
 The `agent-changes-requested` label returns the issue to the fixer queue. On the next fixer run, the fixer reads the PR review comments, updates the existing branch/PR, and re-submits with `agent-needs-review`.
 
-**Needs investigation** — the review reveals a deeper problem:
+**Needs investigation** — the review reveals the issue has incomplete information / needs deeper analysis. This does NOT require a human:
 
 ```bash
 gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-in-progress-review" --add-label "needs-investigation"
 gh issue comment <number> --repo negativeeddy/arm-sharp --body "Review found this needs deeper analysis: <explanation>."
+```
+
+Only add `agent-needs-human-review` when the deeper problem requires a human judgment call (ambiguous scope, design decision) the agents can't make — not as a default pairing with `needs-investigation`:
+
+```bash
+gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-in-progress-review" --add-label "needs-investigation" --add-label "agent-needs-human-review"
 ```
 
 ### Step 6: Report Summary
@@ -118,7 +126,8 @@ gh issue comment <number> --repo negativeeddy/arm-sharp --body "Review found thi
 - **Verify before approving** — build and tests must pass
 - **Be specific in change requests** — the fixer acts on the PR comments without further context
 - **One issue at a time** — review each PR independently
-- **Label lifecycle** — `agent-needs-review` → `agent-in-progress-review` (on pickup) → `agent-ready-for-merge` (approved) or `agent-changes-requested` (changes requested)
+- **Surface human decisions** — issues with `agent-needs-human-review` are NOT reworked by agents; leave them for the human with the findings documented. Distinguish it from `needs-investigation`, which is just the incomplete-info stage and does NOT require a human.
+- **Label lifecycle** — `agent-needs-review` → `agent-in-progress-review` (on pickup) → `agent-ready-for-merge` (approved) or `agent-changes-requested` (changes requested). Deeper-analysis cases → `needs-investigation`; add `agent-needs-human-review` only when a human decision is genuinely required
 
 ## Quick Reference Commands
 
