@@ -185,6 +185,16 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
         {
             var completedBase = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(effectiveSettings);
 
+            // Collect the rename plan first. Re-identification can shift a whole
+            // chain of episodes (e.g. S01E07→S01E06, S01E08→S01E07, ...) where
+            // every destination is itself a source being renamed. Renaming one
+            // file at a time would hit "destination already exists" at the next
+            // link in the chain. To handle this we perform a two-phase rename:
+            //   1. Stage every source to a unique temporary name in its directory.
+            //   2. Move each staged file to its final destination, preserving any
+            //      genuinely pre-existing file by appending a unique suffix.
+            var plans = new List<(int TrackIndex, string OldPath, string NewPath)>();
+
             foreach (var mapped in episodeMap.Tracks)
             {
                 var track = rippedTracks.FirstOrDefault(t => t.TrackNumberInt == mapped.TrackIndex);
@@ -220,9 +230,90 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
                     continue;
                 }
 
-                // Perform the rename if the old file exists
-                var result = RenameFileOnDisk(oldPath, newPath, mapped.TrackIndex);
-                renameResults.Add(result);
+                plans.Add((mapped.TrackIndex, oldPath, newPath));
+            }
+
+            // ── Phase 1: stage every source out of the way ──
+            var staged = new List<(int TrackIndex, string TempPath, string OldPath, string NewPath)>();
+            for (var i = 0; i < plans.Count; i++)
+            {
+                var (trackIndex, oldPath, newPath) = plans[i];
+                var dir = Path.GetDirectoryName(oldPath) ?? ".";
+                var ext = Path.GetExtension(oldPath);
+                var tempPath = Path.Combine(dir, $".reidentify-staging-{job.Id}-{trackIndex}-{i}{ext}");
+
+                try
+                {
+                    System.IO.File.Move(oldPath, tempPath);
+                    staged.Add((trackIndex, tempPath, oldPath, newPath));
+                }
+                catch (Exception ex)
+                {
+                    renameResults.Add(new
+                    {
+                        trackIndex,
+                        oldPath,
+                        newPath,
+                        status = "error",
+                        message = $"Failed to stage for rename: {ex.Message}"
+                    });
+                }
+            }
+
+            // ── Phase 2: move each staged file to its final destination ──
+            foreach (var (trackIndex, tempPath, oldPath, newPath) in staged)
+            {
+                try
+                {
+                    var dir = Path.GetDirectoryName(newPath);
+                    if (dir is not null && !Directory.Exists(dir))
+                        Directory.CreateDirectory(dir);
+
+                    var finalPath = newPath;
+                    var message = "";
+                    if (System.IO.File.Exists(finalPath))
+                    {
+                        // Destination is occupied by a file that was not part of
+                        // this rename set. Preserve both files by appending a
+                        // unique numeric conflict identifier, matching the
+                        // semantics used during the rip/Finalize stage.
+                        finalPath = ArmRipperService.GetUniqueDestinationPath(finalPath);
+                        message = $"Destination already exists — preserved as {Path.GetFileName(finalPath)}";
+                    }
+
+                    System.IO.File.Move(tempPath, finalPath);
+                    renameResults.Add(new
+                    {
+                        trackIndex,
+                        oldPath,
+                        newPath = finalPath,
+                        status = "renamed",
+                        message
+                    });
+                }
+                catch (Exception ex)
+                {
+                    // Best effort: return the staged file to its original
+                    // location so it is not left stranded under a temp name.
+                    try
+                    {
+                        if (System.IO.File.Exists(tempPath) && !System.IO.File.Exists(oldPath))
+                            System.IO.File.Move(tempPath, oldPath);
+                    }
+                    catch (Exception restoreEx)
+                    {
+                        logger.LogDebug(restoreEx, "Failed to restore staged file {Temp} to {Old}", tempPath, oldPath);
+                    }
+
+                    renameResults.Add(new
+                    {
+                        trackIndex,
+                        oldPath,
+                        newPath,
+                        status = "error",
+                        message = ex.Message
+                    });
+                }
             }
 
             // Try to clean up empty directories after renames (tv series folder)
@@ -372,75 +463,7 @@ public class ReIdentifyController(ArmDbContext db, IEpisodeIdentificationOrchest
     }
 
     /// <summary>
-    /// Renames a file on disk from <paramref name="oldPath"/> to <paramref name="newPath"/>.
-    /// Returns a result object with status information.
-    /// </summary>
-    private object RenameFileOnDisk(string oldPath, string newPath, int trackIndex)
-    {
-        if (!System.IO.File.Exists(oldPath))
-        {
-            return new
-            {
-                trackIndex,
-                oldPath,
-                newPath,
-                status = "not_found",
-                message = $"Old file not found on disk: {oldPath}"
-            };
-        }
-
-        if (string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase))
-        {
-            return new { trackIndex, oldPath, newPath, status = "unchanged", message = "" };
-        }
-
-        // Ensure the target directory exists
-        var dir = Path.GetDirectoryName(newPath);
-        if (dir is not null && !Directory.Exists(dir))
-        {
-            try { Directory.CreateDirectory(dir); }
-            catch (Exception ex) { logger.LogDebug(ex, "Failed to create target directory {Dir}", dir); }
-        }
-
-        // Check if destination already exists
-        if (System.IO.File.Exists(newPath))
-        {
-            return new
-            {
-                trackIndex,
-                oldPath,
-                newPath,
-                status = "skipped",
-                message = $"Destination already exists: {newPath}"
-            };
-        }
-
-        try
-        {
-            System.IO.File.Move(oldPath, newPath);
-            return new
-            {
-                trackIndex,
-                oldPath,
-                newPath,
-                status = "renamed",
-                message = ""
-            };
-        }
-        catch (Exception ex)
-        {
-            return new
-            {
-                trackIndex,
-                oldPath,
-                newPath,
-                status = "error",
-                message = ex.Message
-            };
-        }
-    }
-
-    /// <summary>Recursively removes empty directories under the given path.</summary>
+    /// Recursively removes empty directories under the given path.
     private void RemoveEmptyDirectories(string directory)
     {
         if (!Directory.Exists(directory))
