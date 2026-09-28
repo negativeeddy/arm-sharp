@@ -113,6 +113,8 @@ public class ControllerActionIntegrationTests : IClassFixture<CustomWebApplicati
 
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains("Search Movies", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("id=\"titleInput\"", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autofocus", html, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
