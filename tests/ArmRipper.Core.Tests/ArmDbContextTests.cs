@@ -81,4 +81,38 @@ public sealed class ArmDbContextTests
             Assert.Equal("setup|identify", persisted.CompletedStages);
         }
     }
+
+    [Fact]
+    public async Task LegacyPersistedTvString_ReadsAsSeries()
+    {
+        // Regression test for issue #177: the "Tv" enum value was produced by OVID
+        // ("tvshow") and DiscDb mappings. Legacy rows may still contain the
+        // lowercase "tv" string — it must normalize to "Series" on read so the UI
+        // and persisted value agree.
+        var (connection, options) = CreateSharedDb();
+        using (connection)
+        {
+            await using (var seed = new ArmDbContext(options))
+            {
+                seed.Database.EnsureCreated();
+                seed.Jobs.Add(new Job
+                {
+                    DevPath = "/dev/sr0",
+                    Status = JobState.Active,
+                    StartTime = DateTime.UtcNow,
+                    VideoType = VideoContentType.Series
+                });
+                await seed.SaveChangesAsync();
+
+                // Force the legacy representation directly in SQL — a row written by
+                // an earlier build would store the enum name as lowercase "tv".
+                await seed.Database.ExecuteSqlRawAsync(
+                    "UPDATE jobs SET VideoType = 'tv' WHERE DevPath = '/dev/sr0'");
+            }
+
+            await using var verify = new ArmDbContext(options);
+            var persisted = await verify.Jobs.FirstAsync(j => j.DevPath == "/dev/sr0");
+            Assert.Equal(VideoContentType.Series, persisted.VideoType);
+        }
+    }
 }

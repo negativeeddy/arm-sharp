@@ -236,6 +236,6 @@ public class ArmDbContext : DbContext
 
     private static VideoContentType ParseVideoType(string value) =>
         Enum.TryParse<VideoContentType>(value, ignoreCase: true, out var parsed)
-            ? parsed
+            ? parsed == VideoContentType.Tv ? VideoContentType.Series : parsed
             : VideoContentType.Unknown;
 }
