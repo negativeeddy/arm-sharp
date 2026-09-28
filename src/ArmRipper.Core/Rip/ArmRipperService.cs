@@ -2099,7 +2099,7 @@ public sealed class ArmRipperService(
     /// "S01E06 - Title_2.mp4" → "S01E06 - Title_3.mp4"). Used to preserve both
     /// files when a name collision occurs instead of overwriting or dropping one.
     /// </summary>
-    internal static string GetUniqueDestinationPath(string path)
+    public static string GetUniqueDestinationPath(string path)
     {
         var dir = Path.GetDirectoryName(path);
         var fileName = Path.GetFileNameWithoutExtension(path);
