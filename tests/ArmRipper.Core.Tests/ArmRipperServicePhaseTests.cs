@@ -813,6 +813,11 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
         var processed = Assert.Single(dbTracks, t => t.Process);
         Assert.Equal("0", processed.TrackNumber);
 
+        // The consumed selection must be cleared so a later resume/reprocess does
+        // not re-apply stale track choices (issue #176).
+        var dbJobAfter = await _db.Jobs.FirstAsync(j => j.Id == job.Id);
+        Assert.Null(dbJobAfter.ManualSelectionTrackNumbers);
+
         // No spurious stage error should be recorded for the identify stage —
         // the status transition must not trip the guard (yellow Identify in UI).
         Assert.DoesNotContain("identify", job.StageErrors ?? "");
