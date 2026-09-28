@@ -36,6 +36,20 @@ public sealed class ConfigSnapshotTests
     }
 
     [Fact]
+    public void FromSettings_CopiesMakeMkvInfoScanTimeoutMinutes()
+    {
+        // Regression: MakeMkvService reads the info scan timeout from the job
+        // config snapshot (job.Config?.MakeMkvInfoScanTimeoutMinutes ?? static).
+        // If FromSettings doesn't copy it, the setting configured in the UI is
+        // dead — the static appsettings default always wins.
+        var settings = new ArmSettings { MakeMkvInfoScanTimeoutMinutes = 15 };
+
+        var snapshot = ConfigSnapshot.FromSettings(settings, jobId: 42);
+
+        Assert.Equal(15, snapshot.MakeMkvInfoScanTimeoutMinutes);
+    }
+
+    [Fact]
     public void FromSettings_CarriesForwardPreferWidescreenFromPreviousSnapshot()
     {
         var settings = new ArmSettings { PreferWidescreen = false };

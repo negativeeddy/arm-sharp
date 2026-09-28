@@ -76,6 +76,9 @@ public class ConfigSnapshot
     public int? MaxConcurrentTranscodes { get; set; }
     public int? MaxConcurrentMakemkvInfo { get; set; }
 
+    /// <summary>Maximum time (minutes) to wait for the MakeMKV info scan before timing out.</summary>
+    public int? MakeMkvInfoScanTimeoutMinutes { get; set; }
+
     // ── TheDiscDb Integration ──
     public bool DiscDbEnabled { get; set; } = true;
     public string? DiscDbApiBaseUrl { get; set; }
@@ -155,6 +158,7 @@ public class ConfigSnapshot
             EmbyApiKey        = settings.EmbyApiKey,
             MaxConcurrentTranscodes  = settings.MaxConcurrentTranscodes,
             MaxConcurrentMakemkvInfo = settings.MaxConcurrentMakemkvInfo,
+            MakeMkvInfoScanTimeoutMinutes = settings.MakeMkvInfoScanTimeoutMinutes,
             DiscDbEnabled             = settings.DiscDbEnabled,
             DiscDbApiBaseUrl          = settings.DiscDbApiBaseUrl,
             DiscDbMinConfidence       = settings.DiscDbMinConfidence,
