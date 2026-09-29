@@ -23,9 +23,23 @@ public static class TestHelpers
         return ctx;
     }
 
+    /// <summary>
+    /// Builds test settings whose media and log paths point at a per-call temp root
+    /// instead of the real <c>/home/arm</c> tree. Code under test creates directories and
+    /// writes rip output, so leaving <see cref="ArmSettings"/>' production defaults in place
+    /// leaks test fixtures into the user's actual library. The temp paths are applied first
+    /// so <paramref name="configure"/> can still override any individual setting.
+    /// </summary>
     public static IOptions<ArmSettings> CreateOptions(Action<ArmSettings>? configure = null)
     {
-        var s = new ArmSettings();
+        var tmpRoot = Path.Combine(Path.GetTempPath(), "arm-test", Guid.NewGuid().ToString());
+        var s = new ArmSettings
+        {
+            RawPath = Path.Combine(tmpRoot, "raw"),
+            TranscodePath = Path.Combine(tmpRoot, "transcode"),
+            CompletedPath = Path.Combine(tmpRoot, "completed"),
+            LogPath = Path.Combine(tmpRoot, "logs"),
+        };
         configure?.Invoke(s);
         return Options.Create(s);
     }
