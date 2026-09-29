@@ -177,6 +177,17 @@ public sealed class ArmRipperService(
     /// </summary>
     private async Task<Track?> ResolveMainFeatureTrackAsync(Job job, IReadOnlyList<Track> tracks, CancellationToken ct)
     {
+        var overridden = await ResolveMainFeatureOverrideTrackAsync(job, tracks, ct);
+        return overridden ?? tracks.FirstOrDefault(t => t.MainFeature);
+    }
+
+    /// <summary>
+    /// Returns the track selected by a manual per-job override (read fresh from the
+    /// DB so a mid-rip redirect is honored) or by a per-fingerprint override
+    /// remembered from an earlier rip, or null when neither is set.
+    /// </summary>
+    private async Task<Track?> ResolveMainFeatureOverrideTrackAsync(Job job, IReadOnlyList<Track> tracks, CancellationToken ct)
+    {
         var overrideNumber = job.MainFeatureOverrideTrackNumber
             ?? await db.Jobs.AsNoTracking()
                 .Where(j => j.Id == job.Id)
@@ -205,7 +216,80 @@ public sealed class ArmRipperService(
             }
         }
 
-        return tracks.FirstOrDefault(t => t.MainFeature);
+        return null;
+    }
+
+    /// <summary>
+    /// Re-points the main feature at the track DiscDb classified as <c>main</c>.
+    ///
+    /// The automatic selection in <see cref="SelectMainFeatureTrack"/> ranks by
+    /// duration, which misfires whenever an extra is longer than the movie — a
+    /// long behind-the-scenes featurette routinely outruns a 2h10m cut. DiscDb
+    /// labels each title by content, so when exactly one track is typed
+    /// <c>main</c> that label is a stronger signal than any duration heuristic.
+    ///
+    /// Deliberately narrow: requires a single unambiguous <c>main</c> match, and
+    /// defers to a manual or remembered override when one exists — an explicit
+    /// user choice always outranks metadata.
+    /// </summary>
+    internal async Task PromoteDiscDbMainFeatureAsync(Job job, IReadOnlyList<Track> tracks, CancellationToken ct)
+    {
+        var mains = tracks.Where(t => t.ContentType == "main").ToList();
+        if (mains.Count != 1)
+        {
+            if (mains.Count > 1)
+            {
+                logger.LogWarning(
+                    "DiscDb: {Count} tracks typed as main for job {JobId} — keeping duration-based selection",
+                    mains.Count, job.Id);
+            }
+            return;
+        }
+
+        var discDbMain = mains[0];
+        if (ReferenceEquals(discDbMain, tracks.FirstOrDefault(t => t.MainFeature)))
+            return;
+
+        // An explicit user choice outranks metadata. ApplyMainFeatureOverrideAsync
+        // has already stamped the winning track onto MainFeature, so detect the
+        // override at its source rather than by comparing flags.
+        var overrideTrack = await ResolveMainFeatureOverrideTrackAsync(job, tracks, ct);
+        if (overrideTrack is not null)
+        {
+            logger.LogInformation(
+                "DiscDb: main is track {DiscDbTrack} but an override selects {OverrideTrack} — keeping override",
+                discDbMain.TrackNumber, overrideTrack.TrackNumber);
+            return;
+        }
+
+        var previous = tracks.FirstOrDefault(t => t.MainFeature);
+        foreach (var track in tracks)
+            track.MainFeature = ReferenceEquals(track, discDbMain);
+
+        logger.LogInformation(
+            "DiscDb: main feature is track {Track} ('{Title}'), overriding duration-based pick {OldTrack}",
+            discDbMain.TrackNumber, discDbMain.EpisodeTitle ?? "(untitled)",
+            previous?.TrackNumber ?? "(none)");
+
+        foreach (var track in tracks)
+            db.Entry(track).Property(x => x.MainFeature).IsModified = true;
+        await db.SaveChangesAsync(ct);
+
+        // Remember the correction for the whole disc fingerprint so later rips of
+        // the same disc skip the wrong-title guess entirely.
+        if (!string.IsNullOrEmpty(job.DiscFingerprint) && !string.IsNullOrEmpty(discDbMain.TrackNumber))
+        {
+            var cached = await db.DiscMetadata
+                .FirstOrDefaultAsync(d => d.Fingerprint == job.DiscFingerprint, ct);
+            if (cached is not null)
+            {
+                cached.MainFeatureTrackNumber = discDbMain.TrackNumber;
+                await db.SaveChangesAsync(ct);
+                logger.LogInformation(
+                    "DiscDb: cached main feature track {Track} for fingerprint {Fingerprint}",
+                    discDbMain.TrackNumber, job.DiscFingerprint);
+            }
+        }
     }
 
     /// <summary>
@@ -249,6 +333,88 @@ public sealed class ArmRipperService(
                 // Best-effort — a file in use by the dying process may linger.
             }
         }
+    }
+
+    /// <summary>
+    /// Deletes MakeMKV output left in the rip directory by a previous job for
+    /// the same title. The raw directory is shared across jobs (it is keyed on
+    /// the sanitized title, not the job id) and retained on failure so the job
+    /// can be retried, which means a retry — or a second disc with the same
+    /// title — otherwise finds the old files already sitting there. The rip
+    /// verification and transcode steps both consume every *.mkv in this
+    /// directory, so stale files are indistinguishable from fresh output.
+    /// </summary>
+    internal static int PurgeStaleRipOutput(string makeMkvOutPath)
+    {
+        if (!Directory.Exists(makeMkvOutPath))
+            return 0;
+
+        var removed = 0;
+        foreach (var file in Directory.EnumerateFiles(makeMkvOutPath, "*.mkv"))
+        {
+            try
+            {
+                File.Delete(file);
+                removed++;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Best-effort — a file still held by a dying process may linger.
+            }
+        }
+
+        return removed;
+    }
+
+    /// <summary>
+    /// Extracts the MakeMKV title index from a rip file name
+    /// ("&lt;title&gt;_t07.mkv" → 7). MakeMKV's TINFO <c>Filename</c> uses the
+    /// same 0-based index as the TID reported by the info scan, so the value
+    /// matches <c>TrackNumber</c> directly. Returns null when the name carries
+    /// no <c>_tNN</c> component.
+    /// </summary>
+    internal static int? RipOutputIndex(string fileName)
+    {
+        var stem = Path.GetFileNameWithoutExtension(fileName);
+        if (string.IsNullOrEmpty(stem))
+            return null;
+
+        // Anchor on the last "_tNN" so titles containing "_t" earlier in the
+        // name (e.g. "..._the_playlist") do not produce a bogus index.
+        var marker = stem.LastIndexOf("_t", StringComparison.OrdinalIgnoreCase);
+        if (marker < 0)
+            return null;
+
+        var digits = stem[(marker + 2)..];
+        return int.TryParse(digits, out var index) && index >= 0 ? index : null;
+    }
+
+    /// <summary>
+    /// Binds a MakeMKV output file to the track it was ripped from.
+    /// <para>
+    /// The exact TINFO <c>Filename</c> reported by the info scan wins, since
+    /// MakeMKV authored it. Failing that, the file's <c>_tNN</c> index is
+    /// matched numerically against <c>TrackNumber</c> (both 0-based). The
+    /// comparison is anchored — the previous substring test let "t03" claim
+    /// "t030" and bound a rip to a neighbouring title's file.
+    /// </para>
+    /// </summary>
+    internal static Track? MatchRipOutputToTrack(IEnumerable<Track> dbTracks, string fileName)
+    {
+        var candidates = dbTracks as IList<Track> ?? dbTracks.ToList();
+
+        var exact = candidates.FirstOrDefault(t =>
+            !string.IsNullOrEmpty(t.FileName) &&
+            t.FileName.Equals(fileName, StringComparison.OrdinalIgnoreCase));
+        if (exact is not null)
+            return exact;
+
+        var index = RipOutputIndex(fileName);
+        if (index is null)
+            return null;
+
+        return candidates.FirstOrDefault(t =>
+            int.TryParse(t.TrackNumber, out var trackNumber) && trackNumber == index.Value);
     }
 
     /// <summary>
@@ -598,6 +764,12 @@ public sealed class ArmRipperService(
             if (!Directory.Exists(makeMkvOutPath))
                 Directory.CreateDirectory(makeMkvOutPath);
 
+            // A previous failed job for the same title leaves its files in this
+            // folder (raw is kept for retry and is not job-suffixed). Purge
+            // before a fresh rip so stale output can never be picked up as this
+            // job's transcode source.
+            PurgeStaleRipOutput(makeMkvOutPath);
+
             var mkvArgs = job.Config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
             var testRipResult = await makeMkv.RipTrackAsync(job, "0", makeMkvOutPath, mkvArgs, 0, MkvProgress(job, "Ripping track 0", ct), ct);
             LogMakeMkvIssues(testRipResult, "test-mode rip");
@@ -662,11 +834,13 @@ public sealed class ArmRipperService(
             }
             else
             {
-                if (!Directory.Exists(makeMkvOutPath))
-                    Directory.CreateDirectory(makeMkvOutPath);
+            if (!Directory.Exists(makeMkvOutPath))
+                Directory.CreateDirectory(makeMkvOutPath);
 
-                var mkvArgs = config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
-                var fallbackRipResult = await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, "Ripping all titles", ct), ct);
+            PurgeStaleRipOutput(makeMkvOutPath);
+
+            var mkvArgs = config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
+            var fallbackRipResult = await makeMkv.RipAllTitlesAsync(job, makeMkvOutPath, mkvArgs, minLengthCfg, MkvProgress(job, "Ripping all titles", ct), ct);
                 LogMakeMkvIssues(fallbackRipResult, "0-track fallback rip");
                 logger.LogInformation("Ripped all titles from disc (0-track fallback)");
 
@@ -778,6 +952,8 @@ public sealed class ArmRipperService(
                         }
                     }
                 }
+
+                await PromoteDiscDbMainFeatureAsync(job, tracks, ct);
 
                 if (promoted > 0)
                 {
@@ -992,6 +1168,13 @@ public sealed class ArmRipperService(
             if (!Directory.Exists(makeMkvOutPath))
                 Directory.CreateDirectory(makeMkvOutPath);
 
+            // The raw output folder is keyed on title, not job id, so a retried
+            // job inherits the previous attempt's files. The transcode step reads
+            // this directory as its input source, so leftovers from an earlier
+            // job (e.g. an 8s sting next to a real 43GB feature) get transcoded
+            // and published as the movie. Start from a clean directory.
+            PurgeStaleRipOutput(makeMkvOutPath);
+
             var eligibleTracks = tracks.Where(t => t.Process).ToList();
             var mkvArgs = config?.MkvArgs ?? settings.Value.MkvArgs ?? "";
             var ripCount = 0;
@@ -1202,12 +1385,11 @@ public sealed class ArmRipperService(
                 var fileName = Path.GetFileName(file);
                 var fileInfo = new FileInfo(file);
 
-                var track = dbTracks.FirstOrDefault(t =>
-                    !string.IsNullOrEmpty(t.FileName) &&
-                    t.FileName.Equals(fileName, StringComparison.OrdinalIgnoreCase))
-                    ?? dbTracks.FirstOrDefault(t =>
-                        !string.IsNullOrEmpty(t.TrackNumber) &&
-                        fileName.Contains($"t{int.Parse(t.TrackNumber):D2}"));
+                var track = MatchRipOutputToTrack(dbTracks, fileName);
+                if (track is null && RipOutputIndex(fileName) is { } unmatchedIndex)
+                    logger.LogWarning(
+                        "Rip output {FileName} has no matching track (expected TID {ExpectedTid}) — not counted as a ripped track",
+                        fileName, unmatchedIndex);
 
                 if (track is not null)
                 {
@@ -1271,6 +1453,25 @@ public sealed class ArmRipperService(
                 job.Errors = mainFeatureFailure;
                 await db.SaveChangesAsync(ct);
                 throw new InvalidOperationException(mainFeatureFailure);
+            }
+
+            // The main feature must have produced its own output file. Checking
+            // only "some track was ripped" let a short neighbouring title (e.g.
+            // an 8s sting) satisfy the gate while the intended feature was
+            // absent — the job then transcoded the wrong file and reported
+            // success (issue: 8-second output published as a 2h movie).
+            var expectedMain = dbTracks.FirstOrDefault(t => t.MainFeature);
+            if (expectedMain is not null && !expectedMain.Ripped)
+            {
+                var msg = ripError is not null
+                    ? $"MakeMKV rip produced no file for the main feature (track {expectedMain.TrackNumber}): {ripError}"
+                    : $"MakeMKV rip produced no file for the main feature (track {expectedMain.TrackNumber}) — " +
+                      "the requested title was not saved; refusing to transcode a different title's output";
+                logger.LogError(msg);
+                job.Status = JobState.Failure;
+                job.Errors = msg;
+                await db.SaveChangesAsync(ct);
+                throw new InvalidOperationException(msg);
             }
 
             await db.SaveChangesAsync(ct);
@@ -2334,6 +2535,13 @@ public sealed class ArmRipperService(
         if (result is null || result.TitlesSaved > 0)
             return null;
 
+        // MSG 5010 means the drive never opened the disc, so no read error was
+        // ever observed — blaming the disc here sent users to clean a disc that
+        // was fine (issue: drive-open failure misreported as a disc fault).
+        if (result.HadDiscOpenError)
+            return $"MakeMKV could not open the disc during {context} (drive reported \"Failed to open disc\") — " +
+                   "the disc was not read; check the drive connection and that the tray is closed, then retry";
+
         var hint = result.HadReadError ? " — disc may need cleaning or replacement" : "";
         return $"MakeMKV saved 0 titles for {context}{hint}";
     }
@@ -2345,6 +2553,11 @@ public sealed class ArmRipperService(
     private void LogMakeMkvIssues(MakeMkvRipResult result, string context)
     {
         if (result is null) return;
+
+        if (result.HadDiscOpenError)
+            logger.LogError(
+                "MakeMKV failed to open the disc during {Context} (MSG 5010) — this is a drive fault, " +
+                "not a disc-quality problem; the disc was never read", context);
 
         if (result.HadReadError)
             logger.LogWarning("MakeMKV reported read errors during {Context}", context);
@@ -2363,6 +2576,9 @@ public sealed class ArmRipperService(
     private static string DescribeMakeMkvIssues(MakeMkvRipResult result)
     {
         var parts = new List<string>();
+
+        if (result.HadDiscOpenError)
+            parts.Add("drive failed to open disc (MSG 5010)");
 
         if (result.HadReadError)
             parts.Add("read errors");

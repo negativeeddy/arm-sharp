@@ -131,6 +131,13 @@ public sealed class MakeMkvRipResult
 
     public bool HadCorruptSource { get; private set; }
 
+    /// <summary>
+    /// True when MakeMKV could not open the disc at all (MSG 5010, "Failed to
+    /// open disc"). This is a drive/transport fault — the disc was never read,
+    /// so it says nothing about disc condition.
+    /// </summary>
+    public bool HadDiscOpenError { get; private set; }
+
     /// <summary>Titles reported as skipped (MSG 3015 / 3025).</summary>
     public List<string> SkippedTitles { get; } = [];
 
@@ -161,6 +168,13 @@ public sealed class MakeMkvRipResult
                 return true;
             case MessageId.CorruptSource:
                 HadCorruptSource = true;
+                return true;
+            case MessageId.RipDiscOpenError:
+                // MSG 5010 "Failed to open disc" — the drive never read the disc,
+                // so this is deliberately kept distinct from HadReadError. Reporting
+                // it as a read error made the pipeline advise cleaning/replacing a
+                // disc that had never been touched.
+                HadDiscOpenError = true;
                 return true;
             case MessageId.TitleSkipped:
             case MessageId.TitleSkippedNavigation:
@@ -199,6 +213,7 @@ public sealed class MakeMkvRipResult
     {
         if (other.HadReadError) HadReadError = true;
         if (other.HadCorruptSource) HadCorruptSource = true;
+        if (other.HadDiscOpenError) HadDiscOpenError = true;
         SkippedTitles.AddRange(other.SkippedTitles);
         TitlesSaved += other.TitlesSaved;
         TitlesFailed += other.TitlesFailed;

@@ -1496,4 +1496,190 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
         var result = await pipelineTask;
         Assert.Equal(rawPath, result);
     }
+
+    // ───────────────────────────────────────────────────────────────────
+    // PromoteDiscDbMainFeatureAsync
+    // ───────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds a persisted track for the DiscDb main-feature tests. Real values from
+    /// job 1605 (Battleship, domestic Blu-ray): the featurette is longer than the
+    /// movie, so duration-based selection picks the wrong title.
+    /// </summary>
+    private static Track CreateDiscDbTrack(
+        string trackNumber, int length, long size, string? contentType, string? episodeTitle = null)
+    {
+        var track = new Track
+        {
+            JobId = 1,
+            TrackNumber = trackNumber,
+            Length = length,
+            FileSize = size,
+            AspectRatio = "16:9",
+            Process = true,
+            Source = "MakeMKV",
+            FileName = $"Battleship_t{trackNumber}.mkv"
+        };
+        if (contentType is not null)
+        {
+            track.ContentType = contentType;
+            track.EpisodeTitle = episodeTitle ?? "Battleship";
+        }
+        return track;
+    }
+
+    [Fact]
+    public async Task PromoteDiscDbMainFeature_LongerFeaturetteLosesToDiscDbMain()
+    {
+        // Job 1605 regression: track 30 (2h19m featurette) wins on duration, but
+        // DiscDb types track 29 as "main" and track 30 as "extra".
+        var job = TestHelpers.CreateTestJob();
+        _db.Jobs.Add(job);
+
+        var feature = CreateDiscDbTrack("29", 7881, 25_800_000_000L, "main", "Battleship");
+        var featurette = CreateDiscDbTrack("30", 8371, 29_156_026_368L, "extra", "All Access with Director Peter Berg");
+        _db.Tracks.AddRange(feature, featurette);
+        await _db.SaveChangesAsync();
+
+        featurette.MainFeature = true;
+
+        var service = CreateService();
+        await service.PromoteDiscDbMainFeatureAsync(job, [feature, featurette], CancellationToken.None);
+
+        Assert.True(feature.MainFeature);
+        Assert.False(featurette.MainFeature);
+    }
+
+    [Fact]
+    public async Task PromoteDiscDbMainFeature_PersistsAndCachesForFingerprint()
+    {
+        var job = TestHelpers.CreateTestJob(j => j.DiscFingerprint = "BATTLESHIP_DOM::90094336");
+        _db.Jobs.Add(job);
+        _db.DiscMetadata.Add(new DiscMetadata { Fingerprint = "BATTLESHIP_DOM::90094336", VolumeLabel = "BATTLESHIP_DOM" });
+
+        var feature = CreateDiscDbTrack("29", 7881, 25_800_000_000L, "main");
+        var featurette = CreateDiscDbTrack("30", 8371, 29_156_026_368L, "extra");
+        _db.Tracks.AddRange(feature, featurette);
+        await _db.SaveChangesAsync();
+
+        featurette.MainFeature = true;
+
+        var service = CreateService();
+        await service.PromoteDiscDbMainFeatureAsync(job, [feature, featurette], CancellationToken.None);
+
+        var reloaded = await _db.Tracks.AsNoTracking().ToListAsync();
+        Assert.True(reloaded.Single(t => t.TrackNumber == "29").MainFeature);
+        Assert.False(reloaded.Single(t => t.TrackNumber == "30").MainFeature);
+
+        var cached = await _db.DiscMetadata.AsNoTracking()
+            .FirstAsync(d => d.Fingerprint == "BATTLESHIP_DOM::90094336");
+        Assert.Equal("29", cached.MainFeatureTrackNumber);
+    }
+
+    [Fact]
+    public async Task PromoteDiscDbMainFeature_ManualOverrideWins()
+    {
+        // An explicit user choice outranks DiscDb metadata.
+        var job = TestHelpers.CreateTestJob(j => j.MainFeatureOverrideTrackNumber = "30");
+        _db.Jobs.Add(job);
+
+        var feature = CreateDiscDbTrack("29", 7881, 25_800_000_000L, "main");
+        var featurette = CreateDiscDbTrack("30", 8371, 29_156_026_368L, "extra");
+        _db.Tracks.AddRange(feature, featurette);
+        await _db.SaveChangesAsync();
+
+        featurette.MainFeature = true;
+
+        var service = CreateService();
+        await service.PromoteDiscDbMainFeatureAsync(job, [feature, featurette], CancellationToken.None);
+
+        Assert.False(feature.MainFeature);
+        Assert.True(featurette.MainFeature);
+    }
+
+    [Fact]
+    public async Task PromoteDiscDbMainFeature_FingerprintOverrideWins()
+    {
+        var job = TestHelpers.CreateTestJob(j => j.DiscFingerprint = "FP1");
+        _db.Jobs.Add(job);
+        _db.DiscMetadata.Add(new DiscMetadata
+        {
+            Fingerprint = "FP1",
+            VolumeLabel = "L",
+            MainFeatureTrackNumber = "30"
+        });
+
+        var feature = CreateDiscDbTrack("29", 7881, 25_800_000_000L, "main");
+        var featurette = CreateDiscDbTrack("30", 8371, 29_156_026_368L, "extra");
+        _db.Tracks.AddRange(feature, featurette);
+        await _db.SaveChangesAsync();
+
+        featurette.MainFeature = true;
+
+        var service = CreateService();
+        await service.PromoteDiscDbMainFeatureAsync(job, [feature, featurette], CancellationToken.None);
+
+        Assert.False(feature.MainFeature);
+        Assert.True(featurette.MainFeature);
+    }
+
+    [Fact]
+    public async Task PromoteDiscDbMainFeature_AmbiguousMainsLeaveSelectionAlone()
+    {
+        // Two tracks typed "main" is not a usable signal — keep the duration pick.
+        var job = TestHelpers.CreateTestJob();
+        _db.Jobs.Add(job);
+
+        var a = CreateDiscDbTrack("10", 7000, 20_000_000_000L, "main");
+        var b = CreateDiscDbTrack("11", 6000, 18_000_000_000L, "main");
+        _db.Tracks.AddRange(a, b);
+        await _db.SaveChangesAsync();
+
+        a.MainFeature = true;
+
+        var service = CreateService();
+        await service.PromoteDiscDbMainFeatureAsync(job, [a, b], CancellationToken.None);
+
+        Assert.True(a.MainFeature);
+        Assert.False(b.MainFeature);
+    }
+
+    [Fact]
+    public async Task PromoteDiscDbMainFeature_NoMainTypeIsNoOp()
+    {
+        // Typical TV disc: nothing typed "main", so selection is left alone.
+        var job = TestHelpers.CreateTestJob();
+        _db.Jobs.Add(job);
+
+        var ep1 = CreateDiscDbTrack("0", 1400, 5_000_000_000L, "episode", "Pilot");
+        var ep2 = CreateDiscDbTrack("1", 1450, 5_100_000_000L, "episode", "Episode 2");
+        _db.Tracks.AddRange(ep1, ep2);
+        await _db.SaveChangesAsync();
+
+        ep2.MainFeature = true;
+
+        var service = CreateService();
+        await service.PromoteDiscDbMainFeatureAsync(job, [ep1, ep2], CancellationToken.None);
+
+        Assert.False(ep1.MainFeature);
+        Assert.True(ep2.MainFeature);
+    }
+
+    [Fact]
+    public async Task PromoteDiscDbMainFeature_AlreadyCorrectIsNoOp()
+    {
+        var job = TestHelpers.CreateTestJob();
+        _db.Jobs.Add(job);
+
+        var feature = CreateDiscDbTrack("29", 7881, 25_800_000_000L, "main");
+        _db.Tracks.Add(feature);
+        await _db.SaveChangesAsync();
+
+        feature.MainFeature = true;
+
+        var service = CreateService();
+        await service.PromoteDiscDbMainFeatureAsync(job, [feature], CancellationToken.None);
+
+        Assert.True(feature.MainFeature);
+    }
 }

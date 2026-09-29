@@ -69,6 +69,140 @@ public sealed class RipVerificationIntegrationTests : IDisposable
         return result;
     }
 
+    // ── Rip output → track binding ──────────────────────────────
+
+    [Theory]
+    // MakeMKV's TINFO Filename and the output file share the 0-based TID.
+    [InlineData("Movie_t134.mkv", "134")]
+    [InlineData("Movie_t00.mkv", "0")]
+    [InlineData("Movie_t07.mkv", "7")]
+    [InlineData("Movie_t03.mkv", "3")]
+    public void MatchRipOutputToTrack_OutputNameIndexMatchesTrackNumber(
+        string fileName, string expectedTid)
+    {
+        // Regression: the old matcher searched for "t{TID}" as a substring, so
+        // "t03" claimed "t030" and a rip could be bound to a neighbouring title.
+        var tracks = new List<Track>
+        {
+            new Track { TrackNumber = "0" },
+            new Track { TrackNumber = "3" },
+            new Track { TrackNumber = "7" },
+            new Track { TrackNumber = "30" },
+            new Track { TrackNumber = "134" },
+        };
+
+        var match = ArmRipperService.MatchRipOutputToTrack(tracks, fileName);
+
+        Assert.NotNull(match);
+        Assert.Equal(expectedTid, match!.TrackNumber);
+    }
+
+    [Fact]
+    public void MatchRipOutputToTrack_ExactInfoScanFilename_Wins()
+    {
+        var tracks = new List<Track>
+        {
+            new Track { TrackNumber = "9", FileName = "Some Title_t08.mkv" },
+        };
+
+        var match = ArmRipperService.MatchRipOutputToTrack(tracks, "Some Title_t08.mkv");
+
+        Assert.NotNull(match);
+        Assert.Equal("9", match!.TrackNumber);
+    }
+
+    [Fact]
+    public void MatchRipOutputToTrack_PrefixCollision_DoesNotMatchWrongTrack()
+    {
+        // "t03" must not claim "t030" (regression: substring Contains() match).
+        var tracks = new List<Track>
+        {
+            new Track { TrackNumber = "3" },
+            new Track { TrackNumber = "30" },
+        };
+
+        var match = ArmRipperService.MatchRipOutputToTrack(tracks, "Movie_t03.mkv");
+
+        Assert.NotNull(match);
+        Assert.Equal("3", match!.TrackNumber);
+    }
+
+    [Fact]
+    public void MatchRipOutputToTrack_UnknownOutputIndex_ReturnsNull()
+    {
+        var tracks = new List<Track> { new Track { TrackNumber = "135" } };
+
+        Assert.Null(ArmRipperService.MatchRipOutputToTrack(tracks, "Movie_t999.mkv"));
+    }
+
+    [Theory]
+    [InlineData("Movie_t134.mkv", 134)]
+    [InlineData("Movie_t00.mkv", 0)]
+    [InlineData("Movie.mkv", null)]
+    [InlineData("", null)]
+    public void RipOutputIndex_ParsesZeroBasedSuffix(string fileName, int? expected)
+        => Assert.Equal(expected, ArmRipperService.RipOutputIndex(fileName));
+
+    [Fact]
+    public void RipOutputIndex_NonNumericSuffix_ReturnsNull()
+    {
+        Assert.Null(ArmRipperService.RipOutputIndex("The_titles_treasure.mkv"));
+    }
+
+    [Fact]
+    public void PurgeStaleRipOutput_RemovesLeftoversFromPreviousJob()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"arm-purge-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "Movie_t132.mkv"), "stale sting");
+            File.WriteAllText(Path.Combine(dir, "Movie_t134.mkv"), "stale feature");
+            File.WriteAllText(Path.Combine(dir, "notes.txt"), "keep me");
+
+            var removed = ArmRipperService.PurgeStaleRipOutput(dir);
+
+            Assert.Equal(2, removed);
+            Assert.Empty(Directory.EnumerateFiles(dir, "*.mkv"));
+            Assert.True(File.Exists(Path.Combine(dir, "notes.txt")));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void PurgeStaleRipOutput_MissingDirectory_ReturnsZero()
+        => Assert.Equal(0, ArmRipperService.PurgeStaleRipOutput(
+            Path.Combine(Path.GetTempPath(), $"arm-purge-missing-{Guid.NewGuid():N}")));
+
+    // ── Drive-open fault (MSG 5010) ────────────────────────────
+
+    [Fact]
+    public void RipResult_DiscOpenError_IsNotReportedAsDiscReadError()
+    {
+        var result = new MakeMkvRipResult();
+        result.Capture(new MakeMkvMessage((int)MessageId.RipDiscOpenError, 0, 0,
+            "Failed to open disc", "Failed to open disc", []));
+
+        Assert.True(result.HadDiscOpenError);
+        Assert.False(result.HadReadError);
+    }
+
+    [Fact]
+    public void MakeMkvRipResult_Merge_PropagatesDiscOpenError()
+    {
+        var a = new MakeMkvRipResult();
+        var b = new MakeMkvRipResult();
+        b.Capture(new MakeMkvMessage((int)MessageId.RipDiscOpenError, 0, 0,
+            "Failed to open disc", "Failed to open disc", []));
+
+        a.Merge(b);
+
+        Assert.True(a.HadDiscOpenError);
+    }
+
     /// <summary>
     /// Builds a <see cref="MakeMkvRipResult"/> that reports the given number of
     /// titles saved (MSG 3028), simulating a successful MakeMKV rip. A bare
@@ -148,6 +282,27 @@ public sealed class RipVerificationIntegrationTests : IDisposable
         return (service, job, makeMkv, ffmpeg, redirectService);
     }
 
+    /// <summary>
+    /// Configures <c>RipTrackAsync</c> to write the given output file, as MakeMKV
+    /// does. Output must be produced by the mock rip rather than pre-seeded in the
+    /// directory: the rip purges stale files before it starts, so pre-created files
+    /// would be deleted and the track would never be marked as ripped.
+    /// </summary>
+    private static void SetupRipWritingFile(Mock<IMakeMkvService> makeMkv, string outputPath, string fileName, long size)
+    {
+        makeMkv.Setup(m => m.RipTrackAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Job _, string _tn, string outPath, string _a, int _ml,
+                IProgress<int>? _p, CancellationToken _ct) =>
+            {
+                Directory.CreateDirectory(outPath);
+                using var fs = new FileStream(Path.Combine(outPath, fileName), FileMode.Create, FileAccess.Write);
+                fs.SetLength(size);
+                return SuccessfulRipResult();
+            });
+    }
+
     private static async Task<string?> InvokeAsync(ArmRipperService service, Job job, string makeMkvOutPath, CancellationToken ct = default)
     {
         var jobTitle = ArmRipperService.FixJobTitle(job);
@@ -161,19 +316,22 @@ public sealed class RipVerificationIntegrationTests : IDisposable
     {
         var (service, job, makeMkv, ffmpeg, _) = CreateService();
 
-        var ripResult = Job977RipResult();
+        // The salvaged 9s clip: size is plausible (sparse file ~ expected size) so B2's
+        // size gate passes, but ffprobe reports only 9 seconds — the B3 duration check.
+        // The mock must write the file, since the rip purges stale output first.
+        var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
         makeMkv.Setup(m => m.RipTrackAsync(
                 It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(ripResult);
-
-        // The salvaged 9s clip: size is plausible (sparse file ~ expected size) so B2's
-        // size gate passes, but ffprobe reports only 9 seconds — the B3 duration check.
-        var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
-        Directory.CreateDirectory(makeMkvOutPath);
-        var outputFile = Path.Combine(makeMkvOutPath, "title_t00.mkv");
-        using (var fs = new FileStream(outputFile, FileMode.CreateNew))
-            fs.SetLength(4_000_000_000L);
+            .ReturnsAsync((Job _, string _tn, string outPath, string _a, int _ml,
+                IProgress<int>? _p, CancellationToken _ct) =>
+            {
+                Directory.CreateDirectory(outPath);
+                using var fs = new FileStream(Path.Combine(outPath, "title_t00.mkv"),
+                    FileMode.Create, FileAccess.Write);
+                fs.SetLength(4_000_000_000L);
+                return Job977RipResult();
+            });
 
         ffmpeg.Setup(f => f.ProbeDurationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(9.0);
@@ -192,16 +350,8 @@ public sealed class RipVerificationIntegrationTests : IDisposable
     {
         var (service, job, makeMkv, ffmpeg, _) = CreateService();
 
-        makeMkv.Setup(m => m.RipTrackAsync(
-                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
-                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(SuccessfulRipResult());
-
         var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
-        Directory.CreateDirectory(makeMkvOutPath);
-        var outputFile = Path.Combine(makeMkvOutPath, "title_t00.mkv");
-        using (var fs = new FileStream(outputFile, FileMode.CreateNew))
-            fs.SetLength(4_000_000_000L);
+        SetupRipWritingFile(makeMkv, makeMkvOutPath, "title_t00.mkv", 4_000_000_000L);
 
         ffmpeg.Setup(f => f.ProbeDurationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(6540.0);
@@ -251,10 +401,7 @@ public sealed class RipVerificationIntegrationTests : IDisposable
         _db.SaveChanges();
 
         var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
-        Directory.CreateDirectory(makeMkvOutPath);
-        var outputFile = Path.Combine(makeMkvOutPath, "title_t01.mkv");
-        using (var fs = new FileStream(outputFile, FileMode.CreateNew))
-            fs.SetLength(3_000_000_000L);
+        SetupRipWritingFile(makeMkv, makeMkvOutPath, "title_t01.mkv", 3_000_000_000L);
 
         ffmpeg.Setup(f => f.ProbeDurationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(6000.0);
@@ -320,10 +467,7 @@ public sealed class RipVerificationIntegrationTests : IDisposable
         _db.SaveChanges();
 
         var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
-        Directory.CreateDirectory(makeMkvOutPath);
-        var outputFile = Path.Combine(makeMkvOutPath, "title_t01.mkv");
-        using (var fs = new FileStream(outputFile, FileMode.CreateNew))
-            fs.SetLength(3_000_000_000L);
+        SetupRipWritingFile(makeMkv, makeMkvOutPath, "title_t01.mkv", 3_000_000_000L);
 
         ffmpeg.Setup(f => f.ProbeDurationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(6000.0);
@@ -553,10 +697,7 @@ public sealed class RipVerificationIntegrationTests : IDisposable
         _db.Entry(job).State = EntityState.Detached;
 
         var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
-        Directory.CreateDirectory(makeMkvOutPath);
-        var outputFile = Path.Combine(makeMkvOutPath, "title_t01.mkv");
-        using (var fs = new FileStream(outputFile, FileMode.CreateNew))
-            fs.SetLength(3_000_000_000L);
+        SetupRipWritingFile(makeMkv, makeMkvOutPath, "title_t01.mkv", 3_000_000_000L);
 
         ffmpeg.Setup(f => f.ProbeDurationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(6000.0);
@@ -600,21 +741,23 @@ public sealed class RipVerificationIntegrationTests : IDisposable
 
         var (service, job, makeMkv, ffmpeg, _) = CreateService(tracks: tracks);
 
+        var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
+
+        // The mock rip writes one output per requested track (as MakeMKV does); the
+        // service purges stale output first, so files cannot be pre-seeded.
         makeMkv.Setup(m => m.RipTrackAsync(
                 It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(SuccessfulRipResult());
-
-        var makeMkvOutPath = Path.Combine(_options.Value.RawPath!, ArmRipperService.FixJobTitle(job));
-        Directory.CreateDirectory(makeMkvOutPath);
-
-        // Create one output file per track so the post-rip file matching succeeds.
-        foreach (var track in tracks)
-        {
-            var file = Path.Combine(makeMkvOutPath, track.FileName!);
-            using var fs = new FileStream(file, FileMode.CreateNew);
-            fs.SetLength(track.FileSize ?? 1_000_000_000L);
-        }
+            .Returns((Job _j, string trackNumber, string outPath, string _a, int _ml,
+                IProgress<int>? _p, CancellationToken _ct) =>
+            {
+                var track = tracks.First(t => t.TrackNumber == trackNumber);
+                Directory.CreateDirectory(outPath);
+                using var fs = new FileStream(Path.Combine(outPath, track.FileName!),
+                    FileMode.Create, FileAccess.Write);
+                fs.SetLength(track.FileSize ?? 1_000_000_000L);
+                return Task.FromResult(SuccessfulRipResult());
+            });
 
         ffmpeg.Setup(f => f.ProbeDurationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string file, CancellationToken _) =>
