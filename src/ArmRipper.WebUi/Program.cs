@@ -23,7 +23,7 @@ var builder = WebApplication.CreateBuilder(args);
 // "Import ARM settings" action in the Settings UI (ArmSettingsImporter).
 var connectionString = builder.Configuration.GetConnectionString("ArmDb") ?? "Data Source=/etc/arm/config/arm-sharp.db";
 builder.Services.AddDbContext<ArmDbContext>(options =>
-    options.UseSqlite(connectionString));
+    options.UseSqlite(DatabaseHelper.AddArmDbConnectionString(connectionString)));
 
 builder.Services.Configure<ArmSettings>(builder.Configuration.GetSection(ArmSettings.SectionName));
 builder.Services.AddScoped<ISettingsService, SettingsService>();

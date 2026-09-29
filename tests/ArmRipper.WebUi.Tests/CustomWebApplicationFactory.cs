@@ -9,19 +9,58 @@ using Microsoft.EntityFrameworkCore;
 namespace ArmRipper.WebUi.Tests;
 
 /// <summary>
-/// Shared test factory that creates an isolated in-memory SQLite database per
-/// test class. Each class that uses <c>IClassFixture&lt;CustomWebApplicationFactory&gt;</c>
+/// Shared test factory that creates an isolated SQLite database per test class.
+/// Each class that uses <c>IClassFixture&lt;CustomWebApplicationFactory&gt;</c>
 /// gets its own instance, eliminating the flakiness caused by parallel DB seeding
 /// when multiple test classes share a single <c>WebApplicationFactory&lt;Program&gt;</c>.
+///
+/// The schema is produced by the real migration chain. Running that chain per factory
+/// is expensive (it rebuilds tables for every AlterColumn), so it is built once into a
+/// template file that each factory copies. That keeps per-class isolation while paying
+/// the migration cost a single time.
 /// </summary>
 public class CustomWebApplicationFactory : WebApplicationFactory<Program>, IDisposable
 {
+    private static readonly Lazy<string> TemplatePath = new(
+        BuildTemplate, LazyThreadSafetyMode.ExecutionAndPublication);
+
     private readonly SqliteConnection _dbConnection;
+    private readonly string _dbFile;
 
     public CustomWebApplicationFactory()
     {
-        _dbConnection = new SqliteConnection("DataSource=:memory:");
+        _dbFile = Path.Combine(Path.GetTempPath(), $"arm-webui-tests-{Guid.NewGuid():N}.db");
+        File.Copy(TemplatePath.Value, _dbFile);
+        _dbConnection = new SqliteConnection($"Data Source={_dbFile}");
         _dbConnection.Open();
+    }
+
+    /// <summary>Runs the full migration chain once into a reusable template file.</summary>
+    private static string BuildTemplate()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"arm-webui-tests-template-{Guid.NewGuid():N}.db");
+        var options = new DbContextOptionsBuilder<ArmDbContext>()
+            .UseSqlite($"Data Source={path}")
+            .Options;
+        using (var db = new ArmDbContext(options))
+        {
+            db.Database.Migrate();
+        }
+
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => TryDelete(path);
+        return path;
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch (IOException)
+        {
+            // Best effort; a leftover temp file is harmless.
+        }
     }
 
     /// <summary>The underlying SQLite connection, exposed so callers can seed extra data.</summary>
@@ -43,7 +82,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>, IDisp
 
             using var scope = services.BuildServiceProvider().CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
-            db.Database.EnsureCreated();
+            // The schema already came from the real migration chain via the template
+            // copy, so this is a no-op check; the app's own startup runs Migrate() and
+            // must find nothing pending.
+            db.Database.Migrate();
 
             SeedDb(db);
         });
@@ -68,7 +110,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>, IDisp
     protected override void Dispose(bool disposing)
     {
         if (disposing)
+        {
             _dbConnection?.Dispose();
+            TryDelete(_dbFile);
+        }
         base.Dispose(disposing);
     }
 }

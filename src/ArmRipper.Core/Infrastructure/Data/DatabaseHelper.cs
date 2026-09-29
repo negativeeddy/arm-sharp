@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -5,8 +6,18 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace ArmRipper.Core.Infrastructure.Data;
 
 /// <summary>
-/// Shared database initialization logic used by both CLI and WebUi entry points.
-/// Avoids duplicating raw SQL migration-fallback code across projects.
+/// Shared database initialization used by both the CLI and WebUi entry points.
+///
+/// Schema changes are made exclusively through EF Core migrations. This type
+/// deliberately contains no manual <c>ALTER TABLE</c> patching and no manual
+/// <c>__EFMigrationsHistory</c> seeding: that scheme silently diverged from the
+/// model, which is how <c>ConfigSnapshot.MakeMkvInfoScanTimeoutMinutes</c>,
+/// <c>jobs.DiscVariant</c> and <c>config.ManualSelectionWaitTime</c> ended up in
+/// the model with no migration, breaking every query against <c>config</c> on
+/// existing databases ("no such column").
+///
+/// If you add a property to an entity, add a migration for it. The
+/// <c>MigrationChain_ProducesSchemaIdenticalToModel</c> test fails CI otherwise.
 /// </summary>
 public static class DatabaseHelper
 {
@@ -17,150 +28,108 @@ public static class DatabaseHelper
     public static ILogger Logger { get; set; } = NullLogger.Instance;
 
     /// <summary>
-    /// Ensures the database is migrated or created. Tries EF Core migrations first;
-    /// falls back to EnsureCreated + manual migration-history entries for environments
-    /// where migrations haven't been applied (e.g., existing databases from earlier builds).
+    /// Applies all pending EF Core migrations.
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when a migration cannot be applied. Failing loudly is deliberate — a
+    /// database whose schema does not match the model produces confusing
+    /// "no such column" errors much later, so a wrong schema is worse than a
+    /// service that refuses to start.
+    /// </exception>
     public static void EnsureMigrated(ArmDbContext db)
     {
-        // ── Idempotent schema patches for columns that may have been added by
-        // incomplete migration runs (e.g. when a migration ID changed after a
-        // previous attempt partially succeeded). ──
-        // Check if PreferWidescreen was already added (by a prior migration attempt
-        // with a different ID). If so, mark the current migration as applied so
-        // Migrate() won't try to re-add it.
-        if (ColumnExists(db, "config", "PreferWidescreen"))
-        {
-            TryInsertMigration(db, "20260716025640_AddPreferWidescreen");
-        }
-
         try
         {
             db.Database.Migrate();
         }
         catch (Exception ex)
         {
-            Logger.LogDebug(ex, "EF migrations failed — falling back to EnsureCreated");
-            db.Database.EnsureCreated();
-            db.Database.ExecuteSql($"CREATE TABLE IF NOT EXISTS \"__EFMigrationsHistory\" (\"MigrationId\" TEXT NOT NULL, \"ProductVersion\" TEXT NOT NULL);");
-        }
-
-        // Idempotent schema patches for migrations that may not have been applied.
-        // Run unconditionally — Migrate() may succeed but miss newer columns when
-        // the DB predates a migration that was never applied to it.
-        TryAlterColumn(db, "jobs", "Warnings");
-        TryAlterColumn(db, "jobs", "ProgressMessage");
-        TryAlterColumn(db, "jobs", "StageErrors");
-        TryAlterColumn(db, "jobs", "ManualWaitResume");
-        TryAlterColumn(db, "jobs", "CompletedStages");
-        TryAlterColumn(db, "jobs", "OriginalJobId", "INTEGER");
-        TryAlterColumn(db, "jobs", "MainFeatureOverrideTrackNumber");
-        TryAlterColumn(db, "jobs", "ManualSelectionTrackNumbers");
-        TryAlterColumn(db, "disc_metadata", "MainFeatureTrackNumber");
-        // MaxConcurrentRips removed — per-drive gating supersedes the global slot.
-
-        // ── Season/Disc/StartingEpisode columns (PR#32) ──
-        TryAlterColumn(db, "jobs", "SeasonNumberAuto", "INTEGER");
-        TryAlterColumn(db, "jobs", "SeasonNumberManual", "INTEGER");
-        TryAlterColumn(db, "jobs", "DiscNumber", "INTEGER");
-        TryAlterColumn(db, "jobs", "DiscNumberAuto", "INTEGER");
-        TryAlterColumn(db, "jobs", "DiscNumberManual", "INTEGER");
-        TryAlterColumn(db, "jobs", "StartingEpisodeNumber", "INTEGER");
-        // Side/variant letter for double-sided (flipper) discs (e.g. "A"/"B").
-        TryAlterColumn(db, "jobs", "DiscVariant");
-
-        // ── ConfigSnapshot columns added after the Initial migration ──
-        TryAlterColumn(db, "config", "PreferWidescreen", "INTEGER");
-        TryAlterColumn(db, "config", "ManualSelection", "INTEGER");
-        TryAlterColumn(db, "config", "ManualSelectionWaitTime", "INTEGER");
-        TryAlterColumn(db, "system_drives", "ManualSelection", "INTEGER");
-
-        // ── Seed migration history always ──
-        db.Database.ExecuteSql($"INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('20260610044322_Initial', '10.0.0');");
-        TryInsertMigration(db, "20260610053400_AddProgressMessage");
-        TryInsertMigration(db, "20260610055000_AddManualWaitTime");
-        TryInsertMigration(db, "20260612035456_AddDiscTrackFileName");
-        TryInsertMigration(db, "20260612040927_AddStageErrors");
-        TryInsertMigration(db, "20260613200029_AddManualWaitResume");
-        TryInsertMigration(db, "20260614174913_AddCompletedStages");
-        TryInsertMigration(db, "20260626033421_AddOriginalJobId");
-        TryInsertMigration(db, "20260716025640_AddPreferWidescreen");
-
-        db.Database.ExecuteSql($"PRAGMA busy_timeout = 5000;");
-    }
-
-    private static bool ColumnExists(ArmDbContext db, string table, string column)
-    {
-        try
-        {
-            var conn = db.Database.GetDbConnection();
-            var needClose = conn.State != System.Data.ConnectionState.Open;
-            if (needClose) conn.Open();
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{column}'";
-                return (long)(cmd.ExecuteScalar() ?? 0) > 0;
-            }
-            finally
-            {
-                if (needClose) conn.Close();
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogDebug(ex, "ColumnExists check failed for {Table}.{Column}", table, column);
-            return false;
+            var message = BuildGuidanceMessage(db);
+            Logger.LogError(ex, "{Message}", message);
+            throw new InvalidOperationException(message, ex);
         }
     }
 
-    private static void TryAlterColumn(ArmDbContext db, string table, string column, string? type = null)
+    /// <summary>
+    /// Builds an operator-facing explanation for a failed <c>Migrate()</c>.
+    /// </summary>
+    private static string BuildGuidanceMessage(ArmDbContext db)
+    {
+        var dbPath = db.Database.GetDbConnection().DataSource;
+        var pending = SafePendingMigrations(db);
+        var pendingText = pending.Count == 0
+            ? "unknown"
+            : string.Join(", ", pending);
+
+        // Point at the migration that actually failed to apply rather than a
+        // hardcoded id, so the hint cannot go stale as migrations are added.
+        var skipHint = pending.Count > 0
+            ? $"""
+                If the error is "duplicate column name", the column already exists and
+                only the history row is missing. Record it as applied to skip re-adding:
+
+                  sqlite3 "{dbPath}" "INSERT OR IGNORE INTO __EFMigrationsHistory
+                    (MigrationId, ProductVersion)
+                    VALUES ('{pending[0]}', '10.0.0');"
+                """
+            : "Identify the failing migration from the inner exception above.";
+
+        return $"""
+            Failed to apply database migrations to '{dbPath}'.
+
+            Pending migration(s): {pendingText}
+            (The underlying error is attached as the inner exception.)
+
+            This database was most likely created by a build that changed the schema
+            outside the migration system, or by EnsureCreated() rather than Migrate().
+            Columns known to have shipped without a migration before the chain was
+            repaired: config.ManualSelectionWaitTime, jobs.DiscVariant,
+            config.MakeMkvInfoScanTimeoutMinutes.
+
+            {skipHint}
+
+            Otherwise back up the database and report this error.
+            """;
+    }
+
+    private static List<string> SafePendingMigrations(ArmDbContext db)
     {
         try
         {
-            // Check column existence via PRAGMA before attempting ALTER.
-            // Use raw ADO.NET — EF Core's SqlQueryRaw wraps the query in a subquery
-            // that breaks PRAGMA table_info.
-            var conn = db.Database.GetDbConnection();
-            var needClose = conn.State != System.Data.ConnectionState.Open;
-            if (needClose) conn.Open();
-            try
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{column}'";
-                var count = (long)(cmd.ExecuteScalar() ?? 0);
-                if (count > 0)
-                    return;
-            }
-            finally
-            {
-                if (needClose) conn.Close();
-            }
-
-            // SQLite doesn't accept parameters in ALTER TABLE DDL.
-#pragma warning disable EF1002
-            db.Database.ExecuteSqlRaw(
-                $"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {(type ?? "TEXT")} NULL;");
-#pragma warning restore EF1002
+            return db.Database.GetPendingMigrations().ToList();
         }
-        catch (Exception ex)
+        catch
         {
-            Logger.LogDebug(ex, "Failed to add column {Table}.{Column}", table, column);
+            // The failure may be precisely what makes this query throw; the original
+            // exception is preserved as the inner exception, so don't mask it.
+            return new List<string>();
         }
     }
 
-    private static void TryInsertMigration(ArmDbContext db, string migrationId)
+    /// <summary>
+    /// Normalizes a SQLite connection string for ARM use.
+    ///
+    /// <c>busy_timeout</c> used to be applied as a bare <c>PRAGMA</c> in
+    /// <see cref="EnsureMigrated"/>, but that pragma is per-connection and does not
+    /// survive connection pooling, so most connections got no busy-wait protection
+    /// and concurrent writers could fail immediately with SQLITE_BUSY. Putting the
+    /// timeout in the connection string makes Microsoft.Data.Sqlite issue it on every
+    /// new connection.
+    /// </summary>
+    public static string AddArmDbConnectionString(string connectionString)
     {
-        try
-        {
-#pragma warning disable EF1002
-            db.Database.ExecuteSqlRaw(
-                $"INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ('{migrationId}', '10.0.0');");
-#pragma warning restore EF1002
-        }
-        catch (Exception ex)
-        {
-            Logger.LogDebug(ex, "Failed to record migration {MigrationId} in history", migrationId);
-        }
+        var builder = new SqliteConnectionStringBuilder(connectionString);
+
+        // Microsoft.Data.Sqlite already defaults DefaultTimeout to 30s, which drives
+        // SQLite's busy handler. The old bare `PRAGMA busy_timeout = 5000` actually
+        // *lowered* that to 5s, and because the pragma is per-connection it never
+        // applied to pooled connections anyway. Enforce a floor instead, and never
+        // shorten an explicitly configured value.
+        const int MinimumTimeoutSeconds = 5;
+        if (builder.DefaultTimeout < MinimumTimeoutSeconds)
+            builder.DefaultTimeout = MinimumTimeoutSeconds;
+
+        builder.Pooling = true;
+        return builder.ToString();
     }
 }

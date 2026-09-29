@@ -11,7 +11,7 @@ namespace ArmRipper.Core.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             // Backfill NULL/empty VideoType so the NOT NULL constraint can be applied.
-            migrationBuilder.Sql("UPDATE jobs SET VideoType = 'unknown' WHERE VideoType IS NULL OR VideoType = ''");
+            migrationBuilder.Sql("UPDATE jobs SET VideoType = 'unknown' WHERE VideoType IS NULL OR VideoType = '';");
 
             migrationBuilder.AlterColumn<string>(
                 name: "VideoType",
