@@ -1023,10 +1023,12 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
                 It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(tracks);
 
-        // Track "0" rips successfully (writes its output file); track "1" fails
-        // with a MakeMKV error — a partial rip.
+        // Track "1" (the longest / main feature) rips successfully; track "0"
+        // fails with a MakeMKV error — a partial rip where the main feature
+        // succeeded. The gate must allow transcode to proceed for the main
+        // feature's output while recording the secondary track's failure.
         _makeMkv.Setup(m => m.RipTrackAsync(
-                It.IsAny<Job>(), "0", It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<Job>(), "1", It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<int>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
             .Callback<Job, string, string, string, int, IProgress<int>?, CancellationToken>(
                 (_, trackNumber, outputPath, _, _, _, _) =>
@@ -1038,7 +1040,7 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
                 })
             .ReturnsAsync(SuccessfulRipResult());
         _makeMkv.Setup(m => m.RipTrackAsync(
-                It.IsAny<Job>(), "1", It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<Job>(), "0", It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<int>(), It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Process 'makemkvcon' exited with code 12"));
 

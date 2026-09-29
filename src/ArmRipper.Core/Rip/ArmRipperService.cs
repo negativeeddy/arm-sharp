@@ -263,6 +263,21 @@ public sealed class ArmRipperService(
         }
 
         var previous = tracks.FirstOrDefault(t => t.MainFeature);
+
+        // Sanity check: if the DiscDb "main" candidate is dramatically shorter
+        // than the duration-based pick, DiscDb's classification is almost certainly
+        // wrong (e.g. an 8s sting tagged as "main" vs the real 2h feature). Only
+        // promote when the candidate is at least 10% of the current main's length.
+        if (previous?.Length is int prevLen && prevLen > 0
+            && discDbMain.Length is int candLen && candLen > 0
+            && candLen < prevLen / 10)
+        {
+            logger.LogWarning(
+                "DiscDb: track {Track} typed as main but is only {CandLen}s vs current main {OldTrack} at {PrevLen}s — keeping duration-based pick",
+                discDbMain.TrackNumber, candLen, previous.TrackNumber, prevLen);
+            return;
+        }
+
         foreach (var track in tracks)
             track.MainFeature = ReferenceEquals(track, discDbMain);
 
@@ -1112,15 +1127,25 @@ public sealed class ArmRipperService(
                             && selectedSet.Contains(track.TrackNumber);
                     }
 
-                    // Also update the MainFeature flag to the first selected track
-                    // so downstream stages (transcode) know which is primary.
-                    var firstSelected = tracks.FirstOrDefault(t => t.Process);
+                    // Also update the MainFeature flag to the longest selected
+                    // track so downstream stages (transcode) use the right title.
+                    // Picking the first by list order could select a DiscDb-promoted
+                    // short track if the user inadvertently left it checked.
+                    var selectedTracks = tracks.Where(t => t.Process).ToList();
+                    var mainSelected = selectedTracks
+                        .OrderByDescending(t => t.Length ?? 0)
+                        .FirstOrDefault();
                     foreach (var track in tracks)
-                        track.MainFeature = ReferenceEquals(track, firstSelected);
+                        track.MainFeature = ReferenceEquals(track, mainSelected);
 
-                    // Persist the updated Process flags
+                    // Persist both Process and MainFeature flags — the transcode
+                    // gate reads MainFeature from the DB to verify the intended
+                    // track was actually ripped.
                     foreach (var track in tracks)
+                    {
                         db.Entry(track).Property(x => x.Process).IsModified = true;
+                        db.Entry(track).Property(x => x.MainFeature).IsModified = true;
+                    }
 
                     manualSelectionApplied = true;
 
