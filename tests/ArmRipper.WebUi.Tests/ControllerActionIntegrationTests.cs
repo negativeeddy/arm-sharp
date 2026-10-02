@@ -1232,6 +1232,69 @@ public class ControllerActionIntegrationTests : IClassFixture<CustomWebApplicati
         Assert.Contains("var cbOffset = 0;", html);
         // The Redirect (last) column is excluded from sorting.
         Assert.Contains("headers[cbOffset + 13] = { sorter: false }", html);
+        // Track number columns carry numeric data-text for correct client-side sorting.
+        Assert.Contains("data-text=\"1\">1<", html);
+        Assert.Contains("data-text=\"0\">0<", html);
+    }
+
+    [Fact]
+    public async Task JobDetail_SortsTracksNumerically()
+    {
+        // Regression: track numbers must sort numerically (1,2,3,4,20,31)
+        // not lexicographically (1,2,20,3,31,4).
+        int jobId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = new Job
+            {
+                Title = "Numeric Sort",
+                TitleAuto = "Numeric Sort",
+                Year = "2026",
+                VideoType = VideoContentType.Movie,
+                DiscType = DiscType.Dvd,
+                Status = JobState.Active,
+                StartTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99",
+                Config = new ConfigSnapshot { MinLength = 300, MaxLength = 9999, RipMethod = "mkv", GetAudioTitle = "" }
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+
+            db.Tracks.AddRange(
+                new Track { JobId = jobId, TrackNumber = "1", FileName = "t1.mkv", Process = true, MainFeature = true },
+                new Track { JobId = jobId, TrackNumber = "2", FileName = "t2.mkv", Process = false },
+                new Track { JobId = jobId, TrackNumber = "20", FileName = "t20.mkv", Process = false },
+                new Track { JobId = jobId, TrackNumber = "3", FileName = "t3.mkv", Process = false },
+                new Track { JobId = jobId, TrackNumber = "31", FileName = "t31.mkv", Process = false },
+                new Track { JobId = jobId, TrackNumber = "4", FileName = "t4.mkv", Process = false },
+                new Track { JobId = jobId, TrackNumber = "40", FileName = "t40.mkv", Process = false },
+                new Track { JobId = jobId, TrackNumber = "41", FileName = "t41.mkv", Process = false });
+            await db.SaveChangesAsync();
+        }
+
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync($"/jobs/jobdetail?jobId={jobId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var html = await response.Content.ReadAsStringAsync();
+        // Server-side numeric sort: rows must appear as 1,2,3,4,20,31,40,41.
+        var idx1 = html.IndexOf("data-text=\"1\">1<");
+        var idx2 = html.IndexOf("data-text=\"2\">2<");
+        var idx20 = html.IndexOf("data-text=\"20\">20<");
+        var idx3 = html.IndexOf("data-text=\"3\">3<");
+        var idx31 = html.IndexOf("data-text=\"31\">31<");
+        var idx4 = html.IndexOf("data-text=\"4\">4<");
+        var idx40 = html.IndexOf("data-text=\"40\">40<");
+        var idx41 = html.IndexOf("data-text=\"41\">41<");
+        Assert.True(idx1 < idx2, "Track 1 must appear before track 2");
+        Assert.True(idx2 < idx3, "Track 2 must appear before track 3");
+        Assert.True(idx3 < idx4, "Track 3 must appear before track 4");
+        Assert.True(idx4 < idx20, "Track 4 must appear before track 20");
+        Assert.True(idx20 < idx31, "Track 20 must appear before track 31");
+        Assert.True(idx31 < idx40, "Track 31 must appear before track 40");
+        Assert.True(idx40 < idx41, "Track 40 must appear before track 41");
     }
 
     [Fact]
