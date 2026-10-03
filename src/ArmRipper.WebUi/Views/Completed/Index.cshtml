@@ -3,12 +3,12 @@
     ViewData["Title"] = "Output Files";
     var totalFiles = Model.Count;
 
-    // Single flat list ordered by Source priority, then by directory, then by date desc.
+    // Single flat list ordered by Source priority, then by directory, then by filename alphabetically.
     var sourceOrder = new Dictionary<FileSource, int> { [FileSource.Completed] = 0, [FileSource.Transcode] = 1, [FileSource.Raw] = 2 };
     var ordered = Model
         .OrderBy(f => sourceOrder.TryGetValue(f.Source, out var o) ? o : 3)
         .ThenBy(f => f.RelativeDirectory)
-        .ThenByDescending(f => f.LastModified)
+        .ThenBy(f => f.FileName, StringComparer.OrdinalIgnoreCase)
         .ToList();
 }
 
