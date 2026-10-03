@@ -85,6 +85,11 @@ public class ConfigSnapshot
     public double DiscDbMinConfidence { get; set; } = 0.7;
     public bool DiscDbRequireConfirmation { get; set; } = false;
 
+    /// <summary>When set, MakeMKV runs under libfaketime with the clock at midnight on this date.</summary>
+    public DateTime? FakeSystemClockDate { get; set; }
+    /// <summary>Path to the libfaketime .so for <see cref="FakeSystemClockDate"/>.</summary>
+    public string? FakeSystemClockLibPath { get; set; }
+
     public Job Job { get; set; } = null!;
 
     /// <summary>
@@ -163,6 +168,8 @@ public class ConfigSnapshot
             DiscDbApiBaseUrl          = settings.DiscDbApiBaseUrl,
             DiscDbMinConfidence       = settings.DiscDbMinConfidence,
             DiscDbRequireConfirmation = settings.DiscDbRequireConfirmation,
+            FakeSystemClockDate       = settings.FakeSystemClockDate,
+            FakeSystemClockLibPath    = settings.FakeSystemClockLibPath,
         };
     }
 }

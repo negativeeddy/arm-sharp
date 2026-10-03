@@ -16,7 +16,7 @@ public static class FileBotCliBridge
     {
         return async (args, workingDir, timeoutMs, ct) =>
         {
-            var result = await runner.RunAsync("filebot", args, workingDir, timeoutMs, ct);
+            var result = await runner.RunAsync("filebot", args, workingDir, timeoutMs, ct: ct);
             return new FileBotCliOutput(result.ExitCode, result.StdOut, result.StdErr);
         };
     }

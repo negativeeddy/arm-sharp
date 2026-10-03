@@ -38,7 +38,8 @@ public partial class MakeMkvService : IMakeMkvService
 
     public async Task<string> GetVersionAsync(CancellationToken ct = default)
     {
-        var result = await _runner.RunAsync("makemkvcon", "--version", timeoutMs: 10_000, ct: ct);
+        var env = await GetFaketimeEnvAsync(ct);
+        var result = await _runner.RunAsync("makemkvcon", "--version", timeoutMs: 10_000, environmentVariables: env, ct: ct);
         var firstLine = result.StdOut
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(l => l.Trim())
@@ -140,9 +141,10 @@ public partial class MakeMkvService : IMakeMkvService
     {
         await EnsureKeyAsync(ct);
 
+        var env = await GetFaketimeEnvAsync(ct);
         var cmd = new[] { "makemkvcon", "--robot", "--messages=-stdout" }.Concat(options).ToArray();
 
-        await foreach (var line in _runner.RunStreamingAsync(cmd[0], string.Join(" ", cmd[1..]), ct: ct))
+        await foreach (var line in _runner.RunStreamingAsync(cmd[0], string.Join(" ", cmd[1..]), environmentVariables: env, ct: ct))
         {
             if (string.IsNullOrWhiteSpace(line)) continue;
 
@@ -190,9 +192,11 @@ public partial class MakeMkvService : IMakeMkvService
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(TimeSpan.FromMinutes(infoScanTimeoutMinutes));
 
+        var env = await GetFaketimeEnvAsync(ct);
+
         try
         {
-            await foreach (var (line, isStdErr, exitCode) in _runner.RunStreamingAllAsync(fileName, arguments, ct: timeoutCts.Token))
+            await foreach (var (line, isStdErr, exitCode) in _runner.RunStreamingAllAsync(fileName, arguments, environmentVariables: env, ct: timeoutCts.Token))
             {
                 if (exitCode.HasValue)
                 {
@@ -465,6 +469,8 @@ public partial class MakeMkvService : IMakeMkvService
 
         var result = new MakeMkvRipResult();
 
+        var env = await GetFaketimeEnvAsync(ct);
+
         try
         {
             // trackNumber is the 0-based TINFO index from MakeMKV's info scan.
@@ -476,7 +482,7 @@ public partial class MakeMkvService : IMakeMkvService
             if (!string.IsNullOrEmpty(mkvArgs))
                 args = $"--robot --messages=-stdout --progress=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} {trackNumber} \"{outputPath}\"";
 
-            await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
+            await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, environmentVariables: env, ct: ct))
             {
                 ParseAndReportProgress(line, progress);
                 CaptureMessage(line, result);
@@ -512,13 +518,15 @@ public partial class MakeMkvService : IMakeMkvService
 
         var result = new MakeMkvRipResult();
 
+        var env = await GetFaketimeEnvAsync(ct);
+
         try
         {
             var args = $"--robot --messages=-stdout --progress=-stdout mkv --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
             if (!string.IsNullOrEmpty(mkvArgs))
                 args = $"--robot --messages=-stdout --progress=-stdout mkv {mkvArgs} --minlength={minLength} dev:{job.DevPath} all \"{outputPath}\"";
 
-            await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, ct: ct))
+            await foreach (var line in _runner.RunStreamingAsync("makemkvcon", args, environmentVariables: env, ct: ct))
             {
                 ParseAndReportProgress(line, progress);
                 CaptureMessage(line, result);
@@ -691,5 +699,30 @@ public partial class MakeMkvService : IMakeMkvService
     /// Delegates to <see cref="MakeMkvOutputParser.ParseLine"/> for backward-compatible access.
     /// </summary>
     public MakeMkvOutputParser.ParsedLine? ParseLine(string line) => MakeMkvOutputParser.ParseLine(line);
+
+    /// <summary>
+    /// Builds an environment-variable dictionary with <c>LD_PRELOAD</c> and
+    /// <c>FAKETIME</c> set when the user has configured a fake system clock date.
+    /// Returns null when faketime is disabled.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, string>?> GetFaketimeEnvAsync(CancellationToken ct)
+    {
+        var effective = await _settingsService.GetEffectiveAsync(ct);
+        var fakeDate = effective.FakeSystemClockDate;
+        if (fakeDate is null)
+            return null;
+
+        var libPath = effective.FakeSystemClockLibPath
+            ?? "/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1";
+
+        // Format as "YYYY-MM-DD HH:mm:ss" — midnight local time on the selected date.
+        var faketime = fakeDate.Value.ToString("yyyy-MM-dd HH:mm:ss");
+
+        return new Dictionary<string, string>
+        {
+            ["LD_PRELOAD"] = libPath,
+            ["FAKETIME"] = faketime,
+        };
+    }
 }
 

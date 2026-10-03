@@ -12,6 +12,7 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
         string arguments,
         string? workingDirectory = null,
         int timeoutMs = 120_000,
+        IReadOnlyDictionary<string, string>? environmentVariables = null,
         CancellationToken ct = default)
     {
         logger.LogDebug("Running: {FileName} {Arguments}", fileName, arguments);
@@ -30,6 +31,12 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
                 CreateNoWindow = true
             }
         };
+
+        if (environmentVariables is not null)
+        {
+            foreach (var (key, value) in environmentVariables)
+                process.StartInfo.Environment[key] = value;
+        }
 
         process.Start();
 
@@ -106,6 +113,7 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
         string fileName,
         string arguments,
         string? workingDirectory = null,
+        IReadOnlyDictionary<string, string>? environmentVariables = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         logger.LogInformation("Streaming: {FileName} {Arguments}", fileName, arguments);
@@ -124,6 +132,12 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
                 CreateNoWindow = true
             }
         };
+
+        if (environmentVariables is not null)
+        {
+            foreach (var (key, value) in environmentVariables)
+                process.StartInfo.Environment[key] = value;
+        }
 
         process.Start();
 
@@ -177,6 +191,7 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
         string fileName,
         string arguments,
         string? workingDirectory = null,
+        IReadOnlyDictionary<string, string>? environmentVariables = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         logger.LogInformation("Streaming both: {FileName} {Arguments}", fileName, arguments);
@@ -194,6 +209,12 @@ public class CliProcessRunner(ILoggerFactory loggerFactory) : ICliProcessRunner
                 CreateNoWindow = true
             }
         };
+
+        if (environmentVariables is not null)
+        {
+            foreach (var (key, value) in environmentVariables)
+                process.StartInfo.Environment[key] = value;
+        }
 
         process.Start();
 

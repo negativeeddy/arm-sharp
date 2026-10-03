@@ -16,7 +16,7 @@ public sealed class FfmpegServiceTests
 
         _runnerMock
             .Setup(r => r.RunAsync(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "", "", false));
 
         _service = new FfmpegService(
@@ -32,7 +32,7 @@ public sealed class FfmpegServiceTests
     {
         _runnerMock
             .Setup(r => r.RunAsync("ffprobe",
-                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "6547.200000\n", "", false));
 
         var file = Path.Combine(Path.GetTempPath(), "fixture.mkv");
@@ -53,7 +53,7 @@ public sealed class FfmpegServiceTests
     {
         _runnerMock
             .Setup(r => r.RunAsync("ffprobe",
-                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(1, "", "error", false));
 
         var file = Path.Combine(Path.GetTempPath(), "fixture.mkv");
@@ -73,7 +73,7 @@ public sealed class FfmpegServiceTests
     {
         _runnerMock
             .Setup(r => r.RunAsync("ffprobe",
-                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "N/A\n", "", false));
 
         var file = Path.Combine(Path.GetTempPath(), "fixture.mkv");
@@ -94,7 +94,7 @@ public sealed class FfmpegServiceTests
         var missing = Path.Combine(Path.GetTempPath(), "does-not-exist.mkv");
         Assert.Null(await _service.ProbeDurationAsync(missing));
         _runnerMock.Verify(r => r.RunAsync(
-            "ffprobe", It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            "ffprobe", It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -103,7 +103,7 @@ public sealed class FfmpegServiceTests
     {
         _runnerMock
             .Setup(r => r.RunAsync("ffprobe",
-                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new IOException("boom"));
 
         var file = Path.Combine(Path.GetTempPath(), "fixture.mkv");
@@ -142,6 +142,7 @@ public sealed class FfmpegServiceTests
                 a.Contains($"\"{file}\"", StringComparison.Ordinal)),
             It.IsAny<string?>(),
             It.IsAny<int>(),
+            It.IsAny<IReadOnlyDictionary<string, string>?>(),
             It.IsAny<CancellationToken>()));
     }
 }

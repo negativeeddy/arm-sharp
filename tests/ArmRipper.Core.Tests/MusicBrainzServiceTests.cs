@@ -125,7 +125,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
     public async Task IdentifyAsync_WhenDiscIdFails_ReturnsEmpty()
     {
         _runnerMock
-            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(1, "", "device not found", false));
 
         var httpClient = CreateHttpClient(MusicBrainzXml());
@@ -147,7 +147,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
     public async Task IdentifyAsync_WhenDiscIdSucceeds_ReturnsArtistTitle()
     {
         _runnerMock
-            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "abc123\nsome other line", "", false));
 
         var httpClient = CreateHttpClient(MusicBrainzXml());
@@ -172,7 +172,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
     public async Task IdentifyAsync_ParsesOffsetCount()
     {
         _runnerMock
-            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "abc123", "", false));
 
         var httpClient = CreateHttpClient(MusicBrainzXml(offsetCount: "5"));
@@ -192,7 +192,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
     public async Task IdentifyAsync_WithInvalidOffsetCount_DoesNotCrash()
     {
         _runnerMock
-            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "abc123", "", false));
 
         var httpClient = CreateHttpClient(MusicBrainzXml(offsetCount: "not-a-number"));
@@ -212,7 +212,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
     public async Task IdentifyAsync_SavesTracksToDatabase()
     {
         _runnerMock
-            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "abc123", "", false));
 
         var httpClient = CreateHttpClient(MusicBrainzXml());
@@ -236,7 +236,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
     public async Task IdentifyAsync_WhenXmlIsMalformed_ReturnsEmpty()
     {
         _runnerMock
-            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "abc123", "", false));
 
         var httpClient = CreateHttpClient("not valid xml");
@@ -256,7 +256,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
     public async Task IdentifyAsync_WhenMusicBrainzFails_ReturnsEmpty()
     {
         _runnerMock
-            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "abc123", "", false));
 
         var httpClient = TestHelpers.CreateMockHttpClient("", HttpStatusCode.InternalServerError);
@@ -276,7 +276,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
     public async Task IdentifyAsync_WithCdStub_ReturnsArtistTitle()
     {
         _runnerMock
-            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "abc123", "", false));
 
         var httpClient = CreateHttpClient(CdStubXml());
@@ -299,7 +299,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
     public async Task IdentifyAsync_WithCdStub_ParsesTrackCount()
     {
         _runnerMock
-            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "abc123", "", false));
 
         var httpClient = CreateHttpClient(CdStubXml(trackCount: 5));
@@ -319,7 +319,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
     public async Task IdentifyAsync_WithCdStubAndInvalidTrackCount_DoesNotCrash()
     {
         _runnerMock
-            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "abc123", "", false));
 
         var xml = CdStubXml().Replace(">2<", ">invalid<");
@@ -340,7 +340,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
     public async Task IdentifyAsync_SetsPosterUrlWhenCoverArtFound()
     {
         _runnerMock
-            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "abc123", "", false));
 
         var httpClient = CreateHttpClient(MusicBrainzXml(), CoverArtJson("https://art.example.com/cover.jpg"));
@@ -360,7 +360,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
     public async Task IdentifyAsync_SkipsCoverArtWhenNotAvailable()
     {
         _runnerMock
-            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "abc123", "", false));
 
         var httpClient = CreateHttpClient(MusicBrainzXml(), null);
@@ -382,7 +382,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
         var options = TestHelpers.CreateOptions(o => o.GetAudioTitle = "none");
 
         _runnerMock
-            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "abc123", "", false));
 
         var httpClient = CreateHttpClient(MusicBrainzXml());
@@ -403,7 +403,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
     public async Task IdentifyAsync_WhenNoReleases_ReturnsEmpty()
     {
         _runnerMock
-            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "abc123", "", false));
 
         var xml = MusicBrainzXml().Replace(@"<release-list count=""1"">", @"<release-list count=""0"">")
@@ -431,7 +431,7 @@ public sealed class MusicBrainzServiceTests : IDisposable
     public async Task IdentifyAsync_WhenFormatIsNotCd_SkipsRelease()
     {
         _runnerMock
-            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<CancellationToken>()))
+            .Setup(r => r.RunAsync("discid", "/dev/sr0", It.IsAny<string?>(), 15_000, It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "abc123", "", false));
 
         var xml = MusicBrainzXml().Replace("<format>CD</format>", "<format>DVD</format>");

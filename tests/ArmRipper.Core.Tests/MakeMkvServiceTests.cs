@@ -22,12 +22,12 @@ public sealed class MakeMkvServiceTests : IDisposable
 
         _runnerMock
             .Setup(r => r.RunAsync(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "", "", false));
 
         _runnerMock
             .Setup(r => r.RunStreamingAsync(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .Returns(AsyncEnumerable.Empty<string>());
 
         _service = new MakeMkvService(
@@ -266,6 +266,7 @@ public sealed class MakeMkvServiceTests : IDisposable
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(ThrowingStreamingAllAsync());
 
@@ -303,6 +304,7 @@ public sealed class MakeMkvServiceTests : IDisposable
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(ToStreamingAllAsync(output.Split('\n')));
 
@@ -337,6 +339,7 @@ public sealed class MakeMkvServiceTests : IDisposable
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(ToStreamingAllAsync());
 
@@ -364,6 +367,7 @@ public sealed class MakeMkvServiceTests : IDisposable
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(ToStreamingAllAsync(output.Split('\n')));
 
@@ -439,6 +443,7 @@ public sealed class MakeMkvServiceTests : IDisposable
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(ToStreamingAllAsync("TCOUNT:1", "TINFO:0,9,0,\"00:30:00\"", "TINFO:0,27,0,\"title00.mkv\""));
 
@@ -457,6 +462,7 @@ public sealed class MakeMkvServiceTests : IDisposable
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(ToStreamingAllAsync("TCOUNT:1", "TINFO:0,9,0,\"00:10:00\"", "TINFO:0,27,0,\"title00.mkv\""));
 
@@ -510,6 +516,7 @@ public sealed class MakeMkvServiceTests : IDisposable
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(ToAsyncStream("PRGC:100,100", "PRGV:1,1,100,100"));
 
@@ -522,7 +529,8 @@ public sealed class MakeMkvServiceTests : IDisposable
             "makemkvcon",
             It.Is<string>(a => a.Contains("mkv") && a.Contains("dev:/dev/sr0") && a.Contains("0") && a.Contains("/output/path")),
             It.IsAny<string?>(),
-            It.IsAny<CancellationToken>()));
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
+                It.IsAny<CancellationToken>()));
     }
 
     [Fact]
@@ -533,6 +541,7 @@ public sealed class MakeMkvServiceTests : IDisposable
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(ToAsyncStream());
 
@@ -544,7 +553,8 @@ public sealed class MakeMkvServiceTests : IDisposable
             "makemkvcon",
             It.Is<string>(a => a.Contains("--decrypt")),
             It.IsAny<string?>(),
-            It.IsAny<CancellationToken>()));
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
+                It.IsAny<CancellationToken>()));
     }
 
     // ── RipAllTitlesAsync tests ──────────────────────────────────
@@ -557,6 +567,7 @@ public sealed class MakeMkvServiceTests : IDisposable
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(ToAsyncStream());
 
@@ -568,7 +579,8 @@ public sealed class MakeMkvServiceTests : IDisposable
             "makemkvcon",
             It.Is<string>(a => a.Contains(" all ") && a.Contains("/output/path")),
             It.IsAny<string?>(),
-            It.IsAny<CancellationToken>()));
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
+                It.IsAny<CancellationToken>()));
     }
 
     // ── Static helper tests ──────────────────────────────────────
@@ -627,6 +639,7 @@ public sealed class MakeMkvServiceTests : IDisposable
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(ToAsyncStream(
                 "PRGC:50,100",
@@ -650,6 +663,7 @@ public sealed class MakeMkvServiceTests : IDisposable
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(ToAsyncStream(
                 "MSG:1005,0,1,\"MakeMKV v1.17.8\",\"\",",
@@ -676,6 +690,7 @@ public sealed class MakeMkvServiceTests : IDisposable
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(ToAsyncStream(
                 "MSG:1005,0,1,\"MakeMKV v1.18.3\",\"\",",
@@ -702,6 +717,7 @@ public sealed class MakeMkvServiceTests : IDisposable
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(ToAsyncStream(
                 "MSG:1005,0,1,\"MakeMKV v1.18.3\",\"\",",
@@ -729,6 +745,7 @@ public sealed class MakeMkvServiceTests : IDisposable
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(ToAsyncStream(
                 "MSG:5004,128,2,\"0 titles saved, 1 failed\",\"%1 titles saved, %2 failed\",\"0\",\"1\""));
@@ -752,6 +769,7 @@ public sealed class MakeMkvServiceTests : IDisposable
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(ToAsyncStream(
                 "MSG:3028,0,3,\"Title #2 was added (1 cell(s), 0:00:09)\",\"Title #%1 was added (%2 cell(s), %3)\",\"2\",\"1\",\"0:00:09\"",
@@ -773,6 +791,7 @@ public sealed class MakeMkvServiceTests : IDisposable
                 "makemkvcon",
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                It.IsAny<IReadOnlyDictionary<string, string>?>(),
                 It.IsAny<CancellationToken>()))
             .Returns(ToAsyncStream(
                 "MSG:3015,0,2,\"Title #3 (0:12:34) was skipped due to navigation error\",\"Title #%1 (%2) was skipped due to navigation error\",\"3\",\"0:12:34\""));

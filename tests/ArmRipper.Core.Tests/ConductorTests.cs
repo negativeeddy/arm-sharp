@@ -41,7 +41,7 @@ public sealed class ConductorTests : IDisposable
     {
         var mock = new Mock<ICliProcessRunner>();
         mock.Setup(r => r.RunAsync(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "", "", false));
         return mock;
     }

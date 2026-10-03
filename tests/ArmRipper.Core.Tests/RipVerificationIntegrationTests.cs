@@ -237,7 +237,7 @@ public sealed class RipVerificationIntegrationTests : IDisposable
 
         var runner = new Mock<ICliProcessRunner>();
         runner.Setup(r => r.RunAsync(
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CliResult(0, "", "", false));
 
         var makeMkv = new Mock<IMakeMkvService>();

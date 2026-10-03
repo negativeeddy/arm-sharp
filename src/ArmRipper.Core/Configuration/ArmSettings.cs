@@ -137,4 +137,17 @@ public class ArmSettings
     /// (non-strict/fuzzy matching enabled).
     /// </summary>
     public bool FileBotNonStrict { get; set; } = true;
+
+    /// <summary>
+    /// When set, MakeMKV/makemkvcon will be run under libfaketime with the
+    /// clock set to midnight local time on this date. Null = disabled.
+    /// </summary>
+    public DateTime? FakeSystemClockDate { get; set; }
+
+    /// <summary>
+    /// Path to the libfaketime shared library used when
+    /// <see cref="FakeSystemClockDate"/> is set. Default targets the
+    /// Debian/Ubuntu x86_64 package path.
+    /// </summary>
+    public string? FakeSystemClockLibPath { get; set; } = "/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1";
 }

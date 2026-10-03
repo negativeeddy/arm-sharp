@@ -402,7 +402,7 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
             Assert.True(File.Exists(mkvFile));
             Assert.Equal(4, new FileInfo(mkvFile).Length);
             _runner.Verify(
-                r => r.RunAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+                r => r.RunAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()),
                 Times.Never);
         }
         finally
@@ -418,7 +418,7 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
         await service.TestModeTrimAsync(null, CancellationToken.None);
 
         _runner.Verify(
-            r => r.RunAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            r => r.RunAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -429,7 +429,7 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
         await service.TestModeTrimAsync("/nonexistent/path", CancellationToken.None);
 
         _runner.Verify(
-            r => r.RunAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            r => r.RunAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -452,8 +452,9 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
                     It.IsAny<string>(),
                     It.IsAny<string?>(),
                     It.IsAny<int>(),
+                    It.IsAny<IReadOnlyDictionary<string, string>?>(),
                     It.IsAny<CancellationToken>()))
-                .Callback<string, string, string?, int, CancellationToken>((file, args, _, _, _) =>
+                .Callback<string, string, string?, int, IReadOnlyDictionary<string, string>?, CancellationToken>((file, args, _, _, _, _) =>
                 {
                     // Parse the output file from args: -t 30 -i "input" -c copy -y "output"
                     var outputMatch = System.Text.RegularExpressions.Regex.Match(args, @"-y\s+""(.+?)""");
@@ -481,7 +482,7 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
             Assert.Equal([0xAA, 0xBB], await File.ReadAllBytesAsync(mkv2));
 
             _runner.Verify(
-                r => r.RunAsync("ffmpeg", It.IsAny<string>(), null, 60_000, It.IsAny<CancellationToken>()),
+                r => r.RunAsync("ffmpeg", It.IsAny<string>(), null, 60_000, It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()),
                 Times.Exactly(2));
         }
         finally
@@ -507,6 +508,7 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
                     It.IsAny<string>(),
                     It.IsAny<string?>(),
                     It.IsAny<int>(),
+                    It.IsAny<IReadOnlyDictionary<string, string>?>(),
                     It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new CliResult(1, "", "error", false));
 
@@ -542,8 +544,9 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
                     It.IsAny<string>(),
                     It.IsAny<string?>(),
                     It.IsAny<int>(),
+                    It.IsAny<IReadOnlyDictionary<string, string>?>(),
                     It.IsAny<CancellationToken>()))
-                .Callback<string, string, string?, int, CancellationToken>((file, args, _, _, _) =>
+                .Callback<string, string, string?, int, IReadOnlyDictionary<string, string>?, CancellationToken>((file, args, _, _, _, _) =>
                 {
                     var outputMatch = System.Text.RegularExpressions.Regex.Match(args, @"-y\s+""(.+?)""");
                     if (outputMatch.Success)
@@ -560,7 +563,7 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
             await service.TestModeTrimAsync(tempDir, CancellationToken.None);
 
             _runner.Verify(
-                r => r.RunAsync("/usr/local/bin/custom-ffmpeg", It.IsAny<string>(), null, 60_000, It.IsAny<CancellationToken>()),
+                r => r.RunAsync("/usr/local/bin/custom-ffmpeg", It.IsAny<string>(), null, 60_000, It.IsAny<IReadOnlyDictionary<string, string>?>(), It.IsAny<CancellationToken>()),
                 Times.Once);
         }
         finally

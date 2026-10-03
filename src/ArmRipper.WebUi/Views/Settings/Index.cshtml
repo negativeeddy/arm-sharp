@@ -309,6 +309,20 @@
                 <tr><td><label for="PreferWidescreen">Prefer Widescreen:</label>@Html.Raw(tip("PreferWidescreen", tips))</td><td><input type="hidden" name="PreferWidescreen" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="PreferWidescreen" name="PreferWidescreen" value="true" checked="@armSettings?.PreferWidescreen" /><label class="custom-control-label" for="PreferWidescreen"></label></div></td></tr>
                 <tr><td><label for="DiscPollingEnabled">Disc Auto-Detect:</label>@Html.Raw(tip("DiscPollingEnabled", tips))</td><td><input type="hidden" name="DiscPollingEnabled" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="DiscPollingEnabled" name="DiscPollingEnabled" value="true" checked="@armSettings?.DiscPollingEnabled" /><label class="custom-control-label" for="DiscPollingEnabled"></label></div></td></tr>
                 <tr><td><label for="FileBotNonStrict">FileBot Non-Strict:</label></td><td><input type="hidden" name="FileBotNonStrict" value="false" /><div class="custom-control custom-switch d-inline-block"><input type="checkbox" class="custom-control-input" id="FileBotNonStrict" name="FileBotNonStrict" value="true" checked="@armSettings?.FileBotNonStrict" /><label class="custom-control-label" for="FileBotNonStrict">Enable fuzzy matching (-non-strict)</label></div><br /><small class="text-muted">When enabled, FileBot uses fuzzy matching — useful for raw MakeMKV output filenames. Disable for stricter matching when filenames match known titles.</small></td></tr>
+                <tr>
+                    <td><label for="FakeSystemClockDate">Fake System Clock:</label><span class="text-info ml-1" data-toggle="tooltip" title="When set, MakeMKV/makemkvcon is run under libfaketime with the clock frozen at midnight local time on the selected date. Useful for working around beta key expiration. Leave empty to disable." style="cursor:help">&#9432;</span></td>
+                    <td>
+                        <div class="input-group" style="max-width:320px">
+                            <input type="date" name="FakeSystemClockDate" id="FakeSystemClockDate"
+                                   value="@(armSettings?.FakeSystemClockDate?.ToString("yyyy-MM-dd"))"
+                                   class="form-control" />
+                            <div class="input-group-append">
+                                <button type="button" class="btn btn-outline-secondary" id="clearFakeClock" title="Clear date (disable faketime)">Clear</button>
+                            </div>
+                        </div>
+                        <small class="text-muted">Requires <code>libfaketime</code> installed. Empty = disabled.</small>
+                    </td>
+                </tr>
             </table>
             <button type="submit" class="btn btn-primary">Save Ripper Settings</button>
             <button type="submit" class="btn btn-outline-warning ml-2" form="resetForm">↻ Reset to defaults</button>
@@ -993,6 +1007,14 @@
                     $('#settingsTabs a[href="' + lastTab + '"]').tab('show');
                 }
                 $('[data-toggle="tooltip"]').tooltip();
+            }
+
+            // Clear the fake clock date picker
+            var clearBtn = document.getElementById('clearFakeClock');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', function () {
+                    document.getElementById('FakeSystemClockDate').value = '';
+                });
             }
         });
     </script>

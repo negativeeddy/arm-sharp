@@ -139,6 +139,7 @@ public class SettingsController(
         string? RipMethod, string? MkvArgs, int? MinLength, int? MaxLength,
         int? EjectCooldownSeconds, int? RecentCompletedJobsCount,
         int? MakeMkvInfoScanTimeoutMinutes, int? ManualWaitTime, int? ManualSelectionWaitTime,
+        string? FakeSystemClockDate,
         CancellationToken ct = default)
     {
         // Read checkboxes from raw form values — the hidden-false trick sends
@@ -151,6 +152,15 @@ public class SettingsController(
         bool FileBotNonStrict = Request.Form["FileBotNonStrict"].Contains("true");
         bool AllowDuplicates = Request.Form["AllowDuplicates"].Contains("true");
         bool PreferWidescreen = Request.Form["PreferWidescreen"].Contains("true");
+
+        // Parse the fake clock date — the <input type="date"> submits YYYY-MM-DD;
+        // DateTime.TryParse gives midnight local time for date-only strings.
+        DateTime? fakeClockDate = null;
+        if (!string.IsNullOrWhiteSpace(FakeSystemClockDate)
+            && DateTime.TryParse(FakeSystemClockDate, out var parsed))
+        {
+            fakeClockDate = parsed;
+        }
 
         var fields = new Dictionary<string, string?>
         {
@@ -170,6 +180,7 @@ public class SettingsController(
             ["FileBotNonStrict"] = JsonSerialize(FileBotNonStrict),
             ["AllowDuplicates"] = JsonSerialize(AllowDuplicates),
             ["PreferWidescreen"] = JsonSerialize(PreferWidescreen),
+            ["FakeSystemClockDate"] = fakeClockDate.HasValue ? JsonSerialize(fakeClockDate.Value) : null,
         };
 
         await settingsService.MergeAsync(fields, ct);
