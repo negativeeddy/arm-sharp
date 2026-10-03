@@ -460,7 +460,7 @@ else
             </tr></thead>
             <tbody>
                 @{
-                    var orderedTracks = Model.Tracks.OrderBy(t => t.TrackNumber).ToList();
+                    var orderedTracks = Model.Tracks.OrderBy(t => t.TrackNumberInt ?? 0).ToList();
                     var trackTableRippable = Model.Status.IsRippingState();
                     var trackTableMainFeature = Model.Config?.MainFeature ?? (bool)(ViewBag.EffectiveMainFeature ?? true);
                     for (var idx = 0; idx < orderedTracks.Count; idx++)
@@ -469,8 +469,8 @@ else
                     <tr class="@(track.MainFeature ? "table-primary" : "")">                        @if (Model.Status is JobState.ManualSelectionStarted)
                         {
                             <td><input type="checkbox" class="track-select" value="@track.TrackNumber" @(track.Process ? "checked" : "") /></td>
-                        }                        <td>@(idx + 1)</td>
-                        <td>@track.TrackNumber</td>
+                        }                        <td data-text="@(idx + 1)">@(idx + 1)</td>
+                        <td data-text="@(track.TrackNumberInt ?? 0)">@track.TrackNumber</td>
                         <td>
                             @if (!string.IsNullOrEmpty(track.EpisodeTitle))
                             {
