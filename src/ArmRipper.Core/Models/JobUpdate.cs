@@ -91,6 +91,9 @@ public class JobUpdate
     /// <summary>Number of tracks/titles.</summary>
     public int? NoOfTitles { get; set; }
 
+    /// <summary>Inferred rip type (Main Feature, All Titles, Manual Selection).</summary>
+    public string? RipType { get; set; }
+
     /// <summary>Alias of NoOfTitles for clearer naming in new clients.</summary>
     public int? TitleCount
     {
@@ -140,6 +143,7 @@ public class JobUpdate
         Year = job.Year,
         DiscType = job.DiscType.ToString(),
         NoOfTitles = job.NoOfTitles,
+        RipType = job.Config is not null ? job.RipType : null,
         Ejected = job.Ejected,
     };
 }

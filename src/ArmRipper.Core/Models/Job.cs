@@ -149,6 +149,21 @@ public class Job
     public ICollection<Track> Tracks { get; init; } = new List<Track>();
     public ConfigSnapshot? Config { get; set; }
 
+    /// <summary>
+    /// Inferred rip type based on config and track state. Returns one of:
+    /// "Main Feature", "Manual Selection", or "All Titles".
+    /// </summary>
+    [NotMapped]
+    public string RipType
+    {
+        get
+        {
+            if (Config?.ManualSelection == true) return "Manual Selection";
+            if (Config?.MainFeature == true) return "Main Feature";
+            return "All Titles";
+        }
+    }
+
     /// <summary>Full path to the on-disk log file for this job.</summary>
     public string GetLogFilePath(string? defaultLogPath = null)
     {

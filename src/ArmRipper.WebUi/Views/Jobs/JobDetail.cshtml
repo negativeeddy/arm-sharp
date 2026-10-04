@@ -124,6 +124,8 @@
                             <dd class="col-sm-4">@(Model.JobLength ?? "—")</dd>
                             <dt class="col-sm-2">Titles</dt>
                             <dd class="col-sm-4">@(Model.NoOfTitles?.ToString() ?? "—")</dd>
+                            <dt class="col-sm-2">Rip Type</dt>
+                            <dd class="col-sm-4">@(Model.RipType ?? "—")</dd>
                             @if (!string.IsNullOrEmpty(Model.ProgressMessage))
                             {
                                 <dt class="col-sm-2">Progress</dt>
