@@ -420,7 +420,7 @@ else
                         {
                             <td><input type="checkbox" class="track-select" value="@track.TrackNumber" @(track.Process ? "checked" : "") /></td>
                         }                        <td data-text="@(idx + 1)">@(idx + 1)</td>
-                        <td data-text="@(track.TrackNumberInt ?? 0)">@track.TrackNumber</td>
+                        <td data-text="@(track.TrackNumberInt ?? 0)">@track.TrackNumber@if (!string.IsNullOrEmpty(track.SegmentMap)){<button type="button" class="btn btn-sm btn-outline-info py-0 px-1 ml-1 segment-map-btn" data-track="@track.TrackNumber" data-length="@(track.Length is int segSecs ? FormatHms(segSecs) : "")" data-segment-map="@track.SegmentMap" title="Show MakeMKV segment map">&#9432;</button>}</td>
                         <td>
                             @if (!string.IsNullOrEmpty(track.EpisodeTitle))
                             {
@@ -479,6 +479,35 @@ else
     </div>
 }
 
+<!-- Segment Map Modal (issue #218): shows the MakeMKV segment map for a track. -->
+<div class="modal fade" id="segmentMapModal" tabindex="-1" role="dialog" aria-labelledby="segmentMapModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="segmentMapModalLabel">Segment Map</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-3">Track</dt>
+                    <dd class="col-sm-9" id="segmentMapTrack"></dd>
+                    <dt class="col-sm-3">Length</dt>
+                    <dd class="col-sm-9" id="segmentMapLength"></dd>
+                    <dt class="col-sm-3">Segment map</dt>
+                    <dd class="col-sm-9"><code id="segmentMapValue" class="d-block text-break"></code></dd>
+                    <dt class="col-sm-3">Decoded</dt>
+                    <dd class="col-sm-9" id="segmentMapDecoded"></dd>
+                </dl>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
     @Html.AntiForgeryToken()
     <script>
@@ -497,6 +526,37 @@ else
             sortList: [[cbOffset, 0]],
             headers: headers
         });
+    });
+    </script>
+    <script>
+    // Segment map popup (issue #218): clicking the info badge next to a track
+    // number opens a modal with the raw MakeMKV segment map and a decoded
+    // summary (number of entries / total cells).
+    function decodeSegmentMap(map) {
+        if (!map) return '\u2014';
+        var parts = String(map).split(/[,\s]+/).filter(function (p) { return p.length > 0; });
+        if (parts.length === 0) return '\u2014';
+        var cells = 0;
+        parts.forEach(function (p) {
+            var bits = String(p).split('-');
+            var a = parseInt(bits[0], 10);
+            if (isNaN(a)) return;
+            if (bits.length === 2) {
+                var b = parseInt(bits[1], 10);
+                if (!isNaN(b) && b >= a) { cells += (b - a + 1); return; }
+            }
+            cells += 1;
+        });
+        return parts.length + (parts.length === 1 ? ' entry' : ' entries') + ' \u2192 ' + cells + (cells === 1 ? ' cell' : ' cells');
+    }
+    $(document).on('click', '.segment-map-btn', function () {
+        var $btn = $(this);
+        var map = $btn.attr('data-segment-map') || '';
+        $('#segmentMapTrack').text('#' + ($btn.attr('data-track') || ''));
+        $('#segmentMapLength').text($btn.attr('data-length') || '\u2014');
+        $('#segmentMapValue').text(map);
+        $('#segmentMapDecoded').text(decodeSegmentMap(map));
+        $('#segmentMapModal').modal('show');
     });
     </script>
     @if (!Model.Status.IsTerminal())

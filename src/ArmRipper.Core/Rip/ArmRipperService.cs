@@ -959,6 +959,7 @@ public sealed class ArmRipperService(
                         local.EpisodeNumber = fresh.EpisodeNumber;
                         local.TrackSeasonNumber = fresh.TrackSeasonNumber;
                         local.DiscDbItemSlug = fresh.DiscDbItemSlug;
+                        local.SegmentMap = fresh.SegmentMap;
 
                         if (!local.Process && !string.IsNullOrEmpty(fresh.EpisodeTitle))
                         {

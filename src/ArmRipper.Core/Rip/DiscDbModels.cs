@@ -177,7 +177,8 @@ public sealed record DiscDbFlatTrack(
     [property: JsonPropertyName("itemTitle")] string? ItemTitle,
     [property: JsonPropertyName("season")] int? Season,
     [property: JsonPropertyName("episode")] int? Episode,
-    [property: JsonPropertyName("itemType")] string? ItemType
+    [property: JsonPropertyName("itemType")] string? ItemType,
+    [property: JsonPropertyName("segmentMap")] string? SegmentMap
 );
 
 /// <summary>

@@ -183,7 +183,8 @@ public class DiscDbDeserializationTests
                 t.Item?.Title,
                 t.Item?.Season,
                 t.Item?.Episode,
-                t.Item?.Type
+                t.Item?.Type,
+                t.SegmentMap
             ))
             .ToList();
 
@@ -193,6 +194,7 @@ public class DiscDbDeserializationTests
         Assert.Equal(0, mainMovie.TrackIndex);
         Assert.Equal(5807, mainMovie.DurationSeconds);
         Assert.Equal("main", mainMovie.ItemType);
+        Assert.Equal("1,2,3,4,5,6,7,8,9,10,11,12,13", mainMovie.SegmentMap);
 
         var extra = flatTracks[2];
         Assert.Equal(15, extra.TrackIndex);

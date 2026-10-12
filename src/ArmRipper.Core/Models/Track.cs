@@ -42,5 +42,13 @@ public class Track
     /// <summary>TheDiscDb item slug for this track's content.</summary>
     public string? DiscDbItemSlug { get; set; }
 
+    /// <summary>
+    /// MakeMKV segment map for this title (TINFO field 21). A comma-separated
+    /// list of cell ranges (e.g. "1,2-3,4"). Used to distinguish titles of
+    /// similar length on discs that contain many near-duplicate playlists.
+    /// May also be supplied by TheDiscDb when MakeMKV did not report one.
+    /// </summary>
+    public string? SegmentMap { get; set; }
+
     public Job Job { get; set; } = null!;
 }

@@ -13,6 +13,9 @@ public class DiscTrack
     public double? Fps { get; set; }
     public string? Resolution { get; set; }
 
+    /// <summary>MakeMKV segment map for this title (TINFO field 21).</summary>
+    public string? SegmentMap { get; set; }
+
     public DiscMetadata DiscMetadata { get; set; } = null!;
     public ICollection<DiscTrackStream> Streams { get; init; } = new List<DiscTrackStream>();
 }

@@ -285,6 +285,7 @@ public sealed class MakeMkvServiceTests : IDisposable
             TINFO:0,27,0,"title00.mkv"
             TINFO:0,11,0,"5000000000"
             TINFO:0,8,0,"16"
+            TINFO:0,21,0,"1,2-3,4,5"
             SINFO:0,0,1,6201,"Video"
             SINFO:0,0,2,0,"eng"
             SINFO:0,0,20,0,"16:9"
@@ -293,6 +294,7 @@ public sealed class MakeMkvServiceTests : IDisposable
             TINFO:1,27,0,"title01.mkv"
             TINFO:1,11,0,"2000000000"
             TINFO:1,8,0,"8"
+            TINFO:1,21,0,"6,7-8,9"
             SINFO:1,0,1,6201,"Video"
             SINFO:1,0,2,0,"fra"
             SINFO:1,0,20,0,"4:3"
@@ -320,6 +322,7 @@ public sealed class MakeMkvServiceTests : IDisposable
         Assert.Equal(23.976, t0.Fps);
         Assert.Equal(16, t0.Chapters);
         Assert.Equal(5000000000L, t0.FileSize);
+        Assert.Equal("1,2-3,4,5", t0.SegmentMap);
         Assert.Equal("MakeMKV", t0.Source);
 
         var t1 = tracks[1];
@@ -329,6 +332,7 @@ public sealed class MakeMkvServiceTests : IDisposable
         Assert.Equal(25, t1.Fps);
         Assert.Equal(8, t1.Chapters);
         Assert.Equal(2000000000L, t1.FileSize);
+        Assert.Equal("6,7-8,9", t1.SegmentMap);
     }
 
     [Fact]
@@ -358,6 +362,7 @@ public sealed class MakeMkvServiceTests : IDisposable
             TINFO:0,27,0,"title00.mkv"
             TINFO:0,11,0,"5000000000"
             TINFO:0,8,0,"16"
+            TINFO:0,21,0,"1,2-3,4"
             SINFO:0,0,1,6201,"Video"
             SINFO:0,0,2,0,"eng"
             """;
@@ -379,6 +384,7 @@ public sealed class MakeMkvServiceTests : IDisposable
         Assert.NotNull(cached);
         Assert.Single(cached.Tracks);
         Assert.Equal("0", cached.Tracks.ElementAt(0).TrackNumber);
+        Assert.Equal("1,2-3,4", cached.Tracks.ElementAt(0).SegmentMap);
     }
 
     // ── GetTrackInfoWithCacheAsync tests ─────────────────────────
@@ -414,7 +420,8 @@ public sealed class MakeMkvServiceTests : IDisposable
                     FileSize = 5000000000L,
                     AspectRatio = "16:9",
                     Fps = 23.976,
-                    Resolution = "1920x1080"
+                    Resolution = "1920x1080",
+                    SegmentMap = "1,2-3,4"
                 }
             ]
         };
@@ -428,6 +435,7 @@ public sealed class MakeMkvServiceTests : IDisposable
         Assert.Equal("0", tracks[0].TrackNumber);
         Assert.Equal(5400, tracks[0].Length);
         Assert.Equal(23.976, tracks[0].Fps);
+        Assert.Equal("1,2-3,4", tracks[0].SegmentMap);
 
         var refreshed = db.DiscMetadata.AsNoTracking().First(d => d.Fingerprint == "VOL::12345");
         Assert.NotEqual(default, refreshed.LastUsedAt);
