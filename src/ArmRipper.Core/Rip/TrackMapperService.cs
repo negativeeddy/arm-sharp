@@ -68,6 +68,11 @@ public sealed class TrackMapperService(
             bestTrack.TrackSeasonNumber = dbTitle.Item?.Season;
             bestTrack.DiscDbItemSlug = discDbResult.Slug;
 
+            // MakeMKV's locally-scanned segment map is authoritative; only fall
+            // back to TheDiscDb's value when MakeMKV did not report one.
+            if (string.IsNullOrEmpty(bestTrack.SegmentMap) && !string.IsNullOrEmpty(dbTitle.SegmentMap))
+                bestTrack.SegmentMap = dbTitle.SegmentMap;
+
             unmatchedTracks.Remove(bestTrack); // prevent this track from being claimed again
             matchedCount++;
             totalConfidence += bestConfidence;

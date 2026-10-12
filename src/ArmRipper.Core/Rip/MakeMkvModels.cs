@@ -12,6 +12,7 @@ public enum TrackId
     Chapters = 8,
     Duration = 9,
     Filesize = 11,
+    SegmentMap = 21,
     Filename = 27
 }
 

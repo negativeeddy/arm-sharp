@@ -1500,6 +1500,51 @@ public class ControllerActionIntegrationTests : IClassFixture<CustomWebApplicati
     }
 
     [Fact]
+    public async Task JobDetail_RendersSegmentMapIndicator()
+    {
+        // Issue #218: tracks with a MakeMKV segment map render a clickable info
+        // badge and the page includes the segment-map modal + handler.
+        int jobId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = new Job
+            {
+                Title = "Segment Map",
+                TitleAuto = "Segment Map",
+                Year = "2026",
+                VideoType = VideoContentType.Movie,
+                DiscType = DiscType.Dvd,
+                Status = JobState.Active,
+                StartTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99",
+                Config = new ConfigSnapshot { MinLength = 300, MaxLength = 9999, RipMethod = "mkv", GetAudioTitle = "" }
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+
+            db.Tracks.AddRange(
+                new Track { JobId = jobId, TrackNumber = "0", FileName = "title00.mkv", Length = 6000, SegmentMap = "1,2-3,4", Process = true, MainFeature = true },
+                new Track { JobId = jobId, TrackNumber = "1", FileName = "title01.mkv", Length = 103, Process = false });
+            await db.SaveChangesAsync();
+        }
+
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync($"/jobs/jobdetail?jobId={jobId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var html = await response.Content.ReadAsStringAsync();
+        // Only the track that has a segment map gets the indicator.
+        Assert.Equal(1, html.Split("data-segment-map=\"").Length - 1);
+        Assert.Contains("data-segment-map=\"1,2-3,4\"", html);
+        // The modal markup and the click handler that opens it are present.
+        Assert.Contains("id=\"segmentMapModal\"", html);
+        Assert.Contains("$('#segmentMapModal').modal('show')", html);
+        Assert.Contains("decodeSegmentMap", html);
+    }
+
+    [Fact]
     public async Task JobDetail_TerminalState_RendersSortInit()
     {
         // Issue #198: the sort init must render even for terminal jobs so a

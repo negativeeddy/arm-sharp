@@ -342,6 +342,9 @@ namespace ArmRipper.Core.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SegmentMap")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("TrackNumber")
                         .IsRequired()
                         .HasMaxLength(4)
@@ -823,6 +826,9 @@ namespace ArmRipper.Core.Migrations
 
                     b.Property<bool>("Ripped")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("SegmentMap")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Source")
                         .HasMaxLength(32)

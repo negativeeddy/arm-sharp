@@ -265,4 +265,82 @@ public class TrackMapperServiceTests
         Assert.Equal("Ep 2", track2.EpisodeTitle);
         Assert.Equal("Ep 3", track3.EpisodeTitle);
     }
+
+    [Fact]
+    public async Task MapTracksAsync_SegmentMap_FallsBackToDiscDbWhenTrackHasNone()
+    {
+        var (service, db) = CreateService();
+        var job = new Job { Title = "Test Movie", VideoType = VideoContentType.Movie };
+        var track = new Track { TrackNumber = "1", Length = 90 * 60, FileName = "title_t00.mkv" };
+        await AddJobWithTracksAsync(db, job, track);
+
+        var discDb = new DiscDbMediaResult
+        {
+            Title = "Test Movie",
+            Type = "movie",
+            Releases =
+            [
+                new DiscDbRelease
+                {
+                    Discs =
+                    [
+                        new DiscDbDisc
+                        {
+                            Titles =
+                            [
+                                new DiscDbTitle
+                                {
+                                    Index = 1, Duration = 90 * 60, SegmentMap = "1,2-3,4",
+                                    Item = new DiscDbItem { Title = "The Feature", Type = "main" }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        };
+
+        await service.MapTracksAsync(job, discDb, CancellationToken.None);
+
+        Assert.Equal("1,2-3,4", track.SegmentMap);
+    }
+
+    [Fact]
+    public async Task MapTracksAsync_SegmentMap_PrefersMakeMkvScanValue()
+    {
+        var (service, db) = CreateService();
+        var job = new Job { Title = "Test Movie", VideoType = VideoContentType.Movie };
+        var track = new Track { TrackNumber = "1", Length = 90 * 60, FileName = "title_t00.mkv", SegmentMap = "9,8" };
+        await AddJobWithTracksAsync(db, job, track);
+
+        var discDb = new DiscDbMediaResult
+        {
+            Title = "Test Movie",
+            Type = "movie",
+            Releases =
+            [
+                new DiscDbRelease
+                {
+                    Discs =
+                    [
+                        new DiscDbDisc
+                        {
+                            Titles =
+                            [
+                                new DiscDbTitle
+                                {
+                                    Index = 1, Duration = 90 * 60, SegmentMap = "1,2-3,4",
+                                    Item = new DiscDbItem { Title = "The Feature", Type = "main" }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        };
+
+        await service.MapTracksAsync(job, discDb, CancellationToken.None);
+
+        Assert.Equal("9,8", track.SegmentMap);
+    }
 }

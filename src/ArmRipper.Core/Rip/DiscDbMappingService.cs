@@ -81,7 +81,8 @@ public sealed class DiscDbMappingService(
                     ItemTitle = t.Item?.Title,
                     Season = t.Item?.Season,
                     Episode = t.Item?.Episode,
-                    ItemType = t.Item?.Type
+                    ItemType = t.Item?.Type,
+                    t.SegmentMap
                 })
                 .ToList() ?? [];
 
@@ -159,6 +160,7 @@ public sealed class DiscDbMappingService(
                     Index = t.TrackIndex,
                     Duration = t.DurationSeconds,
                     Size = t.FileSize,
+                    SegmentMap = t.SegmentMap,
                     Item = new DiscDbItem
                     {
                         Title = t.ItemTitle,

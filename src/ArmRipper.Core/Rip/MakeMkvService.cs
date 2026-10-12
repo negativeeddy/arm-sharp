@@ -186,6 +186,7 @@ public partial class MakeMkvService : IMakeMkvService
         var filesize = 0L;
         var streamType = 0;
         var resolution = "";
+        var segmentMap = "";
         var streamAccums = new Dictionary<int, StreamAccum>();
 
         var lineCount = 0;
@@ -263,7 +264,7 @@ public partial class MakeMkvService : IMakeMkvService
 
                     case TInfo tinfo:
                         if (currentTid >= 0 && tinfo.Tid != currentTid)
-                            FinalizeTrack(job, baseName, tracks, discTracks, currentTid, ref seconds, ref aspect, ref fps, ref filename, ref chapters, ref filesize, ref streamType, ref resolution, streamAccums);
+                            FinalizeTrack(job, baseName, tracks, discTracks, currentTid, ref seconds, ref aspect, ref fps, ref filename, ref chapters, ref filesize, ref streamType, ref resolution, ref segmentMap, streamAccums);
                         currentTid = tinfo.Tid;
                         switch ((TrackId)tinfo.Id)
                         {
@@ -278,6 +279,9 @@ public partial class MakeMkvService : IMakeMkvService
                                 break;
                             case TrackId.Filesize:
                                 long.TryParse(tinfo.Value, out filesize);
+                                break;
+                            case TrackId.SegmentMap:
+                                segmentMap = MakeMkvOutputParser.StripQuotes(tinfo.Value);
                                 break;
                         }
                         break;
@@ -295,7 +299,7 @@ public partial class MakeMkvService : IMakeMkvService
         }
 
         if (currentTid >= 0)
-            FinalizeTrack(job, baseName, tracks, discTracks, currentTid, ref seconds, ref aspect, ref fps, ref filename, ref chapters, ref filesize, ref streamType, ref resolution, streamAccums);
+            FinalizeTrack(job, baseName, tracks, discTracks, currentTid, ref seconds, ref aspect, ref fps, ref filename, ref chapters, ref filesize, ref streamType, ref resolution, ref segmentMap, streamAccums);
 
         _logger.LogInformation("GetTrackInfo: {Lines} lines, {Tracks} tracks, lastTid={Tid}", lineCount, tracks.Count, currentTid);
 
@@ -335,6 +339,7 @@ public partial class MakeMkvService : IMakeMkvService
                     Fps = t.Fps,
                     Chapters = t.Chapters,
                     FileSize = t.FileSize,
+                    SegmentMap = t.SegmentMap,
                     Source = Source,
                     BaseName = baseName,
                 }).ToList();
@@ -358,10 +363,10 @@ public partial class MakeMkvService : IMakeMkvService
 
     private static void FinalizeTrack(Job job, string baseName, List<Track> tracks, List<DiscTrack> discTracks,
         int currentTid, ref int seconds, ref string aspect, ref double fps, ref string filename,
-        ref int chapters, ref long filesize, ref int streamType, ref string resolution,
+        ref int chapters, ref long filesize, ref int streamType, ref string resolution, ref string segmentMap,
         Dictionary<int, StreamAccum> streamAccums)
     {
-        tracks.Add(CreateTrackObj(job, currentTid, baseName, seconds, aspect, fps, filename, chapters, filesize));
+        tracks.Add(CreateTrackObj(job, currentTid, baseName, seconds, aspect, fps, filename, chapters, filesize, segmentMap));
 
         var discTrack = new DiscTrack
         {
@@ -373,6 +378,7 @@ public partial class MakeMkvService : IMakeMkvService
             AspectRatio = string.IsNullOrEmpty(aspect) ? null : aspect,
             Fps = fps > 0 ? fps : null,
             Resolution = string.IsNullOrEmpty(resolution) ? null : resolution,
+            SegmentMap = string.IsNullOrEmpty(segmentMap) ? null : segmentMap,
         };
 
         foreach (var (sid, accum) in streamAccums)
@@ -398,7 +404,7 @@ public partial class MakeMkvService : IMakeMkvService
 
         discTracks.Add(discTrack);
 
-        seconds = 0; aspect = ""; fps = 0.0; filename = ""; chapters = 0; filesize = 0; streamType = 0; resolution = "";
+        seconds = 0; aspect = ""; fps = 0.0; filename = ""; chapters = 0; filesize = 0; streamType = 0; resolution = ""; segmentMap = "";
         streamAccums.Clear();
     }
 
@@ -645,7 +651,7 @@ public partial class MakeMkvService : IMakeMkvService
         }
     }
 
-    private static Track CreateTrackObj(Job job, int tid, string baseName, int seconds, string aspect, double fps, string filename, int chapters, long filesize)
+    private static Track CreateTrackObj(Job job, int tid, string baseName, int seconds, string aspect, double fps, string filename, int chapters, long filesize, string segmentMap)
     {
         return new Track
         {
@@ -657,6 +663,7 @@ public partial class MakeMkvService : IMakeMkvService
             FileName = string.IsNullOrEmpty(filename) ? null : filename,
             Chapters = chapters > 0 ? chapters : null,
             FileSize = filesize > 0 ? filesize : null,
+            SegmentMap = string.IsNullOrEmpty(segmentMap) ? null : segmentMap,
             Source = Source,
             BaseName = baseName,
         };
