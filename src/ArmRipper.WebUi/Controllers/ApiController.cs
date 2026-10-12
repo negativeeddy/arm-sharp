@@ -2,6 +2,7 @@ using System.Reflection;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure;
 using ArmRipper.Core.Infrastructure.Data;
+using ArmRipper.Core.Metadata;
 using ArmRipper.Core.Models;
 using ArmRipper.Core.Rip;
 using Microsoft.AspNetCore.Authorization;
@@ -21,6 +22,7 @@ public partial class ApiController(
     IDatabaseSubmitService databaseSubmitService,
     IOvidSubmitService ovidSubmitService,
     IRipRedirectService ripRedirectService,
+    OmdbService omdb,
     ILogger<ApiController> logger) : Controller
 {
     [HttpGet("health")]
@@ -93,6 +95,47 @@ public partial class ApiController(
             return NotFound();
 
         return Json(job);
+    }
+
+    // Loaded asynchronously by JobDetail so a slow/unavailable omdbapi.com can
+    // never block the page render. Returns the metadata card HTML, or 204 when
+    // OMDB is disabled/unconfigured or the lookup fails.
+    [HttpGet("jobs/{id:int}/metadata")]
+    public async Task<IActionResult> JobMetadata(int id, CancellationToken ct = default)
+    {
+        var job = await db.Jobs
+            .Include(j => j.Config)
+            .FirstOrDefaultAsync(j => j.Id == id, ct);
+        if (job is null)
+            return NotFound();
+
+        var effective = await settingsService.GetEffectiveAsync(ct);
+        if (!effective.OmdbEnabled
+            || string.IsNullOrEmpty(job.ImdbId)
+            || job.Config?.OmdbApiKey is not { Length: > 0 } apiKey)
+        {
+            return NoContent();
+        }
+
+        OmdbTitleResult? metadata;
+        try
+        {
+            metadata = await omdb.LookupByImdbAsync(job.ImdbId, apiKey, plot: "full", ct: ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "OMDB metadata lookup failed for job {JobId}", job.Id);
+            return NoContent();
+        }
+
+        if (metadata is null || metadata.Response != "True")
+            return NoContent();
+
+        return PartialView("~/Views/Jobs/_JobMetadata.cshtml", metadata);
     }
 
     [HttpGet("drives")]

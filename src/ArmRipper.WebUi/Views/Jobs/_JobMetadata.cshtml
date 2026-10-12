@@ -1,0 +1,63 @@
+@model ArmRipper.Core.Metadata.OmdbTitleResult
+@{
+    var imdbUrl = !string.IsNullOrEmpty(Model.ImdbID) ? $"https://www.imdb.com/title/{Model.ImdbID}/" : null;
+}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>@Model.Title (@Model.Year)</span>
+        <span>
+            @if (Model.Ratings is not null)
+            {
+                foreach (var r in Model.Ratings)
+                {
+                    if (r.Source == "Internet Movie Database") continue; // we show IMDb badge below
+                    var ratingUrl = r.Source switch
+                    {
+                        "Rotten Tomatoes" => $"https://www.rottentomatoes.com/search?search={Uri.EscapeDataString(Model.Title ?? "")}",
+                        "Metacritic" => $"https://www.metacritic.com/search/{Uri.EscapeDataString(Model.Title ?? "")}",
+                        _ => null
+                    };
+                    if (ratingUrl is not null)
+                    {
+                        <a href="@ratingUrl" target="_blank" class="badge bg-secondary me-1 text-decoration-none" title="@r.Source">
+                            @r.Source: @r.Value
+                        </a>
+                    }
+                    else
+                    {
+                        <span class="badge bg-secondary me-1" title="@r.Source">@r.Source: @r.Value</span>
+                    }
+                }
+            }
+            @if (imdbUrl is not null)
+            {
+                <a href="@imdbUrl" target="_blank" class="badge bg-warning text-dark text-decoration-none">IMDb @Model.ImdbRating</a>
+            }
+        </span>
+    </div>
+    <div class="card-body">
+        <p class="mb-3">@Model.Plot</p>
+        <div class="row">
+            <div class="col-md-8">
+                <dl class="row small mb-0">
+                    <dt class="col-sm-3">Rated</dt><dd class="col-sm-9">@Model.Rated</dd>
+                    <dt class="col-sm-3">Runtime</dt><dd class="col-sm-9">@Model.Runtime</dd>
+                    <dt class="col-sm-3">Genre</dt><dd class="col-sm-9">@Model.Genre</dd>
+                    <dt class="col-sm-3">Director</dt><dd class="col-sm-9">@Model.Director</dd>
+                    <dt class="col-sm-3">Actors</dt><dd class="col-sm-9">@Model.Actors</dd>
+                </dl>
+            </div>
+            <div class="col-md-4">
+                <dl class="row small mb-0">
+                    <dt class="col-sm-5">Language</dt><dd class="col-sm-7">@Model.Language</dd>
+                    <dt class="col-sm-5">Country</dt><dd class="col-sm-7">@Model.Country</dd>
+                    <dt class="col-sm-5">Released</dt><dd class="col-sm-7">@Model.Released</dd>
+                    @if (!string.IsNullOrEmpty(Model.Awards))
+                    {
+                        <dt class="col-sm-5">Awards</dt><dd class="col-sm-7">@Model.Awards</dd>
+                    }
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>

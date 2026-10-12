@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -182,6 +183,18 @@ public class ControllerActionIntegrationTests : IClassFixture<CustomWebApplicati
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
             => Task.FromResult(handler(request));
+    }
+
+    private sealed class DelayingHttpMessageHandler(TimeSpan delay) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await Task.Delay(delay, cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"Response\":\"True\"}", Encoding.UTF8, "application/json")
+            };
+        }
     }
 
     [Fact]
@@ -967,6 +980,195 @@ public class ControllerActionIntegrationTests : IClassFixture<CustomWebApplicati
 
         var html = await response.Content.ReadAsStringAsync();
         Assert.Contains("Detail Test", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task JobDetail_DoesNotCallOmdbDuringRender()
+    {
+        // Metadata is fetched asynchronously via GET /api/jobs/{id}/metadata, so the
+        // JobDetail render must never call omdbapi.com. A slow/unavailable OMDB
+        // therefore cannot delay page navigation.
+        int jobId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = new Job
+            {
+                Title = "Omdb Hang Test",
+                TitleAuto = "Omdb Hang Test",
+                Year = "2026",
+                VideoType = VideoContentType.Movie,
+                DiscType = DiscType.Dvd,
+                Status = JobState.Active,
+                StartTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99",
+                ImdbId = "tt0133093",
+                Config = new ConfigSnapshot
+                {
+                    MinLength = 300,
+                    MaxLength = 9999,
+                    RipMethod = "mkv",
+                    OmdbApiKey = "fake_key",
+                    GetAudioTitle = ""
+                }
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+        }
+
+        var omdbCalled = false;
+        var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+        {
+            services.AddHttpClient<OmdbService>().ConfigurePrimaryHttpMessageHandler(() =>
+                new FuncHttpMessageHandler(_ =>
+                {
+                    omdbCalled = true;
+                    return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") };
+                }));
+        }));
+
+        var client = await AuthenticateAsync(factory.CreateClient());
+        var sw = Stopwatch.StartNew();
+        var response = await client.GetAsync($"/jobs/jobdetail?jobId={jobId}");
+        sw.Stop();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10), $"JobDetail hung for {sw.Elapsed}");
+        Assert.False(omdbCalled);
+
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Omdb Hang Test", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task JobMetadata_WhenOmdbHangs_ReturnsNoContentPromptly()
+    {
+        // The async metadata endpoint bounds the OMDB call, so a hanging provider
+        // yields an empty card (204) quickly instead of stalling the response.
+        int jobId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = new Job
+            {
+                Title = "Omdb Metadata Test",
+                TitleAuto = "Omdb Metadata Test",
+                Year = "2026",
+                VideoType = VideoContentType.Movie,
+                DiscType = DiscType.Dvd,
+                Status = JobState.Success,
+                StartTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99",
+                ImdbId = "tt0133093",
+                Config = new ConfigSnapshot
+                {
+                    MinLength = 300,
+                    MaxLength = 9999,
+                    RipMethod = "mkv",
+                    OmdbApiKey = "fake_key",
+                    GetAudioTitle = ""
+                }
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+        }
+
+        var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+        {
+            services.AddHttpClient<OmdbService>(client => client.Timeout = TimeSpan.FromMilliseconds(250))
+                .ConfigurePrimaryHttpMessageHandler(() => new DelayingHttpMessageHandler(TimeSpan.FromSeconds(30)));
+        }));
+
+        var client = await AuthenticateAsync(factory.CreateClient());
+        var sw = Stopwatch.StartNew();
+        var response = await client.GetAsync($"/api/jobs/{jobId}/metadata");
+        sw.Stop();
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10), $"Metadata call hung for {sw.Elapsed}");
+    }
+
+    [Fact]
+    public async Task JobDetail_WhenOmdbDisabled_DoesNotCallOmdb()
+    {
+        // A dedicated factory so disabling OMDB globally doesn't leak into other
+        // tests that share the class fixture's database.
+        using var factory = new CustomWebApplicationFactory();
+
+        int jobId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            await SettingsHelper.MergeIntoDbAsync(db, new Dictionary<string, string?>
+            {
+                ["OmdbEnabled"] = "false"
+            });
+
+            var job = new Job
+            {
+                Title = "Omdb Disabled Test",
+                TitleAuto = "Omdb Disabled Test",
+                Year = "2026",
+                VideoType = VideoContentType.Movie,
+                DiscType = DiscType.Dvd,
+                Status = JobState.Active,
+                StartTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99",
+                ImdbId = "tt0133093",
+                Config = new ConfigSnapshot
+                {
+                    MinLength = 300,
+                    MaxLength = 9999,
+                    RipMethod = "mkv",
+                    OmdbApiKey = "fake_key",
+                    GetAudioTitle = ""
+                }
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+        }
+
+        var omdbCalled = false;
+        var webFactory = factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+        {
+            services.AddHttpClient<OmdbService>().ConfigurePrimaryHttpMessageHandler(() =>
+                new FuncHttpMessageHandler(_ =>
+                {
+                    omdbCalled = true;
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent("{}")
+                    };
+                }));
+        }));
+
+        var client = await AuthenticateAsync(webFactory.CreateClient());
+        var response = await client.GetAsync($"/jobs/jobdetail?jobId={jobId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False(omdbCalled);
+    }
+
+    [Fact]
+    public async Task SaveMetadata_OmdbDisabled_PersistsSetting()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var client = await AuthenticateAsync(factory.CreateClient());
+
+        var response = await client.PostAsync("/settings/save-metadata",
+            new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                { "OmdbEnabled", "false" }
+            }));
+        Assert.True(response.IsSuccessStatusCode, $"Save failed: {response.StatusCode}");
+
+        using var scope = factory.Services.CreateScope();
+        var settingsService = scope.ServiceProvider.GetRequiredService<ISettingsService>();
+        var effective = await settingsService.GetEffectiveAsync();
+        Assert.False(effective.OmdbEnabled);
     }
 
     [Fact]

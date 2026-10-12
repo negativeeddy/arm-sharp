@@ -14,7 +14,7 @@ namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("jobs")]
-public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService settingsService, IBackgroundRipService backgroundRip, ILogger<JobsController> logger) : Controller
+public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService settingsService, IBackgroundRipService backgroundRip) : Controller
 {
     [HttpGet("jobdetail")]
     public async Task<IActionResult> JobDetail(int jobId, CancellationToken ct = default)
@@ -27,22 +27,12 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
         if (job is null)
             return NotFound();
 
-        if (!string.IsNullOrEmpty(job.ImdbId) && job.Config?.OmdbApiKey is { Length: > 0 } apiKey)
-        {
-            try
-            {
-                var metadata = await omdb.LookupByImdbAsync(job.ImdbId, apiKey, plot: "full");
-                ViewBag.Metadata = metadata;
-            }
-            catch (Exception ex)
-            {
-                logger.LogDebug(ex, "OMDB metadata lookup failed for job {JobId}", job.Id);
-            }
-        }
+        // Metadata is fetched asynchronously by the view (GET /api/jobs/{id}/metadata)
+        // so a slow/unavailable omdbapi.com cannot block this page render.
+        var effective = await settingsService.GetEffectiveAsync(ct);
 
         // Pass the effective MainFeature flag so the view matches the rip pipeline's
         // fallback logic: job.Config?.MainFeature ?? effective.MainFeature.
-        var effective = await settingsService.GetEffectiveAsync(ct);
         ViewBag.EffectiveMainFeature = effective.MainFeature;
 
         return View(job);
@@ -317,6 +307,12 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
         // on top of the file config by SettingsHelper — read it the same way Conductor does,
         // otherwise the search silently no-ops when the key only exists in the DB.
         var effective = await settingsService.GetEffectiveAsync(ct);
+        if (!effective.OmdbEnabled)
+        {
+            ViewBag.ApiError = "OMDB API is disabled in settings.";
+            return View(new OmdbSearchResult());
+        }
+
         var apiKey = effective.OmdbApiKey;
         if (!string.IsNullOrEmpty(apiKey))
         {
@@ -341,6 +337,12 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
             return NotFound();
 
         var effective = await settingsService.GetEffectiveAsync(ct);
+        if (!effective.OmdbEnabled)
+        {
+            TempData["Error"] = "OMDB API is disabled in settings";
+            return RedirectToAction("TitleSearch", new { jobId });
+        }
+
         var apiKey = effective.OmdbApiKey;
         if (string.IsNullOrEmpty(apiKey))
         {
@@ -348,7 +350,7 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
             return RedirectToAction("TitleSearch", new { jobId });
         }
 
-        var result = await omdb.LookupByImdbAsync(imdbId, apiKey, plot: "full");
+        var result = await omdb.LookupByImdbAsync(imdbId, apiKey, plot: "full", ct: ct);
         if (result is null || result.Response != "True")
         {
             TempData["Error"] = "Could not fetch movie details";

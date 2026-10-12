@@ -2,8 +2,6 @@
 @using ArmRipper.Core.Models
 @{
     ViewData["Title"] = $"Job {Model.Id} - ARM";
-    var meta = ViewBag.Metadata as ArmRipper.Core.Metadata.OmdbTitleResult;
-    var imdbUrl = !string.IsNullOrEmpty(Model.ImdbId) ? $"https://www.imdb.com/title/{Model.ImdbId}/" : null;
 }
 
 @functions {
@@ -173,68 +171,18 @@
 </div>
 
 @* === METADATA CARD === *@
-@if (meta is not null)
-{
-    <div class="card mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span>@meta.Title (@meta.Year)</span>
-            <span>
-                @if (meta.Ratings is not null)
-                {
-                    foreach (var r in meta.Ratings)
-                    {
-                        if (r.Source == "Internet Movie Database") continue; // we show IMDb badge below
-                        var ratingUrl = r.Source switch
-                        {
-                            "Rotten Tomatoes" => $"https://www.rottentomatoes.com/search?search={Uri.EscapeDataString(meta.Title ?? "")}",
-                            "Metacritic" => $"https://www.metacritic.com/search/{Uri.EscapeDataString(meta.Title ?? "")}",
-                            _ => null
-                        };
-                        if (ratingUrl is not null)
-                        {
-                            <a href="@ratingUrl" target="_blank" class="badge bg-secondary me-1 text-decoration-none" title="@r.Source">
-                                @r.Source: @r.Value
-                            </a>
-                        }
-                        else
-                        {
-                            <span class="badge bg-secondary me-1" title="@r.Source">@r.Source: @r.Value</span>
-                        }
-                    }
-                }
-                @if (imdbUrl is not null)
-                {
-                    <a href="@imdbUrl" target="_blank" class="badge bg-warning text-dark text-decoration-none">IMDb @meta.ImdbRating</a>
-                }
-            </span>
-        </div>
-        <div class="card-body">
-            <p class="mb-3">@meta.Plot</p>
-            <div class="row">
-                <div class="col-md-8">
-                    <dl class="row small mb-0">
-                        <dt class="col-sm-3">Rated</dt><dd class="col-sm-9">@meta.Rated</dd>
-                        <dt class="col-sm-3">Runtime</dt><dd class="col-sm-9">@meta.Runtime</dd>
-                        <dt class="col-sm-3">Genre</dt><dd class="col-sm-9">@meta.Genre</dd>
-                        <dt class="col-sm-3">Director</dt><dd class="col-sm-9">@meta.Director</dd>
-                        <dt class="col-sm-3">Actors</dt><dd class="col-sm-9">@meta.Actors</dd>
-                    </dl>
-                </div>
-                <div class="col-md-4">
-                    <dl class="row small mb-0">
-                        <dt class="col-sm-5">Language</dt><dd class="col-sm-7">@meta.Language</dd>
-                        <dt class="col-sm-5">Country</dt><dd class="col-sm-7">@meta.Country</dd>
-                        <dt class="col-sm-5">Released</dt><dd class="col-sm-7">@meta.Released</dd>
-                        @if (!string.IsNullOrEmpty(meta.Awards))
-                        {
-                            <dt class="col-sm-5">Awards</dt><dd class="col-sm-7">@meta.Awards</dd>
-                        }
-                    </dl>
-                </div>
-            </div>
-        </div>
-    </div>
-}
+@* Loaded asynchronously so a slow/unavailable omdbapi.com never blocks the page. *@
+<div id="job-metadata"></div>
+<script>
+(function () {
+    var el = document.getElementById('job-metadata');
+    if (!el) return;
+    fetch('/api/jobs/@Model.Id/metadata')
+        .then(function (r) { return r.ok ? r.text() : ''; })
+        .then(function (html) { if (html) el.innerHTML = html; })
+        .catch(function () {});
+})();
+</script>
 
 @* === IDENTIFICATION + DEVICE === *@
 <div class="row mb-4">

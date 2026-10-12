@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using ArmRipper.Core.Metadata;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -106,6 +107,40 @@ public sealed class OmdbServiceTests
     }
 
     [Fact]
+    public async Task LookupByImdbAsync_WhenApiTimesOut_ReturnsNull()
+    {
+        // A hanging omdbapi.com must not block the caller indefinitely; the
+        // HttpClient timeout should surface as a null result, not a hang.
+        var client = new HttpClient(new DelayingHandler(TimeSpan.FromSeconds(30)))
+        {
+            Timeout = TimeSpan.FromMilliseconds(200)
+        };
+        var service = new OmdbService(NullLoggerFactory.Instance, client);
+
+        var sw = Stopwatch.StartNew();
+        var result = await service.LookupByImdbAsync("tt0133093", "fake_key");
+        sw.Stop();
+
+        Assert.Null(result);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(5), $"Lookup took {sw.Elapsed}");
+    }
+
+    [Fact]
+    public async Task LookupByImdbAsync_WhenCallerCancels_Throws()
+    {
+        using var cts = new CancellationTokenSource();
+        var client = new HttpClient(new DelayingHandler(TimeSpan.FromSeconds(30)))
+        {
+            Timeout = TimeSpan.FromSeconds(30)
+        };
+        var service = new OmdbService(NullLoggerFactory.Instance, client);
+        cts.CancelAfter(TimeSpan.FromMilliseconds(100));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => service.LookupByImdbAsync("tt0133093", "fake_key", ct: cts.Token));
+    }
+
+    [Fact]
     public async Task GetPosterAsync_WithImdbId_ReturnsPosterUrl()
     {
         var response = """
@@ -123,5 +158,17 @@ public sealed class OmdbServiceTests
 
         Assert.Equal("https://example.com/poster.jpg", posterUrl);
         Assert.Equal("tt0133093", imdbId);
+    }
+
+    private sealed class DelayingHandler(TimeSpan delay) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await Task.Delay(delay, cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{}")
+            };
+        }
     }
 }
