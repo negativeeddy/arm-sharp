@@ -606,8 +606,13 @@ public class SettingsController(
         string? OvidApiToken,
         CancellationToken ct = default)
     {
+        // Hidden-false + checkbox trick: the form posts both values when checked,
+        // so look for "true" rather than bool-binding the first value.
+        bool OmdbEnabled = Request.Form["OmdbEnabled"].Contains("true");
+
         var fields = new Dictionary<string, string?>
         {
+            ["OmdbEnabled"] = JsonSerialize(OmdbEnabled),
             ["OmdbApiKey"] = OmdbApiKey is not null ? JsonSerialize(OmdbApiKey) : null,
             ["TmdbApiKey"] = TmdbApiKey is not null ? JsonSerialize(TmdbApiKey) : null,
             ["TvdbApiKey"] = TvdbApiKey is not null ? JsonSerialize(TvdbApiKey) : null,

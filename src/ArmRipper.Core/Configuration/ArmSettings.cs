@@ -72,6 +72,12 @@ public class ArmSettings
     public string? ArmApiKey { get; set; }
     public string? MetadataProvider { get; set; } = "omdb";
     public string? OmdbApiKey { get; set; }
+
+    /// <summary>
+    /// Master switch for the OMDB API. When false, all calls to omdbapi.com are
+    /// skipped so a slow/unavailable OMDB cannot hang page navigation.
+    /// </summary>
+    public bool OmdbEnabled { get; set; } = true;
     public string? TmdbApiKey { get; set; }
     public string? TvdbApiKey { get; set; }
 

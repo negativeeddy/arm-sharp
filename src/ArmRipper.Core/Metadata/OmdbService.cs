@@ -30,6 +30,17 @@ public sealed class OmdbService(ILoggerFactory loggerFactory, HttpClient httpCli
             // Return the result even on error so callers can read the Error property
             return result;
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Caller (e.g. a browser navigation) went away; propagate so the
+            // request is aborted instead of being treated as an API failure.
+            throw;
+        }
+        catch (OperationCanceledException ex)
+        {
+            logger.LogWarning(ex, "OMDB API call timed out for title={Title}", title);
+            return null;
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "OMDB API call failed for title={Title}", title);
@@ -70,6 +81,14 @@ public sealed class OmdbService(ILoggerFactory loggerFactory, HttpClient httpCli
                 };
             }
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException ex)
+        {
+            logger.LogWarning(ex, "OMDB exact title lookup timed out for title={Title}", title);
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "OMDB exact title lookup failed for title={Title}", title);
@@ -84,6 +103,17 @@ public sealed class OmdbService(ILoggerFactory loggerFactory, HttpClient httpCli
         try
         {
             return await httpClient.GetFromJsonAsync<OmdbTitleResult>(url, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Caller (e.g. a browser navigation) went away; propagate so the
+            // request is aborted instead of being treated as an API failure.
+            throw;
+        }
+        catch (OperationCanceledException ex)
+        {
+            logger.LogWarning(ex, "OMDB lookup timed out for imdbId={ImdbId}", imdbId);
+            return null;
         }
         catch (Exception ex)
         {

@@ -84,7 +84,15 @@ builder.Services.AddScoped<ITrackMapperService, TrackMapperService>();
 builder.Services.AddSingleton<IRipRedirectService, RipRedirectService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<IConductor, Conductor>();
-builder.Services.AddHttpClient<OmdbService>();
+// Bound OMDB calls so a slow or unavailable omdbapi.com cannot hang forever
+// (HttpClient defaults to 100s). Job-detail metadata is fetched asynchronously
+// and never blocks page render, so this only caps explicit user actions
+// (title search / select) and the async metadata fetch.
+builder.Services.AddHttpClient<OmdbService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("arm-sharp/1.0 (omdb-service)");
+});
 builder.Services.AddHttpClient<TmdbService>();
 builder.Services.AddSingleton<INotificationBroadcaster, SignalRNotificationBroadcaster>();
 builder.Services.AddSingleton<IBackgroundRipService, BackgroundRipService>();
