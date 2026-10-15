@@ -74,9 +74,11 @@ public sealed partial class IdentifyService(
             await IdentifyVideoDiscAsync(job, ct);
         }
 
-        // ── Auto-populate season/disc from title normalization (series only) ──
-        if (titleNormalizer is not null &&
-            job.VideoType is VideoContentType.Series or VideoContentType.Tv)
+        // ── Auto-populate season/disc from title normalization ──
+        // Runs for every job: metadata providers frequently mis-type TV discs as
+        // Movies, and a "S#_D#"-style label is itself a strong series signal.
+        // ApplySeasonDiscFromTitleAndLabel decides what to trust.
+        if (titleNormalizer is not null)
         {
             ApplySeasonDiscFromTitleAndLabel(job, titleNormalizer, logger);
         }
@@ -98,6 +100,13 @@ public sealed partial class IdentifyService(
     /// disc in one source can be filled from the other — e.g. title
     /// "Show Season 5" + label "SHOW_S5_D2" → season 5 from the title,
     /// disc 2 from the label.
+    /// <para>
+    /// Metadata providers often mis-type TV discs as Movies. A label/title that
+    /// encodes <em>both</em> a season and a disc (e.g. "WESTWORLD_S1_D3") is a
+    /// strong series signal, so the job is promoted to <see cref="VideoContentType.Series"/>
+    /// and the values are populated even when the detected type wasn't a series.
+    /// A lone season or disc token is too ambiguous to override the detected type.
+    /// </para>
     /// </summary>
     internal static void ApplySeasonDiscFromTitleAndLabel(
         Job job, ArmMedia.Core.Abstractions.ITitleNormalizer titleNormalizer, ILogger logger)
@@ -110,35 +119,41 @@ public sealed partial class IdentifyService(
             "[IdentifyService] Title normalized: '{Title}' → season={Season}, disc={Disc}",
             job.Title, norm.Season, norm.Disc);
 
-        if (norm.Season is int s)
+        var labelNorm = string.IsNullOrWhiteSpace(job.Label)
+            ? null
+            : titleNormalizer.Normalize(job.Label);
+
+        // Resolve each hint independently so a title that only carries a season
+        // still picks up the disc from the label (and vice versa). Title wins
+        // when both sources provide the same kind of hint.
+        var season = norm.Season ?? labelNorm?.Season;
+        var disc = norm.Disc ?? labelNorm?.Disc;
+
+        var isSeriesType = job.VideoType is VideoContentType.Series or VideoContentType.Tv;
+        if (!isSeriesType)
+        {
+            // Only a combined season+disc hint is trustworthy enough to override
+            // a non-series classification. Respect an explicit user choice too.
+            if (season is null || disc is null || job.VideoTypeManual is not null)
+                return;
+
+            logger.LogInformation(
+                "[IdentifyService] '{Source}' encodes season {Season} disc {Disc} — treating job as series",
+                job.Label ?? job.Title, season, disc);
+            job.VideoType = VideoContentType.Series;
+            job.VideoTypeAuto = VideoContentType.Series;
+        }
+
+        if (season is int s)
         {
             job.SeasonNumberAuto = s;
             job.SeasonNumber ??= s;
         }
 
-        if (norm.Disc is int d)
+        if (disc is int d)
         {
             job.DiscNumberAuto = d;
             job.DiscNumber ??= d;
-        }
-
-        // Also try the label (e.g. "S3D1" or "Season 3 Disc 2") to fill in any
-        // season/disc the title didn't provide. Resolve independently so a title
-        // like "Show Season 5" still picks up the disc from a label like
-        // "SHOW_S5_D2".
-        if (!string.IsNullOrWhiteSpace(job.Label))
-        {
-            var labelNorm = titleNormalizer.Normalize(job.Label);
-            if (labelNorm.Season is int ls && norm.Season is null)
-            {
-                job.SeasonNumberAuto = ls;
-                job.SeasonNumber ??= ls;
-            }
-            if (labelNorm.Disc is int ld && norm.Disc is null)
-            {
-                job.DiscNumberAuto = ld;
-                job.DiscNumber ??= ld;
-            }
         }
     }
 
@@ -1167,6 +1182,28 @@ public sealed partial class IdentifyService(
         return title;
     }
 
+    /// <summary>
+    /// Builds the metadata-provider search query from a raw title. When a
+    /// <see cref="ArmMedia.Core.Abstractions.ITitleNormalizer"/> is available the
+    /// normalized query is preferred so season/disc tokens (e.g. "S1", "D3") are
+    /// stripped before searching — searching with those tokens rarely matches.
+    /// Falls back to the raw title when normalization yields nothing (e.g. a
+    /// title consisting only of season/disc tokens).
+    /// </summary>
+    internal static string BuildSearchTitle(
+        ArmMedia.Core.Abstractions.ITitleNormalizer? titleNormalizer, string rawTitle)
+    {
+        var raw = Regex.Replace(rawTitle.Trim(), "[_ ]", "+");
+        if (titleNormalizer is null)
+            return raw;
+
+        var query = titleNormalizer.Normalize(rawTitle).Query;
+        if (string.IsNullOrWhiteSpace(query))
+            return raw;
+
+        return Regex.Replace(query.Trim(), "[_ ]", "+");
+    }
+
     private async Task GetVideoDetailsAsync(Job job, CancellationToken ct)
     {
         var effective = await settingsService.GetEffectiveAsync(ct);
@@ -1181,7 +1218,8 @@ public sealed partial class IdentifyService(
         // method when identified=true, regardless of HasNiceTitle. The individual
         // field assignments below are guarded by null/empty checks, so they will
         // not overwrite values already set by authoritative sources (DiscDb, OVID).
-        var searchTitle = Regex.Replace(title.Trim(), "[_ ]", "+");
+        var rawTitle = Regex.Replace(title.Trim(), "[_ ]", "+");
+        var searchTitle = BuildSearchTitle(titleNormalizer, title);
         // job.Year can be a year RANGE for TV series (e.g. "2005–2014" for
         // How I Met Your Mother). OMDB (y=) and TMDB (year=) only accept a
         // single year, so use the FIRST 4-digit year (the series' start year).
@@ -1191,6 +1229,18 @@ public sealed partial class IdentifyService(
 
         logger.LogDebug("Calling webservice with title: {Title} and year: {Year}", searchTitle, year);
         var response = await IdentifyLoopAsync(job, searchTitle, year, ct);
+
+        // The normalizer cleans noisy labels (e.g. "WESTWORLD_S1_D3" → "westworld"),
+        // but it can also over-strip a legitimate title (e.g. "S1m0ne" → "m0ne").
+        // When the normalized query yields nothing, retry with the raw title.
+        if (response is null &&
+            !string.Equals(searchTitle, rawTitle, StringComparison.OrdinalIgnoreCase))
+        {
+            logger.LogDebug(
+                "Normalized search '{Normalized}' returned no match; retrying with raw title '{Raw}'",
+                searchTitle, rawTitle);
+            response = await IdentifyLoopAsync(job, rawTitle, year, ct);
+        }
 
         // Parse the search result to extract video type and other metadata
         if (response is not null)

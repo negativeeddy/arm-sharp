@@ -108,6 +108,60 @@ public sealed class IdentifyServiceTests
     }
 
     [Fact]
+    public void ApplySeasonDisc_MovieMisclassifiedWithSeasonDiscLabel_PromotesToSeriesAndPopulates()
+    {
+        // Regression for job 1750: a Blu-ray TV disc whose label is
+        // "WESTWORLD_S1_D3" was mis-typed as a Movie by the metadata provider.
+        // The combined season+disc label must promote the job to a series and
+        // populate season/disc automatically.
+        var job = CreateSeriesJob("WESTWORLD_S1_D3", "WESTWORLD_S1_D3");
+        job.VideoType = VideoContentType.Movie;
+        job.VideoTypeAuto = VideoContentType.Movie;
+
+        IdentifyService.ApplySeasonDiscFromTitleAndLabel(job, Normalizer, NullLogger.Instance);
+
+        Assert.Equal(VideoContentType.Series, job.VideoType);
+        Assert.Equal(VideoContentType.Series, job.VideoTypeAuto);
+        Assert.Equal(1, job.SeasonNumberAuto);
+        Assert.Equal(1, job.SeasonNumber);
+        Assert.Equal(3, job.DiscNumberAuto);
+        Assert.Equal(3, job.DiscNumber);
+    }
+
+    [Fact]
+    public void ApplySeasonDisc_MovieWithAmbiguousSeasonOnlyToken_IsNotOverridden()
+    {
+        // A lone season token (e.g. the movie "S1m0ne") is too ambiguous to
+        // override a Movie classification or populate TV fields.
+        var job = CreateSeriesJob("S1m0ne", "S1M0NE");
+        job.VideoType = VideoContentType.Movie;
+        job.VideoTypeAuto = VideoContentType.Movie;
+
+        IdentifyService.ApplySeasonDiscFromTitleAndLabel(job, Normalizer, NullLogger.Instance);
+
+        Assert.Equal(VideoContentType.Movie, job.VideoType);
+        Assert.Null(job.SeasonNumberAuto);
+        Assert.Null(job.DiscNumberAuto);
+    }
+
+    [Fact]
+    public void ApplySeasonDisc_ExplicitManualNonSeriesType_IsNotOverridden()
+    {
+        // If the user has explicitly chosen a non-series type, a label must not
+        // silently flip the job to a series.
+        var job = CreateSeriesJob("WESTWORLD_S1_D3", "WESTWORLD_S1_D3");
+        job.VideoType = VideoContentType.Movie;
+        job.VideoTypeAuto = VideoContentType.Movie;
+        job.VideoTypeManual = VideoContentType.Movie;
+
+        IdentifyService.ApplySeasonDiscFromTitleAndLabel(job, Normalizer, NullLogger.Instance);
+
+        Assert.Equal(VideoContentType.Movie, job.VideoType);
+        Assert.Null(job.SeasonNumberAuto);
+        Assert.Null(job.DiscNumberAuto);
+    }
+
+    [Fact]
     public void ApplySeasonDisc_EmptyTitle_NoOp()
     {
         var job = CreateSeriesJob("", "SHOW_S4_D3");
@@ -116,6 +170,41 @@ public sealed class IdentifyServiceTests
 
         Assert.Null(job.SeasonNumberAuto);
         Assert.Null(job.DiscNumberAuto);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // BuildSearchTitle
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("WESTWORLD_S1_D3", "westworld")]
+    [InlineData("WESTWORLD_S1_D2", "westworld")]
+    [InlineData("Weeds_S2_Disc_1", "weeds")]
+    [InlineData("Westworld", "westworld")]
+    [InlineData("How I Met Your Mother S2D1", "how+i+met+your+mother")]
+    public void BuildSearchTitle_PrefersNormalizedQuery(string rawTitle, string expected)
+    {
+        var result = IdentifyService.BuildSearchTitle(Normalizer, rawTitle);
+
+        Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void BuildSearchTitle_FallsBackToRaw_WhenNormalizationYieldsEmpty()
+    {
+        // A title consisting only of season/disc tokens normalizes to an empty
+        // query; the raw title must be used instead of sending an empty search.
+        var result = IdentifyService.BuildSearchTitle(Normalizer, "Season 1 Disc 1");
+
+        Assert.Equal("Season+1+Disc+1", result);
+    }
+
+    [Fact]
+    public void BuildSearchTitle_NoNormalizer_UsesRawTitle()
+    {
+        var result = IdentifyService.BuildSearchTitle(null, "WESTWORLD_S1_D3");
+
+        Assert.Equal("WESTWORLD+S1+D3", result);
     }
 
     [Fact]
