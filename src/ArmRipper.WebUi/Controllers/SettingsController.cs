@@ -152,6 +152,7 @@ public class SettingsController(
         bool FileBotNonStrict = Request.Form["FileBotNonStrict"].Contains("true");
         bool AllowDuplicates = Request.Form["AllowDuplicates"].Contains("true");
         bool PreferWidescreen = Request.Form["PreferWidescreen"].Contains("true");
+        bool Prevent99 = Request.Form["Prevent99"].Contains("true");
 
         // Parse the fake clock date — the <input type="date"> submits YYYY-MM-DD;
         // DateTime.TryParse gives midnight local time for date-only strings.
@@ -180,6 +181,7 @@ public class SettingsController(
             ["FileBotNonStrict"] = JsonSerialize(FileBotNonStrict),
             ["AllowDuplicates"] = JsonSerialize(AllowDuplicates),
             ["PreferWidescreen"] = JsonSerialize(PreferWidescreen),
+            ["Prevent99"] = JsonSerialize(Prevent99),
             ["FakeSystemClockDate"] = fakeClockDate.HasValue ? JsonSerialize(fakeClockDate.Value) : null,
         };
 
