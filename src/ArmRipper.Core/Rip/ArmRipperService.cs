@@ -653,7 +653,7 @@ public sealed class ArmRipperService(
         return transcodeSucceeded;
     }
 
-    // ── Phase 6: finalize ──────────────────────────────────────────────────
+        // ── Phase 6: finalize ──────────────────────────────────────────────────
 
     /// <summary>
     /// Handles all post-transcode work: title recomputation, file moves, poster
@@ -663,6 +663,23 @@ public sealed class ArmRipperService(
     private async Task<string> FinalizeAsync(
         Job job, RipContext ctx, bool hasDupes, bool transcodeSucceeded, CancellationToken ct)
     {
+        await FinalizePrepareAsync(job, ct);
+        await FinalizeHandleSkipTranscodeAsync(job, ctx, ct);
+        await FinalizeRelocateIfTitleChangedAsync(job, ctx, hasDupes, ct);
+        await FinalizeMoveFilesAsync(job, ctx, ct);
+        await FinalizeRelocatePosterPostMoveAsync(job, ctx, ct);
+        await FinalizeScanEmbyAsync(job, ctx, ct);
+        await FinalizeSetPermissionsAsync(job, ctx, ct);
+        FinalizeCleanupRawFiles(job, ctx, transcodeSucceeded);
+        await FinalizeNotifyAndCompleteAsync(job, ctx, ct);
+
+        logger.LogInformation("************* ARM processing complete *************");
+        return job.Path ?? ctx.FinalDirectory;
+    }
+
+    /// <summary>Transition job to Finalize stage and refresh from DB.</summary>
+    private async Task FinalizePrepareAsync(Job job, CancellationToken ct)
+    {
         job.TransitionToStage(RipStage.Finalize);
         job.ProgressMessage = "Finalizing...";
         await db.SaveChangesAsync(ct);
@@ -671,7 +688,11 @@ public sealed class ArmRipperService(
         // Refresh job from DB to pick up any title / year / video-type changes
         // the user made via the WebUI while the rip + transcode were running.
         await db.Entry(job).ReloadAsync(ct);
+    }
 
+    /// <summary>Handle skip-transcode path swap when using MakeMKV.</summary>
+    private Task FinalizeHandleSkipTranscodeAsync(Job job, RipContext ctx, CancellationToken ct)
+    {
         // Handle skip-transcode path swap.
         logger.LogDebug("Transcode status: [{SkipTranscode}] and MakeMKV Status: [{UseMakeMkv}]",
             job.Config?.SkipTranscode ?? settings.Value.SkipTranscode, ctx.UseMakeMkv);
@@ -681,7 +702,12 @@ public sealed class ArmRipperService(
             DeleteRawFiles(new[] { ctx.TranscodeOutPath });
             ctx.TranscodeOutPath = ctx.TranscodeInPath!;
         }
+        return Task.CompletedTask;
+    }
 
+    /// <summary>Recompute output path if title changed and relocate files.</summary>
+    private async Task FinalizeRelocateIfTitleChangedAsync(Job job, RipContext ctx, bool hasDupes, CancellationToken ct)
+    {
         // Recompute the output path from the current (possibly newly-identified)
         // title/type. The output directory is only needed once the transcode is
         // complete, so if the title was identified or changed after the rip
@@ -707,19 +733,44 @@ public sealed class ArmRipperService(
             job.Path = ctx.FinalDirectory;
             await db.SaveChangesAsync(ct);
         }
+    }
 
-        await MoveFilesPostAsync(ctx.TranscodeOutPath!, job, ct);
+    /// <summary>Move files from transcode output to final location.</summary>
+    private Task FinalizeMoveFilesAsync(Job job, RipContext ctx, CancellationToken ct)
+    {
+        return MoveFilesPostAsync(ctx.TranscodeOutPath!, job, ct);
+    }
 
+    /// <summary>Move poster to correct final directory.</summary>
+    private Task FinalizeRelocatePosterPostMoveAsync(Job job, RipContext ctx, CancellationToken ct)
+    {
         // Move the poster.png from the identification-time path to the correct
         // final directory (fixes orphaned posters left in "unidentified/").
         RelocatePoster(job, job.Path ?? ctx.FinalDirectory);
+        return Task.CompletedTask;
+    }
 
-        await ScanEmbyAsync(job, ct);
+    /// <summary>Scan Emby library.</summary>
+    private Task FinalizeScanEmbyAsync(Job job, RipContext ctx, CancellationToken ct)
+    {
+        return ScanEmbyAsync(job, ct);
+    }
 
-        await SetPermissionsAsync(job.Path ?? ctx.FinalDirectory, job, ct);
+    /// <summary>Set permissions on final files.</summary>
+    private Task FinalizeSetPermissionsAsync(Job job, RipContext ctx, CancellationToken ct)
+    {
+        return SetPermissionsAsync(job.Path ?? ctx.FinalDirectory, job, ct);
+    }
 
+    /// <summary>Cleanup raw files.</summary>
+    private void FinalizeCleanupRawFiles(Job job, RipContext ctx, bool transcodeSucceeded)
+    {
         CleanupRawFiles(job, ctx, transcodeSucceeded);
+    }
 
+    /// <summary>Send notifications and mark job complete.</summary>
+    private async Task FinalizeNotifyAndCompleteAsync(Job job, RipContext ctx, CancellationToken ct)
+    {
         await NotifyExitAsync(job, ct);
 
         job.TransitionToStage(RipStage.Done);
@@ -727,9 +778,6 @@ public sealed class ArmRipperService(
         job.ProgressMessage = null;
         await db.SaveChangesAsync(ct);
         await BroadcastJobUpdateAsync(job);
-
-        logger.LogInformation("************* ARM processing complete *************");
-        return job.Path ?? ctx.FinalDirectory;
     }
 
     /// <summary>
