@@ -1132,6 +1132,12 @@ public sealed partial class IdentifyService(
             var title = doc.Descendants(diNs + "title").FirstOrDefault()?.Value;
             if (string.IsNullOrEmpty(title))
                 title = doc.Descendants(ns + "title").FirstOrDefault()?.Value;
+
+            // A missing <title> means the disc carries no studio metadata; the
+            // volume label is a low-confidence fallback and must NOT be flagged
+            // as a nice title, otherwise it blocks the metadata search from
+            // replacing it with the real series name (e.g. "Westworld_S3_Disc_3").
+            var fromDiscMetadata = !string.IsNullOrEmpty(title);
             if (string.IsNullOrEmpty(title))
                 title = job.Label;
 
@@ -1146,8 +1152,9 @@ public sealed partial class IdentifyService(
             {
                 job.Title = job.TitleAuto = title;
                 // BD-MT XML is studio-provided disc metadata — authoritative enough
-                // to treat as a "nice" title.
-                job.HasNiceTitle = true;
+                // to treat as a "nice" title. The label fallback is not.
+                if (fromDiscMetadata)
+                    job.HasNiceTitle = true;
             }
 
             if (string.IsNullOrEmpty(job.YearAuto))
@@ -1204,6 +1211,33 @@ public sealed partial class IdentifyService(
         return Regex.Replace(query.Trim(), "[_ ]", "+");
     }
 
+    /// <summary>
+    /// True when the title or the disc label carries a season or disc hint
+    /// (e.g. "WESTWORLD_S3_DISC_3" → season 3, disc 3). The hint is checked on
+    /// the label too, because the title is often the label itself early in the
+    /// pipeline. Used to steer the metadata search toward a series/TV lookup
+    /// instead of the general (movie-first) search.
+    /// </summary>
+    internal static bool HasSeasonDiscHint(
+        ArmMedia.Core.Abstractions.ITitleNormalizer? titleNormalizer,
+        string? title,
+        string? label)
+    {
+        if (titleNormalizer is null)
+            return false;
+
+        return HasHint(titleNormalizer, title) || HasHint(titleNormalizer, label);
+
+        static bool HasHint(ArmMedia.Core.Abstractions.ITitleNormalizer n, string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            var result = n.Normalize(value);
+            return result.Season is not null || result.Disc is not null;
+        }
+    }
+
     private async Task GetVideoDetailsAsync(Job job, CancellationToken ct)
     {
         var effective = await settingsService.GetEffectiveAsync(ct);
@@ -1220,6 +1254,10 @@ public sealed partial class IdentifyService(
         // not overwrite values already set by authoritative sources (DiscDb, OVID).
         var rawTitle = Regex.Replace(title.Trim(), "[_ ]", "+");
         var searchTitle = BuildSearchTitle(titleNormalizer, title);
+        // Season/disc hints (from the title or the label) mean this is almost
+        // certainly a TV disc, so search as a series up front. Providers
+        // otherwise return the movie-first result and TV discs get mis-typed.
+        var preferSeries = HasSeasonDiscHint(titleNormalizer, title, job.Label);
         // job.Year can be a year RANGE for TV series (e.g. "2005–2014" for
         // How I Met Your Mother). OMDB (y=) and TMDB (year=) only accept a
         // single year, so use the FIRST 4-digit year (the series' start year).
@@ -1227,8 +1265,9 @@ public sealed partial class IdentifyService(
         // garbage value like "20052014" that makes the search fail.
         var year = string.IsNullOrEmpty(job.Year) ? "" : Regex.Match(job.Year, @"\d{4}").Value;
 
-        logger.LogDebug("Calling webservice with title: {Title} and year: {Year}", searchTitle, year);
-        var response = await IdentifyLoopAsync(job, searchTitle, year, ct);
+        logger.LogDebug("Calling webservice with title: {Title} year: {Year} preferSeries: {PreferSeries}",
+            searchTitle, year, preferSeries);
+        var response = await IdentifyLoopAsync(job, searchTitle, year, preferSeries, ct);
 
         // The normalizer cleans noisy labels (e.g. "WESTWORLD_S1_D3" → "westworld"),
         // but it can also over-strip a legitimate title (e.g. "S1m0ne" → "m0ne").
@@ -1239,7 +1278,7 @@ public sealed partial class IdentifyService(
             logger.LogDebug(
                 "Normalized search '{Normalized}' returned no match; retrying with raw title '{Raw}'",
                 searchTitle, rawTitle);
-            response = await IdentifyLoopAsync(job, rawTitle, year, ct);
+            response = await IdentifyLoopAsync(job, rawTitle, year, preferSeries, ct);
         }
 
         // Parse the search result to extract video type and other metadata
@@ -1337,7 +1376,8 @@ public sealed partial class IdentifyService(
         }
     }
 
-    private async Task<JsonDocument?> IdentifyLoopAsync(Job job, string title, string year, CancellationToken ct)
+    private async Task<JsonDocument?> IdentifyLoopAsync(
+        Job job, string title, string year, bool preferSeries, CancellationToken ct)
     {
         JsonDocument? response = null;
         const int maxAttempts = 8;
@@ -1345,31 +1385,31 @@ public sealed partial class IdentifyService(
 
         if (!string.IsNullOrEmpty(year))
         {
-            response = await TryWithYearAsync(job, title, year, ct);
+            response = await TryWithYearAsync(job, title, year, preferSeries, ct);
             if (response is null)
             {
                 var prevYear = (int.Parse(year) - 1).ToString();
-                response = await CallMetadataProviderAsync(job, title, prevYear, ct);
+                response = await CallMetadataProviderAsync(job, title, prevYear, preferSeries, ct);
             }
         }
 
         if (response is null)
-            response = await CallMetadataProviderAsync(job, title, null, ct);
+            response = await CallMetadataProviderAsync(job, title, null, preferSeries, ct);
 
         while (response is null && title.Contains('-') && attempts < maxAttempts)
         {
             attempts++;
             title = title[..title.LastIndexOf('-')].TrimEnd('+');
-            response = await CallMetadataProviderAsync(job, title, string.IsNullOrEmpty(year) ? null : year, ct);
+            response = await CallMetadataProviderAsync(job, title, string.IsNullOrEmpty(year) ? null : year, preferSeries, ct);
         }
 
         while (response is null && title.Contains('+') && attempts < maxAttempts)
         {
             attempts++;
             title = title[..title.LastIndexOf('+')].TrimEnd('+');
-            response = await CallMetadataProviderAsync(job, title, string.IsNullOrEmpty(year) ? null : year, ct);
+            response = await CallMetadataProviderAsync(job, title, string.IsNullOrEmpty(year) ? null : year, preferSeries, ct);
             if (response is null)
-                response = await CallMetadataProviderAsync(job, title, null, ct);
+                response = await CallMetadataProviderAsync(job, title, null, preferSeries, ct);
         }
 
         if (response is null && attempts >= maxAttempts)
@@ -1380,31 +1420,53 @@ public sealed partial class IdentifyService(
         return response;
     }
 
-    private async Task<JsonDocument?> TryWithYearAsync(Job job, string title, string year, CancellationToken ct)
+    private async Task<JsonDocument?> TryWithYearAsync(
+        Job job, string title, string year, bool preferSeries, CancellationToken ct)
     {
-        return await CallMetadataProviderAsync(job, title, year, ct);
+        return await CallMetadataProviderAsync(job, title, year, preferSeries, ct);
     }
 
-    private async Task<JsonDocument?> CallMetadataProviderAsync(Job job, string title, string? year, CancellationToken ct)
+    private async Task<JsonDocument?> CallMetadataProviderAsync(
+        Job job, string title, string? year, bool preferSeries, CancellationToken ct)
     {
         var effective = await settingsService.GetEffectiveAsync(ct);
         var provider = effective.MetadataProvider?.ToLowerInvariant();
         return provider switch
         {
-            "tmdb" => await TmdbSearchAsync(title, year, effective.TmdbApiKey, ct),
-            "omdb" => await OmdbSearchAsync(title, year, effective.OmdbApiKey, ct),
+            "tmdb" => await TmdbSearchAsync(title, year, effective.TmdbApiKey, preferSeries, ct),
+            "omdb" => await OmdbSearchAsync(title, year, effective.OmdbApiKey, preferSeries, ct),
             _ => null
         };
     }
 
-    private async Task<JsonDocument?> OmdbSearchAsync(string title, string? year, string? apiKey, CancellationToken ct)
+    private async Task<JsonDocument?> OmdbSearchAsync(
+        string title, string? year, string? apiKey, bool preferSeries, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(apiKey))
             return null;
 
+        // OMDB's /s= search accepts type=series to scope the lookup. Only use it
+        // as a first pass — if the scoped search finds nothing we fall back to
+        // the general search so a mis-detected hint can never block identification.
+        if (preferSeries)
+        {
+            var seriesResponse = await OmdbSearchCoreAsync(title, year, apiKey, "series", ct);
+            if (seriesResponse is not null)
+                return seriesResponse;
+        }
+
+        return await OmdbSearchCoreAsync(title, year, apiKey, null, ct);
+    }
+
+    private async Task<JsonDocument?> OmdbSearchCoreAsync(
+        string title, string? year, string? apiKey, string? type, CancellationToken ct)
+    {
         var url = string.IsNullOrEmpty(year)
             ? $"https://www.omdbapi.com/?s={title}&r=json&apikey={apiKey}"
             : $"https://www.omdbapi.com/?s={title}&y={year}&r=json&apikey={apiKey}";
+
+        if (!string.IsNullOrEmpty(type))
+            url += $"&type={type}";
 
         try
         {
@@ -1426,39 +1488,64 @@ public sealed partial class IdentifyService(
         }
     }
 
-    private async Task<JsonDocument?> TmdbSearchAsync(string title, string? year, string? apiKey, CancellationToken ct)
+    private async Task<JsonDocument?> TmdbSearchAsync(
+        string title, string? year, string? apiKey, bool preferSeries, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(apiKey))
             return null;
 
-        try
+        var httpClient = httpClientFactory.CreateClient("IdentifyService");
+
+        // TMDB separates movie and TV into different endpoints, and the movie
+        // endpoint is tried first — which is how TV discs get returned as movies.
+        // When season/disc hints point at a series we query TV first. Each side
+        // falls back to the other so a wrong hint can never block identification.
+        if (preferSeries)
         {
-            var httpClient = httpClientFactory.CreateClient("IdentifyService");
-
-            // Search movies
-            var movieUrl = string.IsNullOrEmpty(year)
-                ? $"https://api.themoviedb.org/3/search/movie?api_key={apiKey}&query={title}"
-                : $"https://api.themoviedb.org/3/search/movie?api_key={apiKey}&query={title}&year={year}";
-
-            var response = await httpClient.GetStringAsync(movieUrl, ct);
-            var movieResults = JsonDocument.Parse(response);
-            var totalResults = movieResults.RootElement.GetProperty("total_results").GetInt32();
-
-            if (totalResults > 0)
-                return ConvertTmdbToOmdb(movieResults, "movie");
-
-            // Search TV
-            var tvUrl = $"https://api.themoviedb.org/3/search/tv?api_key={apiKey}&query={title}";
-            response = await httpClient.GetStringAsync(tvUrl, ct);
-            var tvResults = JsonDocument.Parse(response);
-            totalResults = tvResults.RootElement.GetProperty("total_results").GetInt32();
-
-            return totalResults > 0 ? ConvertTmdbToOmdb(tvResults, "series") : null;
+            var tvResults = await SearchTvAsync();
+            return tvResults ?? await SearchMovieAsync();
         }
-        catch (Exception ex)
+
+        var movieResults = await SearchMovieAsync();
+        return movieResults ?? await SearchTvAsync();
+
+        async Task<JsonDocument?> SearchMovieAsync()
         {
-            logger.LogError(ex, "TMDB API call failed");
-            return null;
+            try
+            {
+                var movieUrl = string.IsNullOrEmpty(year)
+                    ? $"https://api.themoviedb.org/3/search/movie?api_key={apiKey}&query={title}"
+                    : $"https://api.themoviedb.org/3/search/movie?api_key={apiKey}&query={title}&year={year}";
+
+                var response = await httpClient.GetStringAsync(movieUrl, ct);
+                var results = JsonDocument.Parse(response);
+                var totalResults = results.RootElement.GetProperty("total_results").GetInt32();
+
+                return totalResults > 0 ? ConvertTmdbToOmdb(results, "movie") : null;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "TMDB movie search failed");
+                return null;
+            }
+        }
+
+        async Task<JsonDocument?> SearchTvAsync()
+        {
+            try
+            {
+                var tvUrl = $"https://api.themoviedb.org/3/search/tv?api_key={apiKey}&query={title}";
+                var response = await httpClient.GetStringAsync(tvUrl, ct);
+                var results = JsonDocument.Parse(response);
+                var totalResults = results.RootElement.GetProperty("total_results").GetInt32();
+
+                return totalResults > 0 ? ConvertTmdbToOmdb(results, "series") : null;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "TMDB TV search failed");
+                return null;
+            }
         }
     }
 

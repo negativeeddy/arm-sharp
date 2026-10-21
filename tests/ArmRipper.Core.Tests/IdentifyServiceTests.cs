@@ -207,6 +207,38 @@ public sealed class IdentifyServiceTests
         Assert.Equal("WESTWORLD+S1+D3", result);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // HasSeasonDiscHint — drives the series-first metadata search
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("Westworld_S3_Disc_3", "Westworld_S3_Disc_3", true)]
+    [InlineData("WESTWORLD_S1_D3", "WESTWORLD_S1_D3", true)]
+    [InlineData("Show Season 3 Disc 2", null, true)]
+    [InlineData("How I Met Your Mother S2D1", null, true)]
+    [InlineData("Westworld", "Westworld", false)]
+    [InlineData("Wild Wild West", "WESTWORLD_S3_DISC_3", true)] // label carries the hint
+    public void HasSeasonDiscHint_DetectsHintFromTitleOrLabel(
+        string? title, string? label, bool expected)
+    {
+        var result = IdentifyService.HasSeasonDiscHint(Normalizer, title, label);
+
+        Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void HasSeasonDiscHint_NoNormalizer_ReturnsFalse()
+    {
+        Assert.False(IdentifyService.HasSeasonDiscHint(null, "WESTWORLD_S1_D3", "WESTWORLD_S1_D3"));
+    }
+
+    [Fact]
+    public void HasSeasonDiscHint_NoTitleOrLabel_ReturnsFalse()
+    {
+        Assert.False(IdentifyService.HasSeasonDiscHint(Normalizer, null, null));
+        Assert.False(IdentifyService.HasSeasonDiscHint(Normalizer, "", "   "));
+    }
+
     [Fact]
     public void ApplySeasonDisc_ManualOverrides_AreNotOverwritten()
     {
