@@ -1128,14 +1128,20 @@ public sealed class ArmRipperService(
                             && selectedSet.Contains(track.TrackNumber);
                     }
 
-                    // Also update the MainFeature flag to the longest selected
-                    // track so downstream stages (transcode) use the right title.
-                    // Picking the first by list order could select a DiscDb-promoted
-                    // short track if the user inadvertently left it checked.
+                    // Preserve the auto-detected (or user-overridden) main feature
+                    // when the user left it selected — overwriting it here replaced
+                    // a verified feature with an arbitrary selected track (issue
+                    // #213), so a deliberately-selected short extra became the
+                    // "main feature" and failed rip verification for the whole job.
+                    // Only fall back to the longest selected track when no selected
+                    // track carries the flag (e.g. the user excluded the feature).
+                    // Picking by list order could select a DiscDb-promoted short
+                    // track if the user inadvertently left it checked.
                     var selectedTracks = tracks.Where(t => t.Process).ToList();
-                    var mainSelected = selectedTracks
-                        .OrderByDescending(t => t.Length ?? 0)
-                        .FirstOrDefault();
+                    var mainSelected = tracks.FirstOrDefault(t => t.MainFeature && t.Process)
+                        ?? selectedTracks
+                            .OrderByDescending(t => t.Length ?? 0)
+                            .FirstOrDefault();
                     foreach (var track in tracks)
                         track.MainFeature = ReferenceEquals(track, mainSelected);
 
