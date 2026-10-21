@@ -826,6 +826,171 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
         Assert.DoesNotContain("identify", job.StageErrors ?? "");
     }
 
+    /// <summary>
+    /// Runs the private rip pipeline through the manual-selection wait: starts
+    /// <c>PrepareTranscodeInputPathAsync</c> via reflection, persists the
+    /// selection through a separate DbContext (mirroring the API endpoint, which
+    /// uses its own request-scoped context), then signals the parked pipeline.
+    /// </summary>
+    private async Task<string?> RunManualSelectionPipelineAsync(Job job, string selectionJson, string makeMkvOutPath)
+    {
+        var service = CreateService();
+
+        var method = typeof(ArmRipperService).GetMethod(
+            "PrepareTranscodeInputPathAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var pipelineTask = (Task<string?>)method!.Invoke(service,
+            new object[] { job, "Test Movie (2024)", makeMkvOutPath, CancellationToken.None })!;
+
+        var signalsField = typeof(ArmRipperService).GetField(
+            "manualSelectionSignals", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(signalsField);
+        var signals = (ConcurrentDictionary<int, TaskCompletionSource<bool>>)signalsField!.GetValue(null)!;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (!signals.ContainsKey(job.Id) && sw.ElapsedMilliseconds < 10_000)
+            await Task.Delay(25);
+        Assert.True(signals.ContainsKey(job.Id), "Pipeline did not park in manual selection wait");
+
+        using (var apiDb = new ArmDbContext(
+            new DbContextOptionsBuilder<ArmDbContext>()
+                .UseSqlite(_db.Database.GetDbConnection())
+                .Options))
+        {
+            var apiJob = await apiDb.Jobs.FirstAsync(j => j.Id == job.Id);
+            apiJob.ManualSelectionTrackNumbers = selectionJson;
+            await apiDb.SaveChangesAsync();
+        }
+
+        Assert.True(ArmRipperService.SignalManualSelection(job.Id));
+        return await pipelineTask;
+    }
+
+    /// <summary>
+    /// Configures <c>RipTrackAsync</c> to write an output file of the given size
+    /// per track number, simulating MakeMKV saving each selected title. Sizes use
+    /// sparse files (SetLength) so multi-GB expectations cost no disk space.
+    /// </summary>
+    private void SetupRipWritingSizes(params (string TrackNumber, long Size)[] sizes)
+    {
+        _makeMkv.Setup(m => m.RipTrackAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Job _, string trackNumber, string outPath, string _args, int _minLength,
+                IProgress<int>? _progress, CancellationToken _ct) =>
+            {
+                var size = sizes.FirstOrDefault(s => s.TrackNumber == trackNumber).Size;
+                Directory.CreateDirectory(outPath);
+                using var fs = new FileStream(
+                    Path.Combine(outPath, $"title_t{int.Parse(trackNumber):D2}.mkv"),
+                    FileMode.Create, FileAccess.Write);
+                fs.SetLength(size);
+                return SuccessfulRipResult();
+            });
+    }
+
+    private static List<Track> ManualSelectionTracks(long featureSize, long alternateSize) =>
+    [
+        // A deliberately short extra — below the default MinLength of 300s.
+        new() { Id = 1, JobId = 1, TrackNumber = "0", Length = 120, FileName = "C1_t00.mkv" },
+        // Auto-detected main feature: loses the duration race to track "2" but
+        // wins the near-tie on file size (and chapters) in SelectMainFeatureTrack.
+        new() { Id = 2, JobId = 1, TrackNumber = "1", Length = 3000, FileSize = featureSize, Chapters = 12, FileName = "D1_t01.mkv" },
+        // Slightly longer alternate cut — the longest selected track.
+        new() { Id = 3, JobId = 1, TrackNumber = "2", Length = 3050, FileSize = alternateSize, Chapters = 8, FileName = "E1_t02.mkv" },
+    ];
+
+    [Fact]
+    public async Task ManualSelection_PreservesDetectedMainFeature_WhenSelected()
+    {
+        // Issue #213: manual selection must not clobber the auto-detected main
+        // feature. Track "1" wins detection via the size tie-break against the
+        // slightly longer track "2", so it must stay the main feature even
+        // though "2" is the longest selected track.
+        var job = TestHelpers.CreateTestJob(j => j.Config!.ManualSelection = true);
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        _makeMkv.Setup(m => m.GetTrackInfoWithCacheAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ManualSelectionTracks(3_000_000_000L, 2_900_000_000L));
+        SetupRipWritingSizes(("0", 1024), ("1", 3_000_000_000L), ("2", 2_900_000_000L));
+
+        var rawPath = Path.Combine(Path.GetTempPath(), $"arm_manual_main_{Guid.NewGuid():N}");
+        var result = await RunManualSelectionPipelineAsync(job, "[\"0\",\"1\",\"2\"]", rawPath);
+
+        Assert.Equal(rawPath, result);
+        Assert.NotEqual(JobState.Failure, job.Status);
+
+        var dbTracks = await _db.Tracks.AsNoTracking().Where(t => t.JobId == job.Id).ToListAsync();
+        Assert.Equal(3, dbTracks.Count(t => t.Process));
+        var main = Assert.Single(dbTracks, t => t.MainFeature);
+        Assert.Equal("1", main.TrackNumber);
+    }
+
+    [Fact]
+    public async Task ManualSelection_ExcludingDetectedMainFeature_FallsBackToLongestSelected()
+    {
+        // Issue #213: when the user deselects the auto-detected main feature,
+        // fall back to the longest selected track (existing behaviour).
+        var job = TestHelpers.CreateTestJob(j => j.Config!.ManualSelection = true);
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        _makeMkv.Setup(m => m.GetTrackInfoWithCacheAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ManualSelectionTracks(3_000_000_000L, 2_900_000_000L));
+        SetupRipWritingSizes(("0", 1024), ("2", 2_900_000_000L));
+
+        var rawPath = Path.Combine(Path.GetTempPath(), $"arm_manual_fallback_{Guid.NewGuid():N}");
+        var result = await RunManualSelectionPipelineAsync(job, "[\"0\",\"2\"]", rawPath);
+
+        Assert.Equal(rawPath, result);
+        Assert.NotEqual(JobState.Failure, job.Status);
+
+        var dbTracks = await _db.Tracks.AsNoTracking().Where(t => t.JobId == job.Id).ToListAsync();
+        Assert.Equal(2, dbTracks.Count(t => t.Process));
+        var main = Assert.Single(dbTracks, t => t.MainFeature);
+        Assert.Equal("2", main.TrackNumber);
+    }
+
+    [Fact]
+    public async Task ManualSelection_ShortExtraAlongsideFeature_DoesNotFailRipVerification()
+    {
+        // Issue #213 end-to-end: a deliberately selected short extra alongside a
+        // good feature must not fail the job through rip verification. The
+        // auto-detected main feature ("1") keeps the flag even though the longer
+        // alternate ("2") is the longest selected track; the alternate's rip is
+        // undersized here, which may only warn because it is not the main
+        // feature. Before the fix the flag moved to the longest selected track
+        // and the undersized rip hard-failed the whole job.
+        var job = TestHelpers.CreateTestJob(j => j.Config!.ManualSelection = true);
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        _makeMkv.Setup(m => m.GetTrackInfoWithCacheAsync(
+                It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ManualSelectionTracks(3_000_000_000L, 2_900_000_000L));
+        SetupRipWritingSizes(("0", 1024), ("1", 3_000_000_000L), ("2", 1_000_000L));
+        _ffmpeg.Setup(f => f.ProbeDurationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string path, CancellationToken _) =>
+                path.Contains("t00") ? 120.0 : path.Contains("t01") ? 3000.0 : 3050.0);
+
+        var rawPath = Path.Combine(Path.GetTempPath(), $"arm_manual_verify_{Guid.NewGuid():N}");
+        var result = await RunManualSelectionPipelineAsync(job, "[\"0\",\"1\",\"2\"]", rawPath);
+
+        Assert.Equal(rawPath, result);
+        Assert.NotEqual(JobState.Failure, job.Status);
+
+        var dbTracks = await _db.Tracks.AsNoTracking().Where(t => t.JobId == job.Id).ToListAsync();
+        var main = Assert.Single(dbTracks, t => t.MainFeature);
+        Assert.Equal("1", main.TrackNumber);
+
+        // The short extra was genuinely ripped — it just must not drive the verdict.
+        _makeMkv.Verify(m => m.RipTrackAsync(
+            It.IsAny<Job>(), "0", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+            It.IsAny<IProgress<int>?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [Fact]
     public async Task ManualSelection_EmptySelection_FailsJobCleanly()
     {
