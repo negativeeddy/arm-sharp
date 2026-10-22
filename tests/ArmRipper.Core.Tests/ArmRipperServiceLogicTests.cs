@@ -1059,6 +1059,130 @@ public sealed class ArmRipperServiceLogicTests
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // AnalyzeMainFeatureSelection — ambiguity reporting
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void AnalyzeMainFeatureSelection_NearTie_ReportsBothCandidates()
+    {
+        // RED_RIDING_HOOD (job 1590): two full-length cuts of the same film, 33s
+        // apart. Both land in the near-tie bucket, so the choice is ambiguous.
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("2", 5990, 21_434_406_912L, 12, "16:9"),
+            CreateTestTrack("3", 6024, 21_430_312_064L, 12, "16:9")
+        };
+
+        var selection = ArmRipperService.AnalyzeMainFeatureSelection(tracks, preferWidescreen: true);
+
+        Assert.True(selection.IsAmbiguous);
+        Assert.Equal(2, selection.Candidates.Count);
+        // The existing tie-break (file size) is unchanged — the bigger file wins.
+        Assert.Equal("2", selection.Selected!.TrackNumber);
+        Assert.Equal("file size", selection.TieBreakReason);
+    }
+
+    [Fact]
+    public void AnalyzeMainFeatureSelection_SingleCandidate_IsNotAmbiguous()
+    {
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("0", 6000, 4_000_000_000L, 20, "16:9"),
+            CreateTestTrack("1", 1800, 1_500_000_000L, 5, "4:3")
+        };
+
+        var selection = ArmRipperService.AnalyzeMainFeatureSelection(tracks, preferWidescreen: true);
+
+        Assert.False(selection.IsAmbiguous);
+        Assert.Single(selection.Candidates);
+    }
+
+    [Fact]
+    public void AnalyzeMainFeatureSelection_WidescreenTieBreak_ReportsAspectReason()
+    {
+        // Underworld (job 1106): the widescreen feature wins the near-tie on
+        // aspect ratio before file size is even considered.
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("1", 8017, 4_920_000_000L, 17, "16:9"),
+            CreateTestTrack("7", 8018, 4_830_000_000L, 16, "4:3")
+        };
+
+        var selection = ArmRipperService.AnalyzeMainFeatureSelection(tracks, preferWidescreen: true);
+
+        Assert.True(selection.IsAmbiguous);
+        Assert.Equal("1", selection.Selected!.TrackNumber);
+        Assert.Equal("aspect ratio", selection.TieBreakReason);
+    }
+
+    [Fact]
+    public void AnalyzeMainFeatureSelection_ChapterTieBreak_ReportsChapterReason()
+    {
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("1", 8000, 4_000_000_000L, 12, "16:9"),
+            CreateTestTrack("2", 8003, 4_000_000_000L, 18, "16:9")
+        };
+
+        var selection = ArmRipperService.AnalyzeMainFeatureSelection(tracks, preferWidescreen: true);
+
+        Assert.Equal("2", selection.Selected!.TrackNumber);
+        Assert.Equal("chapter count", selection.TieBreakReason);
+    }
+
+    [Fact]
+    public void BuildMainFeatureAmbiguityWarning_NearTie_NamesRunnersUp()
+    {
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("2", 5990, 21_434_406_912L, 12, "16:9"),
+            CreateTestTrack("3", 6024, 21_430_312_064L, 12, "16:9")
+        };
+
+        var selection = ArmRipperService.AnalyzeMainFeatureSelection(tracks, preferWidescreen: true);
+        var warning = ArmRipperService.BuildMainFeatureAmbiguityWarning(selection);
+
+        Assert.NotNull(warning);
+        Assert.Contains("Main feature ambiguous", warning);
+        Assert.Contains("2 tracks within tolerance", warning);
+        Assert.Contains("selected track 2 by file size", warning);
+        Assert.Contains("track 3 (6024s, 12 chapters, 21430312064 bytes)", warning);
+    }
+
+    [Fact]
+    public void BuildMainFeatureAmbiguityWarning_SingleCandidate_ReturnsNull()
+    {
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("0", 6000, 4_000_000_000L, 20, "16:9"),
+            CreateTestTrack("1", 1800, 1_500_000_000L, 5, "4:3")
+        };
+
+        var selection = ArmRipperService.AnalyzeMainFeatureSelection(tracks, preferWidescreen: true);
+
+        Assert.Null(ArmRipperService.BuildMainFeatureAmbiguityWarning(selection));
+    }
+
+    [Fact]
+    public void BuildMainFeatureAmbiguityWarning_ContainsNoSemicolons()
+    {
+        // The warning is also stored as a stage-scoped warning, whose format
+        // separates entries with ';'. A semicolon in the message would corrupt
+        // the entry list.
+        var tracks = new List<Track>
+        {
+            CreateTestTrack("2", 5990, 21_434_406_912L, 12, "16:9"),
+            CreateTestTrack("3", 6024, 21_430_312_064L, 12, "16:9")
+        };
+
+        var selection = ArmRipperService.AnalyzeMainFeatureSelection(tracks, preferWidescreen: true);
+        var warning = ArmRipperService.BuildMainFeatureAmbiguityWarning(selection);
+
+        Assert.NotNull(warning);
+        Assert.DoesNotContain(';', warning);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // GetBestTitle
     // ─────────────────────────────────────────────────────────────────────────
 

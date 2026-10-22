@@ -17,6 +17,12 @@
 
     string? StageError(string name) => stageErrors.TryGetValue(name, out var msg) ? msg : null;
 
+    // A generic job warning tints the Identify stage only when it cannot be
+    // attributed to a specific stage. When a stage recorded its own warning
+    // (e.g. the rip stage flagging an ambiguous main feature) the wrong stage
+    // would otherwise be highlighted.
+    var genericWarningTintsIdentify = hasWarning && stageErrors.Count == 0;
+
     // Determine pipeline stages based on disc type
     // Default to video pipeline for Unknown (most common; identify will determine actual type)
     var isVideo = Model.DiscType is DiscType.Dvd or DiscType.Bluray or DiscType.Unknown;
@@ -37,7 +43,7 @@
         Model.Stage == RipStage.Identify && !Model.Status.IsTerminal(),
         Model.Stage is not null && Model.Stage != RipStage.Identify && Model.Stage != RipStage.Setup
             || Model.Status.IsTerminal(),
-        StageError("identify") is not null || hasWarning));
+        StageError("identify") is not null || genericWarningTintsIdentify));
 
     // Rip — varies by disc type
     if (isVideo)
