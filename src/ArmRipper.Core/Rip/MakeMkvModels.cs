@@ -130,6 +130,13 @@ public sealed class MakeMkvRipResult
 {
     public bool HadReadError { get; private set; }
 
+    /// <summary>
+    /// True when read errors indicate likely physical disc damage (unrecoverable
+    /// medium errors). Kept distinct from <see cref="HadReadError"/> because
+    /// recoverable CRC/ECC errors can be worked around by MakeMKV.
+    /// </summary>
+    public bool IsLikelyDiscDamage { get; private set; }
+
     public bool HadCorruptSource { get; private set; }
 
     /// <summary>
@@ -142,19 +149,18 @@ public sealed class MakeMkvRipResult
     /// <summary>Titles reported as skipped (MSG 3015 / 3025).</summary>
     public List<string> SkippedTitles { get; } = [];
 
-    /// <summary>
-    /// Number of titles MakeMKV reported as added/saved. Incremented per
-    /// MSG 3028 (TitleAdded); overridden by the authoritative MSG 5004
-    /// (RipCompleted) or MSG 5005 (RipTitlesSaved) summary when present.
-    /// </summary>
+    /// <summary>Number of titles MakeMKV reported as added/saved.</summary>
     public int TitlesSaved { get; private set; }
 
     /// <summary>Number of titles MakeMKV reported as failed (MSG 5004 summary).</summary>
     public int TitlesFailed { get; private set; }
 
+    /// <summary>Captures details from MSG:2003 read errors for user-facing reporting.</summary>
+    public List<MakeMkvReadErrorDetail> ReadErrors { get; } = [];
+
     public bool HadSkippedTitles => SkippedTitles.Count > 0;
 
-    /// <summary>True when MakeMKV reported zero titles saved (MSG 5004 / 3028).</summary>
+    /// <summary>True when MakeMKV reported zero titles saved.</summary>
     public bool SavedNoTitles => TitlesSaved == 0;
 
     /// <summary>
@@ -166,6 +172,10 @@ public sealed class MakeMkvRipResult
         {
             case MessageId.ReadError:
                 HadReadError = true;
+                var detail = MakeMkvReadErrorClassifier.Extract(msg);
+                ReadErrors.Add(detail);
+                if (MakeMkvReadErrorClassifier.IsLikelyDiscDamage(detail.Sense, detail.RawMessage))
+                    IsLikelyDiscDamage = true;
                 return true;
             case MessageId.CorruptSource:
                 HadCorruptSource = true;
@@ -213,9 +223,11 @@ public sealed class MakeMkvRipResult
     public void Merge(MakeMkvRipResult other)
     {
         if (other.HadReadError) HadReadError = true;
+        if (other.IsLikelyDiscDamage) IsLikelyDiscDamage = true;
         if (other.HadCorruptSource) HadCorruptSource = true;
         if (other.HadDiscOpenError) HadDiscOpenError = true;
         SkippedTitles.AddRange(other.SkippedTitles);
+        ReadErrors.AddRange(other.ReadErrors);
         TitlesSaved += other.TitlesSaved;
         TitlesFailed += other.TitlesFailed;
     }
