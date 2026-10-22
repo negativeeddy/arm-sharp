@@ -1455,22 +1455,22 @@ public sealed class ArmRipperService(
                     // configured floor — do not re-impose the floor on them.
                     var trackMinLength = string.IsNullOrEmpty(track.EpisodeTitle) ? minLengthCfg : 0;
 
-                    var verdict = VerifyRipOutput(
+                    var verification = VerifyRipOutput(
                         track.MainFeature,
                         expectedSize, fileInfo.Length,
                         expectedDuration, actualDuration,
                         trackMinLength,
                         MinRipSizeRatio, MinDurationRatio);
 
-                    if (verdict == RipVerificationVerdict.Fail)
+                    if (verification.Verdict == RipVerificationVerdict.Fail)
                     {
                         mainFeatureFailure = BuildRipVerificationFailure(
-                            track, expectedSize, fileInfo.Length, expectedDuration, actualDuration);
+                            track, expectedSize, fileInfo.Length, expectedDuration, actualDuration, verification);
                     }
-                    else if (verdict == RipVerificationVerdict.Warn)
+                    else if (verification.Verdict == RipVerificationVerdict.Warn)
                     {
                         undersizedWarnings.Add(
-                            $"track {track.TrackNumber} produced {DescribeRipVerification(expectedSize, fileInfo.Length, expectedDuration, actualDuration)}");
+                            $"track {track.TrackNumber} produced {DescribeRipVerification(expectedSize, fileInfo.Length, expectedDuration, actualDuration, verification)}");
                     }
                 }
             }
@@ -2503,6 +2503,15 @@ public sealed class ArmRipperService(
         Fail
     }
 
+    internal sealed record RipVerificationResult(
+        RipVerificationVerdict Verdict,
+        bool IsUndersized,
+        bool IsDurationTruncated,
+        bool IsBelowMinLength)
+    {
+        public bool HasAnyIssue => IsUndersized || IsDurationTruncated || IsBelowMinLength;
+    }
+
     /// <summary>
     /// Verifies a rip output file against the expected info-scan estimate.
     /// Combines the cheap size gate (B2) with the authoritative ffprobe duration
@@ -2511,42 +2520,96 @@ public sealed class ArmRipperService(
     /// length. Severity is Fail for the main feature (the whole job must fail)
     /// and Warn for extras.
     /// </summary>
-    internal static RipVerificationVerdict VerifyRipOutput(
+    internal static RipVerificationResult VerifyRipOutput(
         bool isMainFeature,
         long expectedSize, long actualSize,
         double? expectedDuration, double? actualDuration,
         int minLength,
         double minSizeRatio, double minDurationRatio)
     {
-        var suspicious = IsRipUndersized(expectedSize, actualSize, minSizeRatio)
-            || IsRipDurationTruncated(expectedDuration, actualDuration, minDurationRatio)
-            || IsRipDurationBelowMinLength(actualDuration, minLength);
+        var undersized = IsRipUndersized(expectedSize, actualSize, minSizeRatio);
+        var truncated = IsRipDurationTruncated(expectedDuration, actualDuration, minDurationRatio);
+        var belowMinLength = IsRipDurationBelowMinLength(actualDuration, minLength);
 
-        if (!suspicious)
-            return RipVerificationVerdict.Pass;
+        if (!undersized && !truncated && !belowMinLength)
+            return new RipVerificationResult(RipVerificationVerdict.Pass, false, false, false);
 
-        return isMainFeature ? RipVerificationVerdict.Fail : RipVerificationVerdict.Warn;
+        var verdict = isMainFeature ? RipVerificationVerdict.Fail : RipVerificationVerdict.Warn;
+        return new RipVerificationResult(verdict, undersized, truncated, belowMinLength);
     }
+
+    /// <summary>Backwards-compatible overload returning just the verdict.</summary>
+    internal static RipVerificationVerdict VerifyRipOutputVerdict(
+        bool isMainFeature,
+        long expectedSize, long actualSize,
+        double? expectedDuration, double? actualDuration,
+        int minLength,
+        double minSizeRatio, double minDurationRatio)
+        => VerifyRipOutput(isMainFeature, expectedSize, actualSize, expectedDuration, actualDuration, minLength, minSizeRatio, minDurationRatio).Verdict;
+
+    /// <summary>Builds the failure message for a failed main-feature verification.</summary>
+    private static string BuildRipVerificationFailure(
+        Track track, long expectedSize, long actualSize, double? expectedDuration, double? actualDuration,
+        RipVerificationResult verification)
+        => $"Main feature rip verification failed — track {track.TrackNumber} produced " +
+           $"{DescribeRipVerification(expectedSize, actualSize, expectedDuration, actualDuration, verification)}. " +
+           BuildRipVerificationConclusion(verification);
 
     /// <summary>Builds the failure message for a failed main-feature verification.</summary>
     private static string BuildRipVerificationFailure(
         Track track, long expectedSize, long actualSize, double? expectedDuration, double? actualDuration)
-        => $"Main feature rip verification failed — track {track.TrackNumber} produced " +
-           $"{DescribeRipVerification(expectedSize, actualSize, expectedDuration, actualDuration)}. " +
-           "The intended title was likely skipped (damaged disc / navigation error) and the saved file is wrong.";
+        => BuildRipVerificationFailure(track, expectedSize, actualSize, expectedDuration, actualDuration,
+            new RipVerificationResult(RipVerificationVerdict.Fail, true, false, false));
 
     /// <summary>Describes a rip output discrepancy in human-readable terms (size and/or duration).</summary>
     private static string DescribeRipVerification(long expectedSize, long actualSize, double? expectedDuration, double? actualDuration)
+        => DescribeRipVerification(expectedSize, actualSize, expectedDuration, actualDuration,
+            new RipVerificationResult(RipVerificationVerdict.Fail,
+                expectedSize > 0 && actualSize < expectedSize * MinRipSizeRatio,
+                expectedDuration is > 0 && actualDuration is not null && actualDuration < expectedDuration * MinDurationRatio,
+                actualDuration is not null));
+
+    private static string DescribeRipVerification(long expectedSize, long actualSize, double? expectedDuration, double? actualDuration,
+        RipVerificationResult verification)
     {
         var parts = new List<string>();
 
-        if (expectedSize > 0)
+        // Only report size if the size gate actually fired, or if we have no
+        // duration-based cause to report — we must never assert undersize when
+        // duration was the real problem.
+        if (verification.IsUndersized && expectedSize > 0)
+            parts.Add($"{actualSize:N0} bytes vs expected {expectedSize:N0} ({actualSize * 100.0 / expectedSize:F1}%)");
+        else if (expectedSize > 0 && !verification.IsDurationTruncated && !verification.IsBelowMinLength)
             parts.Add($"{actualSize:N0} bytes vs expected {expectedSize:N0} ({actualSize * 100.0 / expectedSize:F1}%)");
 
-        if (expectedDuration is > 0 && actualDuration is not null)
+        if (expectedDuration is > 0 && actualDuration is not null && (verification.IsDurationTruncated || verification.IsBelowMinLength))
+            parts.Add($"{FormatDuration(actualDuration.Value)} vs expected {FormatDuration(expectedDuration.Value)}");
+        else if (expectedDuration is > 0 && actualDuration is not null && parts.Count == 0)
             parts.Add($"{FormatDuration(actualDuration.Value)} vs expected {FormatDuration(expectedDuration.Value)}");
 
         return parts.Count > 0 ? string.Join("; ", parts) : $"{actualSize:N0} bytes vs no expected size";
+    }
+
+    private static string BuildRipVerificationConclusion(RipVerificationResult verification)
+    {
+        if (verification.IsBelowMinLength && !verification.IsDurationTruncated && !verification.IsUndersized)
+            return "The saved file is shorter than the configured minimum title length — "
+                 + "the wrong (or a trimmed/salvaged) title was likely selected, or the disc's menu/navigation caused MakeMKV "
+                 + "to save a short extra instead of the intended main feature. Review the track selection.";
+
+        if (verification.IsDurationTruncated)
+            return "The saved file is far shorter than the expected duration — "
+                 + "the intended title was likely skipped (damaged disc / navigation error) and the saved file is wrong. "
+                 + "Retain raw files for retry or inspect the MakeMKV logs for skipped titles.";
+
+        if (verification.IsUndersized)
+            return "The saved file is much smaller than expected — "
+                 + "the intended title was likely skipped (damaged disc / navigation error) and the saved file is wrong. "
+                 + "Retain raw files for retry or inspect the MakeMKV logs for skipped titles.";
+
+        return "The saved file does not match the expected size/duration — "
+             + "the intended title may have been skipped and the saved file is wrong. "
+             + "Retain raw files for retry or inspect the MakeMKV logs for skipped titles.";
     }
 
     private static string FormatDuration(double seconds)
