@@ -690,6 +690,354 @@ public sealed class ArmRipperServicePhaseTests : IDisposable
     }
 
     // ───────────────────────────────────────────────────────────────────
+    // Finalize sub-phases (Phase 6)
+    // ───────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds a <see cref="ArmRipperService.RipContext"/> for the finalize
+    /// phases. <paramref name="finalBasePath"/> defaults to
+    /// <paramref name="finalDirectory"/> — set it explicitly to simulate a
+    /// title change that makes the recomputed output path differ.
+    /// </summary>
+    private static ArmRipperService.RipContext CreateFinalizeContext(
+        string jobTitle = "Test",
+        string transcodeOutPath = "/tmp/transcode",
+        string finalDirectory = "/tmp/final",
+        string? finalBasePath = null,
+        string? transcodeInPath = "/dev/sr0",
+        bool useMakeMkv = true) => new()
+        {
+            JobTitle = jobTitle,
+            TranscodeOutPath = transcodeOutPath,
+            FinalDirectory = finalDirectory,
+            FinalBasePath = finalBasePath ?? finalDirectory,
+            MakeMkvOutPath = "/tmp/raw",
+            TranscodeInPath = transcodeInPath,
+            UseMakeMkv = useMakeMkv,
+        };
+
+    private static string CreateTempDir(string prefix)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"arm_test_{prefix}_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    [Fact]
+    public async Task FinalizePrepareAsync_TransitionsToFinalizeStage_AndPersists()
+    {
+        var job = TestHelpers.CreateTestJob();
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        var service = CreateService();
+
+        await service.FinalizePrepareAsync(job, CancellationToken.None);
+
+        Assert.Equal(RipStage.Finalize, job.Stage);
+        Assert.Equal("Finalizing...", job.ProgressMessage);
+
+        // The stage transition was written to the database.
+        _db.ChangeTracker.Clear();
+        var reloaded = await _db.Jobs.SingleAsync(j => j.Id == job.Id);
+        Assert.Equal(RipStage.Finalize, reloaded.Stage);
+    }
+
+    [Fact]
+    public async Task FinalizePrepareAsync_ReloadsJobFromDb_PicksUpTitleChangedDuringRip()
+    {
+        var job = TestHelpers.CreateTestJob();
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        // Simulate the user renaming the job from the WebUI while the rip and
+        // transcode were running.
+        await _db.Database.ExecuteSqlRawAsync(
+            "UPDATE jobs SET Title = 'Renamed By User' WHERE Id = {0}", job.Id);
+
+        var service = CreateService();
+
+        await service.FinalizePrepareAsync(job, CancellationToken.None);
+
+        Assert.Equal("Renamed By User", job.Title);
+    }
+
+    [Fact]
+    public async Task FinalizeHandleSkipTranscodeAsync_SkipTranscodeEnabled_SwapsOutPathAndDeletesOldOutput()
+    {
+        var tempDir = CreateTempDir("skiptranscode");
+        try
+        {
+            var job = TestHelpers.CreateTestJob(j => j.Config!.SkipTranscode = true);
+            var ctx = CreateFinalizeContext(transcodeOutPath: tempDir, transcodeInPath: "/dev/sr0");
+
+            var service = CreateService();
+
+            await service.FinalizeHandleSkipTranscodeAsync(job, ctx);
+
+            // The transcode output path is swapped back to the rip input.
+            Assert.Equal("/dev/sr0", ctx.TranscodeOutPath);
+            // The now-redundant transcode output directory is removed.
+            Assert.False(Directory.Exists(tempDir));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task FinalizeHandleSkipTranscodeAsync_SkipTranscodeDisabled_LeavesOutPathUntouched()
+    {
+        var tempDir = CreateTempDir("skiptranscode_off");
+        try
+        {
+            var job = TestHelpers.CreateTestJob(j => j.Config!.SkipTranscode = false);
+            var ctx = CreateFinalizeContext(transcodeOutPath: tempDir, transcodeInPath: "/dev/sr0");
+
+            var service = CreateService();
+
+            await service.FinalizeHandleSkipTranscodeAsync(job, ctx);
+
+            Assert.Equal(tempDir, ctx.TranscodeOutPath);
+            Assert.True(Directory.Exists(tempDir));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task FinalizeHandleSkipTranscodeAsync_UseMakeMkvFalse_LeavesOutPathUntouched()
+    {
+        var tempDir = CreateTempDir("skiptranscode_nomkv");
+        try
+        {
+            var job = TestHelpers.CreateTestJob(j => j.Config!.SkipTranscode = true);
+            var ctx = CreateFinalizeContext(transcodeOutPath: tempDir, transcodeInPath: "/dev/sr0", useMakeMkv: false);
+
+            var service = CreateService();
+
+            await service.FinalizeHandleSkipTranscodeAsync(job, ctx);
+
+            Assert.Equal(tempDir, ctx.TranscodeOutPath);
+            Assert.True(Directory.Exists(tempDir));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task FinalizeRelocateIfTitleChangedAsync_PathChanged_AppliesDupeSuffixAndUpdatesJobPath()
+    {
+        var completedDir = CreateTempDir("completed");
+        try
+        {
+            var job = TestHelpers.CreateTestJob(j => j.Config!.CompletedPath = completedDir);
+            _db.Jobs.Add(job);
+            await _db.SaveChangesAsync();
+
+            var recomputed = ArmRipperService.ComputeOutputPath(job, completedDir);
+            // The recomputed directory already exists, so the duplicate-folder
+            // suffix gets applied on top of it.
+            Directory.CreateDirectory(recomputed);
+
+            var ctx = CreateFinalizeContext(
+                finalDirectory: "/tmp/stale-final",
+                finalBasePath: "/tmp/stale-base");
+
+            var service = CreateService();
+
+            await service.FinalizeRelocateIfTitleChangedAsync(job, ctx, hasDupes: false, CancellationToken.None);
+
+            Assert.Equal($"{recomputed}_{job.Id}", ctx.FinalDirectory);
+            Assert.Equal(ctx.FinalDirectory, job.Path);
+
+            // The new location was persisted.
+            _db.ChangeTracker.Clear();
+            var reloaded = await _db.Jobs.SingleAsync(j => j.Id == job.Id);
+            Assert.Equal(ctx.FinalDirectory, reloaded.Path);
+        }
+        finally
+        {
+            if (Directory.Exists(completedDir))
+                Directory.Delete(completedDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task FinalizeRelocateIfTitleChangedAsync_PathUnchanged_LeavesContextAlone()
+    {
+        var completedDir = CreateTempDir("completed_unchanged");
+        try
+        {
+            var job = TestHelpers.CreateTestJob(j => j.Config!.CompletedPath = completedDir);
+            var recomputed = ArmRipperService.ComputeOutputPath(job, completedDir);
+
+            var ctx = CreateFinalizeContext(finalDirectory: recomputed, finalBasePath: recomputed);
+            job.Path = recomputed;
+
+            var service = CreateService();
+
+            await service.FinalizeRelocateIfTitleChangedAsync(job, ctx, hasDupes: false, CancellationToken.None);
+
+            Assert.Equal(recomputed, ctx.FinalDirectory);
+            Assert.Equal(recomputed, job.Path);
+            // Nothing was created on disk.
+            Assert.False(Directory.Exists(recomputed));
+        }
+        finally
+        {
+            if (Directory.Exists(completedDir))
+                Directory.Delete(completedDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task FinalizeMoveFilesAsync_TvJob_UpdatesJobPathToSeriesDirectory()
+    {
+        var completedDir = CreateTempDir("completed_tv");
+        try
+        {
+            var job = TestHelpers.CreateTestJob(j =>
+            {
+                j.VideoType = VideoContentType.Series;
+                j.Title = "My Show";
+                j.Config!.CompletedPath = completedDir;
+            });
+
+            var service = CreateService();
+
+            await service.FinalizeMoveFilesAsync(job, CreateFinalizeContext(), CancellationToken.None);
+
+            // TV output lives under {completed}/tv/{series}/, not the flat
+            // disc-label directory computed before the rip.
+            Assert.Equal(Path.Combine(completedDir, "tv", "My Show"), job.Path);
+        }
+        finally
+        {
+            if (Directory.Exists(completedDir))
+                Directory.Delete(completedDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task FinalizeRelocatePosterPostMoveAsync_MovesPosterToFinalDirectory()
+    {
+        var staleDir = CreateTempDir("poster_src");
+        var finalDir = CreateTempDir("poster_dst");
+        try
+        {
+            var posterPath = Path.Combine(staleDir, "poster.png");
+            await File.WriteAllTextAsync(posterPath, "poster-bytes");
+
+            var job = TestHelpers.CreateTestJob(j => j.PosterSavedPath = posterPath);
+
+            var service = CreateService();
+
+            await service.FinalizeRelocatePosterPostMoveAsync(job, CreateFinalizeContext(finalDirectory: finalDir));
+
+            Assert.True(File.Exists(Path.Combine(finalDir, "poster.png")));
+            Assert.False(File.Exists(posterPath));
+            // The emptied stale directory is cleaned up.
+            Assert.False(Directory.Exists(staleDir));
+        }
+        finally
+        {
+            if (Directory.Exists(staleDir))
+                Directory.Delete(staleDir, recursive: true);
+            if (Directory.Exists(finalDir))
+                Directory.Delete(finalDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task FinalizeRelocatePosterPostMoveAsync_NoPosterSaved_IsNoOp()
+    {
+        var finalDir = CreateTempDir("poster_none");
+        try
+        {
+            var job = TestHelpers.CreateTestJob();
+
+            var service = CreateService();
+
+            await service.FinalizeRelocatePosterPostMoveAsync(job, CreateFinalizeContext(finalDirectory: finalDir));
+
+            Assert.False(File.Exists(Path.Combine(finalDir, "poster.png")));
+        }
+        finally
+        {
+            if (Directory.Exists(finalDir))
+                Directory.Delete(finalDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task FinalizeScanEmbyAsync_EmbyRefreshDisabled_SkipsScan()
+    {
+        var job = TestHelpers.CreateTestJob(j => j.Config!.EmbyRefresh = false);
+
+        var service = CreateService();
+
+        await service.FinalizeScanEmbyAsync(job, CancellationToken.None);
+
+        _logger.Verify(
+            l => l.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("EMBY_REFRESH config parameter is false")),
+                null,
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task FinalizeSetPermissionsAsync_PermissionsDisabled_SkipsChanges()
+    {
+        var job = TestHelpers.CreateTestJob();
+
+        var service = CreateService(s => s.SetMediaPermissions = false);
+
+        await service.FinalizeSetPermissionsAsync(job, CreateFinalizeContext(), CancellationToken.None);
+
+        _logger.Verify(
+            l => l.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("SET_MEDIA_PERMISSIONS is disabled")),
+                null,
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task FinalizeNotifyAndCompleteAsync_MarksJobDone_AndClearsProgressMessage()
+    {
+        var job = TestHelpers.CreateTestJob();
+        _db.Jobs.Add(job);
+        await _db.SaveChangesAsync();
+
+        job.TransitionToStage(RipStage.Finalize);
+        job.ProgressMessage = "Finalizing...";
+
+        var service = CreateService();
+
+        await service.FinalizeNotifyAndCompleteAsync(job, CancellationToken.None);
+
+        Assert.Equal(RipStage.Done, job.Stage);
+        Assert.Null(job.ProgressMessage);
+        // The finalize stage is the one marked complete — the job itself moves
+        // on to the Done stage.
+        Assert.True(job.IsStageComplete(RipStage.Finalize));
+    }
+
+    // ───────────────────────────────────────────────────────────────────
     // RipContext
     // ───────────────────────────────────────────────────────────────────
 
