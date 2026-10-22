@@ -392,7 +392,12 @@ public sealed partial class IdentifyService(
         }
 
         // Try to mount the disc with simple retries.
-        for (var attempt = 0; attempt < 3; attempt++)
+        // Optical drives need time to spin up and re-acquire focus between attempts;
+        // a flat 1s delay fires every retry while the spindle is still starting
+        // (issue #216). Use escalating backoff: first retry quickly in case of a
+        // transient race, then wait longer to let the drive settle.
+        var backoffMs = new[] { 1000, 3000, 8000 };
+        for (var attempt = 0; attempt < backoffMs.Length; attempt++)
         {
             logger.LogInformation("Mount attempt {Attempt}: trying to mount disc at {DevPath}...", attempt + 1, devPath);
             var devName = Path.GetFileName(devPath);
@@ -419,8 +424,17 @@ public sealed partial class IdentifyService(
                 }
             }
 
-            // Mount failed — wait briefly before retry
-            await Task.Delay(1000, ct);
+            if (attempt < backoffMs.Length - 1)
+            {
+                logger.LogDebug("Mount attempt {Attempt} failed with exit code {ExitCode}; retrying after {Delay}ms",
+                    attempt + 1, mountResult.ExitCode, backoffMs[attempt]);
+                await Task.Delay(backoffMs[attempt], ct);
+            }
+            else
+            {
+                logger.LogDebug("Mount attempt {Attempt} failed with exit code {ExitCode}; no more retries",
+                    attempt + 1, mountResult.ExitCode);
+            }
         }
 
         if (!string.IsNullOrEmpty(job.MountPoint))
