@@ -18,6 +18,7 @@ namespace ArmRipper.WebUi.Controllers;
 public partial class ApiController(
     ArmDbContext db,
     ICliProcessRunner runner,
+    IBackgroundRipService backgroundRip,
     ISettingsService settingsService,
     IDatabaseSubmitService databaseSubmitService,
     IOvidSubmitService ovidSubmitService,
@@ -190,23 +191,20 @@ public partial class ApiController(
         if (job is null)
             return NotFound(new { success = false, error = "Job not found" });
 
-        if (job.Pid is int pid)
-        {
-            try
-            {
-                var process = System.Diagnostics.Process.GetProcessById(pid);
-                process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync(ct);
-            }
-            catch (Exception)
-            {
-                // Process already gone — fine
-            }
-        }
+        if (job.Status.IsTerminal())
+            return Json(new { success = false, error = $"Job {id} is already {job.Status}" });
+
+        // Cancel the background rip so the pipeline stops cleanly and can't
+        // overwrite the abandoned Failure status later.
+        if (!string.IsNullOrEmpty(job.DevPath))
+            backgroundRip.CancelRip(job.DevPath);
 
         job.Status = JobState.Failure;
         job.Errors = "Abandoned by user";
+        job.ProgressMessage = "Abandoned";
+        job.StopTime ??= DateTime.UtcNow;
 
+        var ejected = false;
         if (job.DevPath is not null)
         {
             try
@@ -227,6 +225,7 @@ public partial class ApiController(
                 if (mediaCheck.ExitCode == 0 && long.TryParse(mediaCheck.StdOut?.Trim(), out var sectors) && sectors > 0)
                 {
                     await runner.RunAsync("eject", job.DevPath, timeoutMs: 10_000, ct: ct);
+                    ejected = true;
                 }
             }
             catch (Exception ex)
@@ -234,6 +233,9 @@ public partial class ApiController(
                 logger.LogDebug(ex, "Failed to eject {DevPath} for abandoned job {JobId}", job.DevPath, job.Id);
             }
         }
+
+        if (ejected)
+            job.Ejected = true;
 
         await db.SaveChangesAsync(ct);
         return Json(new { success = true, job = id, mode = "abandon" });
