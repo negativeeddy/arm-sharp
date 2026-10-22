@@ -38,7 +38,7 @@
 @* === LIVE LOG === *@
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <a class="text-decoration-none" data-bs-toggle="collapse" href="#logCollapse" role="button" id="logToggle">Live Log ▾</a>
+        <a class="text-decoration-none" data-toggle="collapse" data-target="#logCollapse" role="button" id="logToggle" aria-expanded="true" aria-controls="logCollapse">Live Log ▾</a>
         <a href="/logs/view?file=@(Model.Id).log" class="btn btn-outline-secondary btn-sm">View Full Log</a>
     </div>
     <div class="collapse show" id="logCollapse">
@@ -330,7 +330,7 @@
 @* === CONFIG SNAPSHOT === *@
 <div class="card mb-4">
     <div class="card-header">
-        <a class="text-decoration-none" data-bs-toggle="collapse" href="#configCollapse" role="button">PLACEHOLDER</a>
+        <a class="text-decoration-none" data-toggle="collapse" data-target="#configCollapse" role="button" aria-expanded="false" aria-controls="configCollapse">Configuration</a>
     </div>
     <div class="collapse" id="configCollapse">
         <div class="card-body">
