@@ -126,10 +126,17 @@ arm.abandonJob = function (jobId) {
             if (data.success) {
                 location.reload();
             } else {
-                alert('Failed to abandon job: ' + (data.message || 'unknown error'));
+                alert('Failed to abandon job: ' + (data.message || data.error || 'unknown error'));
             }
         })
         .catch(function (err) {
             alert('Error: ' + err);
         });
 };
+
+document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.abandon-job-btn');
+    if (!btn) return;
+    e.preventDefault();
+    arm.abandonJob(btn.getAttribute('data-job-id'));
+});
