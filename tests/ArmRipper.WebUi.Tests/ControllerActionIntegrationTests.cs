@@ -983,6 +983,47 @@ public class ControllerActionIntegrationTests : IClassFixture<CustomWebApplicati
     }
 
     [Fact]
+    public async Task JobDetail_RendersConfigurationSection()
+    {
+        int jobId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ArmDbContext>();
+            var job = new Job
+            {
+                Title = "Config Section Test",
+                TitleAuto = "Config Section Test",
+                Year = "2026",
+                VideoType = VideoContentType.Movie,
+                DiscType = DiscType.Dvd,
+                Status = JobState.Active,
+                StartTime = DateTime.UtcNow,
+                DevPath = "/dev/sr99",
+                Config = new ConfigSnapshot
+                {
+                    MinLength = 300,
+                    MaxLength = 9999,
+                    RipMethod = "mkv",
+                    MainFeature = true,
+                    GetAudioTitle = ""
+                }
+            };
+            db.Jobs.Add(job);
+            await db.SaveChangesAsync();
+            jobId = job.Id;
+        }
+
+        var client = await CreateAuthenticatedClientAsync();
+        var response = await client.GetAsync($"/jobs/jobdetail?jobId={jobId}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("data-target=\"#configCollapse\"", html);
+        Assert.Contains("Configuration", html);
+        Assert.DoesNotContain("PLACEHOLDER", html);
+    }
+
+    [Fact]
     public async Task JobDetail_DoesNotCallOmdbDuringRender()
     {
         // Metadata is fetched asynchronously via GET /api/jobs/{id}/metadata, so the
