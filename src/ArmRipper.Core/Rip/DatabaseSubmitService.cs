@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using ArmRipper.Core.Configuration;
@@ -22,6 +23,7 @@ public sealed class DatabaseSubmitService(
     };
 
     private const string ApiBaseUrl = "https://1337server.pythonanywhere.com";
+    private const string ApiEndpoint = "/api/v1/";
 
     private static readonly Regex ApiKeyRedactionRegex = new(
         @"(api_key=)[^&]*",
@@ -66,20 +68,35 @@ public sealed class DatabaseSubmitService(
                 ? ""
                 : job.VideoType.ToString().ToLowerInvariant();
 
-            var url = $"{ApiBaseUrl}/api/v1/?mode=p" +
-                      $"&api_key={Uri.EscapeDataString(apiKey)}" +
-                      $"&crc64={Uri.EscapeDataString(job.CrcId)}" +
-                      $"&t={Uri.EscapeDataString(job.Title ?? "")}" +
-                      $"&y={Uri.EscapeDataString(job.Year ?? "")}" +
-                      $"&imdb={Uri.EscapeDataString(job.ImdbId ?? "")}" +
-                      $"&hnt={job.HasNiceTitle}" +
-                      $"&l={Uri.EscapeDataString(job.Label ?? "")}" +
-                      $"&vt={Uri.EscapeDataString(videoTypeParam)}";
-
-            Logger.LogDebug("Submitting CRC64 for job {JobId} to {Url}", job.Id, RedactApiKey(url));
-
             var httpClient = httpClientFactory.CreateClient("DatabaseSubmitService");
-            var responseBody = await httpClient.GetStringAsync(url, ct);
+
+            // Build form content without putting api_key in URL
+            var formContent = new List<KeyValuePair<string, string>>
+            {
+                new("mode", "p"),
+                new("api_key", apiKey),
+                new("crc64", job.CrcId ?? string.Empty),
+                new("t", job.Title ?? string.Empty),
+                new("y", job.Year ?? string.Empty),
+                new("imdb", job.ImdbId ?? string.Empty),
+                new("hnt", job.HasNiceTitle.ToString().ToLowerInvariant()),
+                new("l", job.Label ?? string.Empty),
+                new("vt", videoTypeParam),
+            };
+
+            var content = new FormUrlEncodedContent(formContent);
+
+            // Try to put API key in headers as well for compatibility
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{ApiBaseUrl}{ApiEndpoint}");
+            request.Content = content;
+            request.Headers.TryAddWithoutValidation("X-API-Key", apiKey);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            request.Headers.TryAddWithoutValidation("X-Arm-Api-Key", apiKey);
+
+            Logger.LogDebug("Submitting CRC64 for job {JobId} via POST to {BaseUrl}{Endpoint} (api_key in body/headers)", job.Id, ApiBaseUrl, ApiEndpoint);
+
+            var response = await httpClient.SendAsync(request, ct);
+            var responseBody = await response.Content.ReadAsStringAsync(ct);
 
             Logger.LogDebug("Raw API response for job {JobId}: {Response}", job.Id, responseBody);
 
