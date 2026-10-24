@@ -60,7 +60,7 @@ builder.Services.AddHttpClient("DatabaseSubmitService", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(15);
     client.DefaultRequestHeaders.UserAgent.ParseAdd("arm/1.0");
-});
+}).RemoveAllLoggers();
 builder.Services.AddHttpClient("Notifications", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);

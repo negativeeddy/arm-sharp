@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using ArmRipper.Core.Configuration;
 using ArmRipper.Core.Infrastructure.Data;
 using ArmRipper.Core.Models;
@@ -21,6 +22,11 @@ public sealed class DatabaseSubmitService(
     };
 
     private const string ApiBaseUrl = "https://1337server.pythonanywhere.com";
+
+    private static readonly Regex ApiKeyRedactionRegex = new(
+        @"(api_key=)[^&]*",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(100));
 
     public override async Task<SubmitResult> SubmitJobAsync(Job job, CancellationToken ct = default)
     {
@@ -69,6 +75,8 @@ public sealed class DatabaseSubmitService(
                       $"&hnt={job.HasNiceTitle}" +
                       $"&l={Uri.EscapeDataString(job.Label ?? "")}" +
                       $"&vt={Uri.EscapeDataString(videoTypeParam)}";
+
+            Logger.LogDebug("Submitting CRC64 for job {JobId} to {Url}", job.Id, RedactApiKey(url));
 
             var httpClient = httpClientFactory.CreateClient("DatabaseSubmitService");
             var responseBody = await httpClient.GetStringAsync(url, ct);
@@ -156,6 +164,8 @@ public sealed class DatabaseSubmitService(
     }
 
     protected override string GetServiceName() => "DatabaseSubmitService";
+
+    private static string RedactApiKey(string url) => ApiKeyRedactionRegex.Replace(url, "$1<redacted>");
 
     /// <summary>
     /// Models the JSON response from the ARM online database API.
