@@ -14,7 +14,7 @@ namespace ArmRipper.WebUi.Controllers;
 
 [Authorize]
 [Route("jobs")]
-public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService settingsService, IBackgroundRipService backgroundRip) : Controller
+public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService settingsService, IBackgroundRipService backgroundRip, ICliProcessRunner runner, ILogger<JobsController> logger) : Controller
 {
     [HttpGet("jobdetail")]
     public async Task<IActionResult> JobDetail(int jobId, CancellationToken ct = default)
@@ -176,9 +176,10 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
         if (!job.Status.IsTerminal())
         {
             var prevStatus = job.Status;
-            job.Status = JobState.Cancelled;
+            job.Status = JobState.Failure;
             job.Errors = "Cancelled by user";
             job.ProgressMessage = "Cancelled";
+            job.StopTime ??= DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
 
             // Write to job log file
@@ -186,7 +187,10 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
         }
 
         if (!string.IsNullOrEmpty(job.DevPath))
+        {
             backgroundRip.CancelRip(job.DevPath);
+            await TryUmountAndEjectAsync(job, ct);
+        }
 
         return RedirectToAction("JobDetail", new { jobId });
     }
@@ -197,7 +201,6 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
         var activeJobs = await db.Jobs
             .Where(j => j.Status != JobState.Success
                      && j.Status != JobState.Failure
-                     && j.Status != JobState.Cancelled
                      && j.Status != JobState.Stopping)
             .ToListAsync(ct);
 
@@ -208,14 +211,18 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
                 continue;
 
             var prevStatus = job.Status;
-            job.Status = JobState.Cancelled;
+            job.Status = JobState.Failure;
             job.Errors = "Cancelled by user (bulk cancel)";
             job.ProgressMessage = "Cancelled";
+            job.StopTime ??= DateTime.UtcNow;
             AppendToJobLog(job, $"Job cancelled by user — bulk cancel (previous status: {prevStatus})");
             cancelledCount++;
 
             if (!string.IsNullOrEmpty(job.DevPath))
+            {
                 backgroundRip.CancelRip(job.DevPath);
+                await TryUmountAndEjectAsync(job, ct);
+            }
         }
 
         await db.SaveChangesAsync(ct);
@@ -488,6 +495,39 @@ public class JobsController(ArmDbContext db, OmdbService omdb, ISettingsService 
         var effective = await settingsService.GetEffectiveAsync(ct);
         var completedPath = job.Config?.CompletedPath ?? ArmPaths.GetCompletedPath(effective);
         job.Path = ArmRipperService.ComputeOutputPath(job, completedPath);
+    }
+
+    /// <summary>Best-effort umount and eject of the job's optical drive.</summary>
+    private async Task TryUmountAndEjectAsync(Job job, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(job.DevPath))
+            return;
+
+        try
+        {
+            await runner.RunAsync("umount", job.DevPath, timeoutMs: 10_000, ct: ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to umount {DevPath} for cancelled job {JobId}", job.DevPath, job.Id);
+        }
+
+        // Only eject if media is present — on some drives the CDROMEJECT
+        // ioctl toggles the tray (closes it when already open).
+        try
+        {
+            var mediaCheck = await runner.RunAsync("blockdev",
+                $"--getsz {job.DevPath}", timeoutMs: 5_000, ct: ct);
+            if (mediaCheck.ExitCode == 0 && long.TryParse(mediaCheck.StdOut?.Trim(), out var sectors) && sectors > 0)
+            {
+                await runner.RunAsync("eject", job.DevPath, timeoutMs: 10_000, ct: ct);
+                job.Ejected = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to eject {DevPath} for cancelled job {JobId}", job.DevPath, job.Id);
+        }
     }
 
     /// <summary>Append a timestamped line to the job's log file.</summary>

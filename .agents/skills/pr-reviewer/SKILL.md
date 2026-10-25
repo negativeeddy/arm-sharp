@@ -6,7 +6,7 @@ argument-hint: '[count|priority|issue#] — e.g. "3", "critical", "#82"'
 
 # PR Reviewer
 
-Reviews pull requests created by the issue-fixer workflow. Picks up open `agent-needs-review` labeled issues, reviews the linked PR, and either approves it (`agent-ready-for-merge`) or sends it back for changes (`agent-ready` with comments on the PR).
+Reviews pull requests created by the issue-fixer workflow. Picks up open `agent-needs-review` labeled issues, reviews the linked PR, and either approves it (`agent-ready-for-merge` on both issue and PR) or sends it back for changes (`agent-changes-requested` with comments on the PR). PRs labeled `agent-ready-for-merge` are visible at a glance without needing to look up issues.
 
 **Label lifecycle (review side):**
 - `agent-needs-review` → fix is complete, PR is open, awaiting review
@@ -75,6 +75,7 @@ gh issue close <number> --repo negativeeddy/arm-sharp --reason completed
 gh pr review <pr-number> --repo negativeeddy/arm-sharp --approve \
   --body "Reviewed and approved. Build and tests pass. Ready for merge."
 gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-in-progress-review" --add-label "agent-ready-for-merge"
+gh pr edit <pr-number> --repo negativeeddy/arm-sharp --add-label "agent-ready-for-merge"
 ```
 
 **Request changes** — the fix needs work. Be specific about what must change; the fixer acts on these comments without further context:
@@ -83,6 +84,7 @@ gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-in-pr
 gh pr review <pr-number> --repo negativeeddy/arm-sharp --request-changes \
   --body "<specific, actionable change requests>"
 gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-in-progress-review" --add-label "agent-changes-requested"
+gh pr edit <pr-number> --repo negativeeddy/arm-sharp --remove-label "agent-ready-for-merge" 2>/dev/null || true
 ```
 
 The `agent-changes-requested` label returns the issue to the fixer queue. On the next fixer run, the fixer reads the PR review comments, updates the existing branch/PR, and re-submits with `agent-needs-review`.
@@ -91,6 +93,7 @@ The `agent-changes-requested` label returns the issue to the fixer queue. On the
 
 ```bash
 gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-in-progress-review" --add-label "needs-investigation"
+gh pr edit <pr-number> --repo negativeeddy/arm-sharp --remove-label "agent-ready-for-merge" 2>/dev/null || true
 gh issue comment <number> --repo negativeeddy/arm-sharp --body "Review found this needs deeper analysis: <explanation>."
 ```
 
@@ -98,6 +101,7 @@ Only add `agent-needs-human-review` when the deeper problem requires a human jud
 
 ```bash
 gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-in-progress-review" --add-label "needs-investigation" --add-label "agent-needs-human-review"
+gh pr edit <pr-number> --repo negativeeddy/arm-sharp --remove-label "agent-ready-for-merge" 2>/dev/null || true
 ```
 
 ### Step 6: Report Summary
@@ -147,8 +151,10 @@ gh pr diff <pr-number> --repo negativeeddy/arm-sharp
 # Approve
 gh pr review <pr-number> --repo negativeeddy/arm-sharp --approve --body "..."
 gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-in-progress-review" --add-label "agent-ready-for-merge"
+gh pr edit <pr-number> --repo negativeeddy/arm-sharp --add-label "agent-ready-for-merge"
 
 # Request changes
 gh pr review <pr-number> --repo negativeeddy/arm-sharp --request-changes --body "..."
 gh issue edit <number> --repo negativeeddy/arm-sharp --remove-label "agent-in-progress-review" --add-label "agent-changes-requested"
+gh pr edit <pr-number> --repo negativeeddy/arm-sharp --remove-label "agent-ready-for-merge" 2>/dev/null || true
 ```

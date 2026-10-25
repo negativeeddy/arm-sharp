@@ -112,31 +112,4 @@ arm.stopJobRefresh = function () {
     }
 };
 
-arm.abandonJob = function (jobId) {
-    if (!confirm('Abandon this job? The process will be killed and the disc ejected.')) return;
-    var tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
-    fetch('/api/abandon/' + jobId, {
-        method: 'POST',
-        headers: {
-            'RequestVerificationToken': tokenInput ? tokenInput.value : ''
-        }
-    })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-            if (data.success) {
-                location.reload();
-            } else {
-                alert('Failed to abandon job: ' + (data.message || data.error || 'unknown error'));
-            }
-        })
-        .catch(function (err) {
-            alert('Error: ' + err);
-        });
-};
 
-document.addEventListener('click', function (e) {
-    var btn = e.target.closest('.abandon-job-btn');
-    if (!btn) return;
-    e.preventDefault();
-    arm.abandonJob(btn.getAttribute('data-job-id'));
-});

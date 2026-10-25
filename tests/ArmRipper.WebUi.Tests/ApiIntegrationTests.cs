@@ -308,26 +308,24 @@ public class ApiIntegrationTests : IClassFixture<ApiTestWebApplicationFactory>
     }
 
     [Fact]
-    public async Task Abandon_ExistingJob_ReturnsSuccess()
+    public async Task Cancel_ExistingJob_RedirectsToDetail()
     {
         await EnsureSeedLoadedAsync();
-        var (client, token) = await CreateAuthenticatedWithTokenAsync();
-        var response = await client.PostAsync($"/api/abandon/{_testJobId}",
-            new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }));
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var json = await response.Content.ReadAsStringAsync();
-        var doc = JsonDocument.Parse(json);
-        Assert.True(doc.RootElement.GetProperty("success").GetBoolean());
-        Assert.Equal(_testJobId, doc.RootElement.GetProperty("job").GetInt32());
+        var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        await LoginAsync(client);
+        var response = await client.PostAsync($"/jobs/cancel",
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["jobId"] = _testJobId.ToString() }));
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Contains($"/jobs/jobdetail?jobId={_testJobId}", response.Headers.Location?.ToString());
     }
 
     [Fact]
-    public async Task Abandon_MissingJob_ReturnsNotFound()
+    public async Task Cancel_MissingJob_ReturnsNotFound()
     {
-        var (client, token) = await CreateAuthenticatedWithTokenAsync();
-        var response = await client.PostAsync("/api/abandon/9999",
-            new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token }));
+        var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        await LoginAsync(client);
+        var response = await client.PostAsync("/jobs/cancel",
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["jobId"] = "9999" }));
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
@@ -553,6 +551,12 @@ public class ApiIntegrationTests : IClassFixture<ApiTestWebApplicationFactory>
     private async Task<HttpClient> CreateAuthenticatedClientAsync()
     {
         var client = _factory.CreateClient();
+        await LoginAsync(client);
+        return client;
+    }
+
+    private async Task LoginAsync(HttpClient client)
+    {
         var loginPage = await client.GetAsync("/auth/login");
         var html = await loginPage.Content.ReadAsStringAsync();
         var match = Regex.Match(html,
@@ -567,8 +571,8 @@ public class ApiIntegrationTests : IClassFixture<ApiTestWebApplicationFactory>
         };
 
         var response = await client.PostAsync("/auth/login", new FormUrlEncodedContent(formData));
-        response.EnsureSuccessStatusCode();
-        return client;
+        Assert.True(response.StatusCode is HttpStatusCode.Redirect or HttpStatusCode.OK,
+            $"Login returned unexpected status {response.StatusCode}");
     }
 
     private async Task<(HttpClient Client, string Token)> CreateAuthenticatedWithTokenAsync()
