@@ -41,7 +41,10 @@ else
                     <td>@job.StartTime.ToLocalTime().ToString("g")</td>
                     <td>
                         <a href="/jobs/jobdetail?jobId=@job.Id" class="btn btn-sm btn-outline-primary">View</a>
-                        <button type="button" class="btn btn-sm btn-outline-danger abandon-job-btn" data-job-id="@job.Id">Abandon</button>
+                        <form method="post" action="/jobs/cancel" onsubmit="return confirm('Cancel this job? The process will be killed and the disc ejected.')" style="display:inline">
+                            <input type="hidden" name="jobId" value="@job.Id" />
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Cancel</button>
+                        </form>
                     </td>
                 </tr>
             }
@@ -53,7 +56,7 @@ else
 <script>
     $(function () {
         $('#cancelAllBtn').on('click', function () {
-            if (confirm('Cancel ALL active rips?\n\nThis will stop every running job. This cannot be undone.')) {
+            if (confirm('Cancel ALL active rips?\n\nEvery running job will be killed and its disc ejected. This cannot be undone.')) {
                 $('#cancelAllForm').submit();
             }
         });

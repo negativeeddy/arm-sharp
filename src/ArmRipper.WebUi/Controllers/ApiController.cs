@@ -17,8 +17,6 @@ namespace ArmRipper.WebUi.Controllers;
 [Route("api")]
 public partial class ApiController(
     ArmDbContext db,
-    ICliProcessRunner runner,
-    IBackgroundRipService backgroundRip,
     ISettingsService settingsService,
     IDatabaseSubmitService databaseSubmitService,
     IOvidSubmitService ovidSubmitService,
@@ -181,64 +179,6 @@ public partial class ApiController(
             successJobs,
             successRate = totalJobs > 0 ? (double)successJobs / totalJobs * 100 : 0
         });
-    }
-
-    [HttpPost("abandon/{id}")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Abandon(int id, CancellationToken ct = default)
-    {
-        var job = await db.Jobs.Include(j => j.Config).FirstOrDefaultAsync(j => j.Id == id, ct);
-        if (job is null)
-            return NotFound(new { success = false, error = "Job not found" });
-
-        if (job.Status.IsTerminal())
-            return Json(new { success = false, error = $"Job {id} is already {job.Status}" });
-
-        // Cancel the background rip so the pipeline stops cleanly and can't
-        // overwrite the abandoned Failure status later.
-        if (!string.IsNullOrEmpty(job.DevPath))
-            backgroundRip.CancelRip(job.DevPath);
-
-        job.Status = JobState.Failure;
-        job.Errors = "Abandoned by user";
-        job.ProgressMessage = "Abandoned";
-        job.StopTime ??= DateTime.UtcNow;
-
-        var ejected = false;
-        if (job.DevPath is not null)
-        {
-            try
-            {
-                await runner.RunAsync("umount", job.DevPath, timeoutMs: 10_000, ct: ct);
-            }
-            catch (Exception ex)
-            {
-                logger.LogDebug(ex, "Failed to umount {DevPath} for abandoned job {JobId}", job.DevPath, job.Id);
-            }
-
-            // Only eject if media is present — on some drives the CDROMEJECT
-            // ioctl toggles the tray (closes it when already open).
-            try
-            {
-                var mediaCheck = await runner.RunAsync("blockdev",
-                    $"--getsz {job.DevPath}", timeoutMs: 5_000, ct: ct);
-                if (mediaCheck.ExitCode == 0 && long.TryParse(mediaCheck.StdOut?.Trim(), out var sectors) && sectors > 0)
-                {
-                    await runner.RunAsync("eject", job.DevPath, timeoutMs: 10_000, ct: ct);
-                    ejected = true;
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogDebug(ex, "Failed to eject {DevPath} for abandoned job {JobId}", job.DevPath, job.Id);
-            }
-        }
-
-        if (ejected)
-            job.Ejected = true;
-
-        await db.SaveChangesAsync(ct);
-        return Json(new { success = true, job = id, mode = "abandon" });
     }
 
     [HttpPost("change-params")]

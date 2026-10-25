@@ -145,11 +145,10 @@
                                         <button type="button" class="btn btn-success me-2" id="continueManualSelection" onclick="submitManualSelection()">▶ Continue Rip</button>
                                         <small class="text-muted">Select tracks below, then click Continue.</small>
                                     }
-                                    <form method="post" action="/jobs/cancel" onsubmit="return confirm('Cancel this job?')" style="display:inline">
+                                    <form method="post" action="/jobs/cancel" onsubmit="return confirm('Cancel this job? The process will be killed and the disc ejected.')" style="display:inline">
                                         <input type="hidden" name="jobId" value="@Model.Id" />
                                         <button type="submit" class="btn btn-outline-danger btn-sm">Cancel Job</button>
                                     </form>
-                                    <button type="button" class="btn btn-sm btn-outline-danger abandon-job-btn" data-job-id="@Model.Id">Abandon Job</button>
                                 </dd>
                             }
                             else if (Model.Status.IsResumable() && !string.IsNullOrEmpty(Model.CompletedStages))
@@ -773,8 +772,7 @@ else
             });
             if (!actionsDd) return;
 
-            var abandonBtn = '<button type="button" class="btn btn-sm btn-outline-danger ms-2 abandon-job-btn" data-job-id="' + jobId + '">Abandon Job</button>';
-
+            var cancelConfirm = 'Cancel this job? The process will be killed and the disc ejected.';
             var isManualWait = status === 'waiting'; // ManualWaitStarted
             var isManualSelection = status === 'manual_selection'; // ManualSelectionStarted
             var isTerminal_ = terminalStatuses.indexOf(status) !== -1;
@@ -792,20 +790,18 @@ else
                     // broadcast arrives (issue #182).
                     removeManualSelectionUi();
                     actionsDd.innerHTML =
-                        '<form method="post" action="/jobs/cancel" onsubmit="return confirm(\'Cancel this job?\')" style="display:inline">' +
+                        '<form method="post" action="/jobs/cancel" onsubmit="return confirm(\'' + cancelConfirm + '\')" style="display:inline">' +
                         '<input type="hidden" name="jobId" value="' + jobId + '" />' +
                         '<button type="submit" class="btn btn-outline-danger btn-sm">Cancel Job</button>' +
-                        '</form>' +
-                        abandonBtn;
+                        '</form>';
                 } else {
                     actionsDd.innerHTML =
                         '<button type="button" class="btn btn-success me-2" onclick="submitManualSelection()">▶ Continue Rip</button>' +
                         '<small class="text-muted">Select tracks below, then click Continue.</small>' +
-                        '<form method="post" action="/jobs/cancel" onsubmit="return confirm(\'Cancel this job?\')" style="display:inline">' +
+                        '<form method="post" action="/jobs/cancel" onsubmit="return confirm(\'' + cancelConfirm + '\')" style="display:inline">' +
                         '<input type="hidden" name="jobId" value="' + jobId + '" />' +
                         '<button type="submit" class="btn btn-outline-danger btn-sm ms-2">Cancel Job</button>' +
-                        '</form>' +
-                        abandonBtn;
+                        '</form>';
                 }
             } else if (isManualWait) {
                 removeManualSelectionUi();
@@ -814,19 +810,17 @@ else
                     '<input type="hidden" name="jobId" value="' + jobId + '" />' +
                     '<button type="submit" class="btn btn-success me-2">\u25B6 Skip Wait \u2014 Start Now</button>' +
                     '</form>' +
-                    '<form method="post" action="/jobs/cancel" onsubmit="return confirm(\'Cancel this job?\')" style="display:inline">' +
+                    '<form method="post" action="/jobs/cancel" onsubmit="return confirm(\'' + cancelConfirm + '\')" style="display:inline">' +
                     '<input type="hidden" name="jobId" value="' + jobId + '" />' +
                     '<button type="submit" class="btn btn-outline-danger btn-sm">Cancel Job</button>' +
-                    '</form>' +
-                    abandonBtn;
+                    '</form>';
             } else {
                 removeManualSelectionUi();
                 actionsDd.innerHTML =
-                    '<form method="post" action="/jobs/cancel" onsubmit="return confirm(\'Cancel this job?\')" style="display:inline">' +
+                    '<form method="post" action="/jobs/cancel" onsubmit="return confirm(\'' + cancelConfirm + '\')" style="display:inline">' +
                     '<input type="hidden" name="jobId" value="' + jobId + '" />' +
                     '<button type="submit" class="btn btn-outline-danger btn-sm">Cancel Job</button>' +
-                    '</form>' +
-                    abandonBtn;
+                    '</form>';
             }
         }
 
