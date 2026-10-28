@@ -82,15 +82,27 @@ public sealed class ArmRipperService(
         IReadOnlyList<Track> tracks,
         bool preferWidescreen,
         IReadOnlyDictionary<int, string>? lsdvdDars = null)
+        => AnalyzeMainFeatureSelection(tracks, preferWidescreen, lsdvdDars).Selected;
+
+    /// <summary>
+    /// Same selection as <see cref="SelectMainFeatureTrack"/>, but it also reports
+    /// every near-tie candidate that was considered and which criterion decided
+    /// the outcome, so an ambiguous choice can be surfaced to the user instead of
+    /// being silently committed to.
+    /// </summary>
+    internal static MainFeatureSelection AnalyzeMainFeatureSelection(
+        IReadOnlyList<Track> tracks,
+        bool preferWidescreen,
+        IReadOnlyDictionary<int, string>? lsdvdDars = null)
     {
         var eligible = tracks.Where(t => t.Process).ToList();
         var pool = eligible.Count > 0 ? eligible : tracks.ToList();
         if (pool.Count == 0)
-            return null;
+            return new MainFeatureSelection(null, [], string.Empty);
 
         var maxDuration = pool.Max(t => t.Length ?? 0);
         if (maxDuration <= 0)
-            return pool[0];
+            return new MainFeatureSelection(pool[0], [pool[0]], string.Empty);
 
         var tolerance = Math.Max(
             maxDuration * MainFeatureTieToleranceRatio,
@@ -98,30 +110,13 @@ public sealed class ArmRipperService(
 
         var nearTies = pool.Where(t => (t.Length ?? 0) >= maxDuration - tolerance).ToList();
 
-        // Compute the effective aspect ratio for each track. MakeMKV reports the
-        // storage aspect ratio (SAR) which is often "4:3" for anamorphic DVDs.
-        // When lsdvd provides a display aspect ratio (DAR) that differs, it is
-        // the authoritative signal — e.g. an anamorphic widescreen track stored
-        // as 4:3 pixels should be treated as 16:9.
-        string? EffectiveAspect(Track t)
-        {
-            if (lsdvdDars is not null
-                && t.TrackNumberInt.HasValue
-                && lsdvdDars.TryGetValue(t.TrackNumberInt.Value, out var dar)
-                && !string.IsNullOrEmpty(dar))
-            {
-                return dar;
-            }
-            return t.AspectRatio;
-        }
-
         IOrderedEnumerable<Track> ranked;
         if (preferWidescreen
-            && nearTies.Any(t => EffectiveAspect(t)?.Contains("16:9") == true)
-            && nearTies.Any(t => EffectiveAspect(t)?.Contains("16:9") != true))
+            && nearTies.Any(t => IsWidescreen(EffectiveAspectOf(t, lsdvdDars)))
+            && nearTies.Any(t => !IsWidescreen(EffectiveAspectOf(t, lsdvdDars))))
         {
             ranked = nearTies
-                .OrderByDescending(t => EffectiveAspect(t)?.Contains("16:9") == true)
+                .OrderByDescending(t => IsWidescreen(EffectiveAspectOf(t, lsdvdDars)))
                 .ThenByDescending(MainFeatureSizeOf)
                 .ThenByDescending(t => t.Chapters ?? 0);
         }
@@ -132,10 +127,93 @@ public sealed class ArmRipperService(
                 .ThenByDescending(t => t.Chapters ?? 0);
         }
 
-        return ranked
+        var ordered = ranked
             .ThenByDescending(t => t.Length ?? 0)
-            .First();
+            .ToList();
+
+        var selected = ordered[0];
+        var reason = ordered.Count > 1
+            ? TieBreakReason(selected, ordered[1], preferWidescreen, lsdvdDars)
+            : string.Empty;
+
+        return new MainFeatureSelection(selected, ordered, reason);
     }
+
+    /// <summary>
+    /// Computes the effective aspect ratio for a track. MakeMKV reports the
+    /// storage aspect ratio (SAR) which is often "4:3" for anamorphic DVDs.
+    /// When lsdvd provides a display aspect ratio (DAR) that differs, it is
+    /// the authoritative signal — e.g. an anamorphic widescreen track stored
+    /// as 4:3 pixels should be treated as 16:9.
+    /// </summary>
+    private static string? EffectiveAspectOf(Track t, IReadOnlyDictionary<int, string>? lsdvdDars)
+    {
+        if (lsdvdDars is not null
+            && t.TrackNumberInt.HasValue
+            && lsdvdDars.TryGetValue(t.TrackNumberInt.Value, out var dar)
+            && !string.IsNullOrEmpty(dar))
+        {
+            return dar;
+        }
+        return t.AspectRatio;
+    }
+
+    private static bool IsWidescreen(string? aspect) => aspect?.Contains("16:9") == true;
+
+    /// <summary>
+    /// Names the criterion that separated the selected track from the runner-up.
+    /// Mirrors the ranking order used by <see cref="AnalyzeMainFeatureSelection"/>
+    /// so the reason reported to the user matches how the winner was chosen.
+    /// </summary>
+    private static string TieBreakReason(
+        Track selected,
+        Track runnerUp,
+        bool preferWidescreen,
+        IReadOnlyDictionary<int, string>? lsdvdDars)
+    {
+        if (preferWidescreen
+            && IsWidescreen(EffectiveAspectOf(selected, lsdvdDars))
+            != IsWidescreen(EffectiveAspectOf(runnerUp, lsdvdDars)))
+        {
+            return "aspect ratio";
+        }
+
+        if (MainFeatureSizeOf(selected) != MainFeatureSizeOf(runnerUp))
+            return "file size";
+
+        if ((selected.Chapters ?? 0) != (runnerUp.Chapters ?? 0))
+            return "chapter count";
+
+        return "duration";
+    }
+
+    /// <summary>
+    /// Builds the user-facing warning for an ambiguous main-feature selection, or
+    /// null when the choice was unambiguous. Names the runners-up so the user can
+    /// judge whether a manual main-feature selection is warranted.
+    /// </summary>
+    /// <remarks>
+    /// The message is also stored as a stage-scoped warning, whose format uses
+    /// <c>;</c> as a separator, so it must not contain semicolons itself.
+    /// </remarks>
+    internal static string? BuildMainFeatureAmbiguityWarning(MainFeatureSelection selection)
+    {
+        if (!selection.IsAmbiguous)
+            return null;
+
+        var selected = selection.Selected!;
+        var runnersUp = selection.Candidates
+            .Where(t => !ReferenceEquals(t, selected))
+            .Select(DescribeMainFeatureCandidate);
+
+        return $"Main feature ambiguous: {selection.Candidates.Count} tracks within tolerance, "
+             + $"selected track {selected.TrackNumber} by {selection.TieBreakReason}. "
+             + $"Runners-up: {string.Join(", ", runnersUp)}. "
+             + "Check the track list and pick the main feature manually if this is not the intended title.";
+    }
+
+    private static string DescribeMainFeatureCandidate(Track t)
+        => $"track {t.TrackNumber} ({t.Length ?? 0}s, {t.Chapters ?? 0} chapters, {t.FileSize ?? 0} bytes)";
 
     /// <summary>
     /// Bytes to compare tracks by, falling back to duration (seconds) when
@@ -942,7 +1020,8 @@ public sealed class ArmRipperService(
         }
 
         var preferWidescreen = config?.PreferWidescreen ?? settings.Value.PreferWidescreen;
-        var mainFeatureTrack = SelectMainFeatureTrack(tracks, preferWidescreen, job.LsdvdDisplayAspectRatios);
+        var mainFeatureSelection = AnalyzeMainFeatureSelection(tracks, preferWidescreen, job.LsdvdDisplayAspectRatios);
+        var mainFeatureTrack = mainFeatureSelection.Selected;
 
         if (mainFeatureTrack is not null)
         {
@@ -960,6 +1039,22 @@ public sealed class ArmRipperService(
         // or a per-fingerprint override remembered from an earlier rip wins over
         // the automatic selection above.
         await ApplyMainFeatureOverrideAsync(job, tracks, ct);
+
+        // More than one track inside the tie tolerance means the automatic choice
+        // was genuinely uncertain (e.g. two cuts of the same film). Say so instead
+        // of silently committing to one of them — unless the user already picked
+        // a main feature themselves, which settles the question.
+        if (mainFeatureTrack is not null
+            && ReferenceEquals(tracks.FirstOrDefault(t => t.MainFeature), mainFeatureTrack))
+        {
+            var ambiguityWarning = BuildMainFeatureAmbiguityWarning(mainFeatureSelection);
+            if (ambiguityWarning is not null)
+            {
+                logger.LogWarning("{Warning}", ambiguityWarning);
+                AppendJobWarning(job, ambiguityWarning);
+                AppendStageWarning(job, "rip", ambiguityWarning);
+            }
+        }
 
         foreach (var track in tracks)
             db.Tracks.Add(track);
@@ -1658,6 +1753,27 @@ public sealed class ArmRipperService(
     private void RecordStageError(Job job, string stage, string message)
     {
         logger.LogWarning("Stage '{Stage}' error: {Message}", stage, message);
+        var entry = $"{stage}:{message}";
+        job.StageErrors = job.StageErrors is { } existing ? $"{existing};{entry}" : entry;
+    }
+
+    /// <summary>
+    /// Appends a user-facing warning to the job without discarding warnings that
+    /// were raised earlier in the pipeline.
+    /// </summary>
+    private static void AppendJobWarning(Job job, string warning)
+    {
+        job.Warnings = string.IsNullOrWhiteSpace(job.Warnings)
+            ? warning
+            : $"{job.Warnings}\n{warning}";
+    }
+
+    /// <summary>
+    /// Records a stage-scoped warning (as opposed to a stage error) so the UI can
+    /// flag the stage the warning belongs to.
+    /// </summary>
+    private static void AppendStageWarning(Job job, string stage, string message)
+    {
         var entry = $"{stage}:{message}";
         job.StageErrors = job.StageErrors is { } existing ? $"{existing};{entry}" : entry;
     }
