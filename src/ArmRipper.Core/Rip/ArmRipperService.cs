@@ -2616,6 +2616,19 @@ public sealed class ArmRipperService(
             return $"MakeMKV could not open the disc during {context} (drive reported \"Failed to open disc\") — " +
                    "the disc was not read; check the drive connection and that the tray is closed, then retry";
 
+        if (result.IsLikelyDiscDamage)
+        {
+            var locations = result.ReadErrors
+                .Where(r => !string.IsNullOrWhiteSpace(r.File))
+                .Select(r => r.File!)
+                .Distinct()
+                .Take(3)
+                .ToList();
+            var loc = locations.Count > 0 ? $" in {string.Join(", ", locations)}" : string.Empty;
+            return $"MakeMKV could not read titles during {context} — disc appears physically damaged (unrecoverable read errors{loc}). " +
+                   "Retrying will not recover these sectors; the disc needs cleaning or replacement. Do not assume the drive is at fault.";
+        }
+
         var hint = result.HadReadError ? " — disc may need cleaning or replacement" : "";
         return $"MakeMKV saved 0 titles for {context}{hint}";
     }
@@ -2633,7 +2646,20 @@ public sealed class ArmRipperService(
                 "MakeMKV failed to open the disc during {Context} (MSG 5010) — this is a drive fault, " +
                 "not a disc-quality problem; the disc was never read", context);
 
-        if (result.HadReadError)
+        if (result.IsLikelyDiscDamage)
+        {
+            var locations = result.ReadErrors
+                .Select(r => string.IsNullOrWhiteSpace(r.File) ? r.RawMessage : r.File)
+                .Distinct()
+                .Take(5)
+                .ToList();
+            logger.LogError(
+                "MakeMKV reported unrecoverable read errors during {Context} indicating likely physical disc damage. " +
+                "Files/locations: {Locations}. Error count context: {ReadErrorCount} read-error event(s). " +
+                "Retrying will not recover these sectors; the disc needs cleaning or replacement.",
+                context, locations.Count > 0 ? string.Join(", ", locations) : "see job log", result.ReadErrors.Count);
+        }
+        else if (result.HadReadError)
             logger.LogWarning("MakeMKV reported read errors during {Context}", context);
 
         if (result.HadCorruptSource)
