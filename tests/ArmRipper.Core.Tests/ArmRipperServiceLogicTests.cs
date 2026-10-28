@@ -590,6 +590,14 @@ public sealed class ArmRipperServiceLogicTests
         => ArmRipperService.VerifyRipOutput(
             isMainFeature, expectedSize, actualSize,
             expectedDuration, actualDuration, minLength,
+            ArmRipperService.MinRipSizeRatio, ArmRipperService.MinDurationRatio).Verdict;
+
+    private static ArmRipperService.RipVerificationResult InvokeVerifyRipOutputDetailed(
+        bool isMainFeature, long expectedSize, long actualSize,
+        double? expectedDuration, double? actualDuration, int minLength)
+        => ArmRipperService.VerifyRipOutput(
+            isMainFeature, expectedSize, actualSize,
+            expectedDuration, actualDuration, minLength,
             ArmRipperService.MinRipSizeRatio, ArmRipperService.MinDurationRatio);
 
     [Fact]
@@ -650,14 +658,35 @@ public sealed class ArmRipperServiceLogicTests
     }
 
     [Fact]
-    public void VerifyRipOutput_MainFeatureBelowMinLengthFloor_ReturnsFail()
+    public void VerifyRipOutput_MainFeatureBelowMinLength_ReportsOnlyMinLengthCause()
     {
-        var result = InvokeVerifyRipOutput(
+        // Job 1590 style: size and duration look healthy, but the clip is below
+        // the configured minimum title length. The message must say that, not
+        // imply the disc was skipped / damaged.
+        var result = InvokeVerifyRipOutputDetailed(
             isMainFeature: true,
-            expectedSize: 4_000_000_000, actualSize: 4_000_000_000,
-            expectedDuration: 6547, actualDuration: 250,
+            expectedSize: 562_452_480, actualSize: 534_742_118,
+            expectedDuration: 327.0, actualDuration: 327.0,
+            minLength: 1200);
+
+        Assert.Equal(ArmRipperService.RipVerificationVerdict.Fail, result.Verdict);
+        Assert.False(result.IsUndersized);
+        Assert.False(result.IsDurationTruncated);
+        Assert.True(result.IsBelowMinLength);
+    }
+
+    [Fact]
+    public void VerifyRipOutput_MultipleGates_FlagsAll()
+    {
+        var result = InvokeVerifyRipOutputDetailed(
+            isMainFeature: true,
+            expectedSize: 4_000_000_000, actualSize: 10_000,
+            expectedDuration: 6547, actualDuration: 9,
             minLength: 300);
-        Assert.Equal(ArmRipperService.RipVerificationVerdict.Fail, result);
+
+        Assert.True(result.IsUndersized);
+        Assert.True(result.IsDurationTruncated);
+        Assert.True(result.IsBelowMinLength);
     }
 
     [Fact]
