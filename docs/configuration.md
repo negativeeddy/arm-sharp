@@ -53,8 +53,8 @@ Runtime settings resolve as:
 |----------|----------|---------|-------------|
 | `HbPresetDvd` | `HB_PRESET_DVD` | `HQ 480p30 Surround` | HandBrake preset for DVD |
 | `HbPresetBd` | `HB_PRESET_BD` | `HQ 1080p30 Surround` | HandBrake preset for Blu-ray |
-| `HbArgsDvd` | `HB_ARGS_DVD` | `-e nvenc_h264 --encoder-preset slower --quality 18 --enable-hw-decoding nvdec --encopts spatial-aq=1:aq-strength=10:bf=4:cabac=1:g=50:keyint-min=23 --all-audio --all-subtitles --subtitle-burned=none --aencoder copy:ac3,ac3 --ab 640` | Extra HandBrake args for DVD |
-| `HbArgsBd` | `HB_ARGS_BD` | `-e nvenc_h265 --encoder-preset slower --quality 18 --enable-hw-decoding nvdec --encopts spatial-aq=1:aq-strength=10:g=50:keyint-min=23 --all-audio --all-subtitles --subtitle-burned=none --aencoder copy:ac3,ac3 --ab 640` | Extra HandBrake args for Blu-ray |
+| `HbArgsDvd` | `HB_ARGS_DVD` | `-e nvenc_h264 --encoder-preset slower --quality 18 --enable-hw-decoding nvdec --encopts spatial-aq=1:aq-strength=10:bf=4:cabac=1:g=50:keyint-min=23 --comb-detect --decomb --all-audio --all-subtitles --subtitle-burned=none --aencoder aac --audio-fallback aac --mixdown none` | Extra HandBrake args for DVD |
+| `HbArgsBd` | `HB_ARGS_BD` | `-e nvenc_h265 --encoder-preset slower --quality 22 --enable-hw-decoding nvdec --encopts spatial-aq=1:aq-strength=10:g=50:keyint-min=23 --all-audio --all-subtitles --subtitle-burned=none --aencoder copy --audio-copy-mask dtshd,dts,truehd,eac3,aac --audio-fallback av_aac --mixdown none --automatic-naming-behaviour off` | Extra HandBrake args for Blu-ray |
 | `DestExt` | `DEST_EXT` | `mkv` | Output file extension |
 | `FfmpegCli` | `FFMPEG_CLI` | `ffmpeg` | ffmpeg binary path |
 | `FfmpegPreFileArgs` | `FFMPEG_PRE_FILE_ARGS` | — | ffmpeg args before input file |
@@ -134,7 +134,7 @@ The defaults are tuned for a system with a **NVIDIA GTX 1060 (Pascal, CUDA 6.1)*
 
 ### Preset choice
 
-`HQ 480p30 Surround` / `HQ 1080p30 Surround` — these are the renamed equivalents of the legacy `HQ 480p30` / `HQ 1080p30` presets in HandBrake 1.11.1. The "Surround" suffix indicates the preset includes an AC-3 5.1 audio track alongside AAC stereo. The `--all-audio` and `--aencoder copy:ac3,ac3` overrides take precedence, preserving the original channel layout.
+`HQ 480p30 Surround` / `HQ 1080p30 Surround` — these are the renamed equivalents of the legacy `HQ 480p30` / `HQ 1080p30` presets in HandBrake 1.11.1. The "Surround" suffix indicates the preset includes an AC-3 5.1 audio track alongside AAC stereo. The `--all-audio` and Auto Passthru overrides take precedence. For Blu-ray, lossless and object formats are copied bit-for-bit while AC-3 and LPCM are transcoded to AAC.
 
 ### `--encoder-preset slower`
 
@@ -159,11 +159,17 @@ RF (Rate Factor) scale for NVENC — lower is better quality. 18 delivers visual
 
 Passthrough all available audio and subtitle tracks. `--subtitle-burned=none` prevents burning any subtitle into the video.
 
-### `--aencoder copy:ac3,ac3 --ab 640`
+### `--aencoder copy --audio-copy-mask ... --audio-fallback av_aac` (Blu-ray)
 
-- `copy:ac3` — passthrough any existing AC-3 track unchanged (preserves original 5.1/7.1 channel layout)
-- `ac3` — encode fallback audio to AC-3 at 640 kbps
-- AC-3 caps at 5.1 channels, preventing unintended format conversions
+- `copy` — Auto Passthru: copy each track bit-for-bit when its codec is in the mask and the output container supports it
+- `--audio-copy-mask dtshd,dts,truehd,eac3,aac` — permit passthrough of DTS-HD MA/DTS:X, DTS, TrueHD/Atmos, E-AC3/Atmos, and AAC
+- `--audio-fallback av_aac` — transcode everything else (AC-3, LPCM, unsupported codecs) to AAC
+- `--mixdown none` — keep the source channel layout on fallback encodes
+- `--automatic-naming-behaviour off` — prevent HandBrake from labeling every track "Stereo"
+
+Dolby Atmos (TrueHD/E-AC3) and DTS:X metadata are carried inside the copied bitstream. Keep `DestExt` as `mkv`; MP4 strips Atmos metadata and may reject TrueHD/DTS-HD.
+
+DVD defaults use `--aencoder aac --audio-fallback aac --mixdown none`, transcoding all tracks to AAC.
 
 ### `--enable-hw-decoding nvdec`
 
