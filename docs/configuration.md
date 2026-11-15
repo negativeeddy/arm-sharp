@@ -31,8 +31,8 @@ Runtime settings resolve as:
 |----------|----------|---------|-------------|
 | `RipMethod` | `RIPMETHOD` | `mkv` | Rip method (`mkv`, `backup`) |
 | `MkvArgs` | `MKV_ARGS` | `""` | Extra MakeMKV arguments |
-| `MinLength` | `MINLENGTH` | `0` | Minimum title length (minutes) |
-| `MaxLength` | `MAXLENGTH` | `99999` | Maximum title length (minutes) |
+| `MinLength` | `MINLENGTH` | `300` | Minimum title length (seconds) |
+| `MaxLength` | `MAXLENGTH` | `99999` | Maximum title length (seconds; `99999` = no limit). Tracks over this are skipped, including series "play all" concatenations. |
 | `MainFeature` | `MAINFEATURE` | `false` | Rip only main feature |
 | `SkipTranscode` | `SKIP_TRANSCODE` | `false` | Skip transcoding step |
 | `UseFfmpeg` | `USE_FFMPEG` | `false` | Use ffmpeg instead of HandBrake |
@@ -165,9 +165,16 @@ Passthrough all available audio and subtitle tracks. `--subtitle-burned=none` pr
 - `--audio-copy-mask dtshd,dts,truehd,eac3,aac` — permit passthrough of DTS-HD MA/DTS:X, DTS, TrueHD/Atmos, E-AC3/Atmos, and AAC
 - `--audio-fallback av_aac` — transcode everything else (AC-3, LPCM, unsupported codecs) to AAC
 - `--mixdown none` — keep the source channel layout on fallback encodes
-- `--automatic-naming-behaviour off` — prevent HandBrake from labeling every track "Stereo"
+- `--automatic-naming-behaviour off` — prevent HandBrake from auto-naming every track "Stereo" (which made Jellyfin report all tracks as 2-channel); see metadata caveats below
 
 Dolby Atmos (TrueHD/E-AC3) and DTS:X metadata are carried inside the copied bitstream. Keep `DestExt` as `mkv`; MP4 strips Atmos metadata and may reject TrueHD/DTS-HD.
+
+#### Audio metadata caveats (HandBrake 1.11.x)
+
+- **Language tags:** HandBrake only writes language codes it recognizes. Codes outside its table are treated as `Unknown` and omitted. For example, `grc` (Greek, Ancient) is dropped, while `eng`, `deu`, `fra`, `spa`, and `ell`/`gre` are preserved. If the tag matters, set it after transcode, e.g. `mkvpropedit "output.mkv" --edit track:a1 --set language=grc`.
+- **Track names:** HandBrake treats `Stereo`, `Mono`, and `Surround` as reserved auto-generated names. With `--automatic-naming-behaviour off`, those names are dropped from passthrough tracks; more specific names such as `Surround 5.1` survive. `--keep-aname` does not restore reserved names in 1.11.2. Use a post-pass or explicit `--aname` if titles matter.
+- **Lossless + core pairs:** MakeMKV may expose DTS-HD MA and its DTS core as separate tracks. Both are copied because `dts` is in the copy mask. A TrueHD track's AC-3 companion is not copied (AC-3 is not in the mask) and becomes AAC if selected. This is expected.
+- **Avoid `copy:<type>`:** Explicit per-track encoders are positional and silently drop non-matching tracks; `--audio-fallback` only applies to `copy`. Keep `--aencoder copy` with the copy mask.
 
 DVD defaults use `--aencoder aac --audio-fallback aac --mixdown none`, transcoding all tracks to AAC.
 

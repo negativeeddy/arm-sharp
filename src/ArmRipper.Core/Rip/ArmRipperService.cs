@@ -220,6 +220,21 @@ public sealed class ArmRipperService(
     }
 
     /// <summary>
+    /// Whether a DiscDb match should promote a track into the rip set even when it
+    /// fell outside the normal duration window. DiscDb may legitimately promote a
+    /// short extra below <see cref="ConfigSnapshot.MinLength"/>, but the configured
+    /// <see cref="ConfigSnapshot.MaxLength"/> remains a hard ceiling so a
+    /// concatenated "play all" track is never promoted by mistake.
+    /// </summary>
+    internal static bool ShouldPromoteDiscDbTrack(Track local, Track fresh, int maxLength)
+    {
+        if (local.Process || string.IsNullOrEmpty(fresh.EpisodeTitle))
+            return false;
+
+        return (local.Length ?? 0) <= maxLength;
+    }
+
+    /// <summary>
     /// Re-points the main feature at the track DiscDb classified as <c>main</c>.
     ///
     /// The automatic selection in <see cref="SelectMainFeatureTrack"/> ranks by
@@ -1003,10 +1018,21 @@ public sealed class ArmRipperService(
                         local.DiscDbItemSlug = fresh.DiscDbItemSlug;
                         local.SegmentMap = fresh.SegmentMap;
 
-                        if (!local.Process && !string.IsNullOrEmpty(fresh.EpisodeTitle))
+                        if (ShouldPromoteDiscDbTrack(local, fresh, maxLength))
                         {
                             local.Process = true;
                             promoted++;
+                        }
+                        else if (!local.Process && !string.IsNullOrEmpty(fresh.EpisodeTitle))
+                        {
+                            // A DiscDb match must not override the configured ceiling.
+                            // Series discs often carry a "play all" title whose duration
+                            // is the sum of every episode; an index-only DiscDb match can
+                            // land on it even though it exceeds MaxLength. Promoting it
+                            // would rip the concatenated track the user asked us to skip.
+                            logger.LogWarning(
+                                "DiscDb: not promoting track {Track} ({Length}s) — exceeds MaxLength {MaxLength}s for job {JobId}",
+                                local.TrackNumber, local.Length ?? 0, maxLength, job.Id);
                         }
                     }
                 }

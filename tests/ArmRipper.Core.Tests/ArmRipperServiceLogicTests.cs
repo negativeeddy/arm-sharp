@@ -739,6 +739,55 @@ public sealed class ArmRipperServiceLogicTests
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // ShouldPromoteDiscDbTrack
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ShouldPromoteDiscDbTrack_MatchedTrackAboveMaxLength_IsNotPromoted()
+    {
+        // A "play all" title contains every episode concatenated. A DiscDb match
+        // must not let it bypass MaxLength and get ripped alongside the episodes.
+        var local = CreateTestTrack("0", 7200, null, null, null);
+        local.Process = false;
+        var fresh = CreateTestTrack("0", 7200, null, null, null);
+        fresh.EpisodeTitle = "All Episodes";
+
+        Assert.False(ArmRipperService.ShouldPromoteDiscDbTrack(local, fresh, maxLength: 3600));
+    }
+
+    [Fact]
+    public void ShouldPromoteDiscDbTrack_MatchedShortExtraBelowMinLength_IsPromoted()
+    {
+        // DiscDb still promotes legitimate short extras inside the ceiling.
+        var local = CreateTestTrack("3", 120, null, null, null);
+        local.Process = false;
+        var fresh = CreateTestTrack("3", 120, null, null, null);
+        fresh.EpisodeTitle = "Behind the Scenes";
+
+        Assert.True(ArmRipperService.ShouldPromoteDiscDbTrack(local, fresh, maxLength: 3600));
+    }
+
+    [Fact]
+    public void ShouldPromoteDiscDbTrack_AlreadyProcessed_IsNotPromotedTwice()
+    {
+        var local = CreateTestTrack("1", 1500, null, null, null);
+        var fresh = CreateTestTrack("1", 1500, null, null, null);
+        fresh.EpisodeTitle = "Pilot";
+
+        Assert.False(ArmRipperService.ShouldPromoteDiscDbTrack(local, fresh, maxLength: 3600));
+    }
+
+    [Fact]
+    public void ShouldPromoteDiscDbTrack_NoEpisodeTitle_IsNotPromoted()
+    {
+        var local = CreateTestTrack("1", 1500, null, null, null);
+        local.Process = false;
+        var fresh = CreateTestTrack("1", 1500, null, null, null);
+
+        Assert.False(ArmRipperService.ShouldPromoteDiscDbTrack(local, fresh, maxLength: 3600));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // SelectMainFeatureTrack
     // ─────────────────────────────────────────────────────────────────────────
 

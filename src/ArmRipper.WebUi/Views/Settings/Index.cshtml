@@ -239,7 +239,7 @@
                 ["RipMethod"] = "Which program to use: mkv (MakeMKV), backup, or abcde",
                 ["MkvArgs"] = "Extra arguments passed to makemkvcon (e.g. --decrypt)",
                 ["MinLength"] = "Shortest track length to include, in SECONDS. Examples: 300 = 5 min, 900 = 15 min. (MakeMKV's --minlength is in seconds, not minutes or milliseconds.)",
-                ["MaxLength"] = "Longest track length in seconds (99999 = no limit)",
+                ["MaxLength"] = "Longest track length in seconds (99999 = no limit). Tracks over this are skipped automatically — useful for series discs with a \"play all\" track that concatenates every episode.",
                 // MaxConcurrentRips removed — per-drive gating ensures one rip per drive naturally.
                 ["MainFeature"] = "Rip only the main feature (longest track)",
                 ["ManualSelection"] = "After scanning titles, pause and let you manually select which tracks to rip",
